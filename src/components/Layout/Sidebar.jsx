@@ -24,7 +24,7 @@ const menuItems = [
         id: "dashboard",
         icon: LayoutDashboard,
         label: "Dashboard",
-        active: true,
+        active: false,
         badge: "New",
     },
     {
@@ -37,17 +37,17 @@ const menuItems = [
             {id: "insighs", label: "Insights"},
         ],*/
     },
-    {
+    /*{
         id: "users",
         icon: Users,
         label: "Connect",
         count: "2.4k",
-        /*submenu: [
+        submenu: [
             {id: "all-users", label: "All Users"},
             {id: "roles", label: "Roles & Permissions"},
             {id: "activity", label: "User Activity"},
-        ],*/
-    },
+        ],
+    },*/
     {
         id: "ecommerce",
         icon: DownloadIcon,
@@ -71,9 +71,10 @@ const menuItems = [
         badge: "12",
     },
     {
-        id: "reports",
-        icon: SmileIcon,
-        label: "Entertainment",
+        id: "users",
+        icon: Users,
+        label: "Connect",
+        count: "2.4k",
     },
     {
         id: "settings",
@@ -129,7 +130,7 @@ function Sidebar({ collapsed, onToggle, currentPage, onPageChange }){
                                     onPageChange(item.id)
                                 }
                             }}>
-                                <div className='flex items-center space-x-3'>
+                                <div className='flex items-center space-x-4 space-y-2'>
                                     <item.icon className={'w-5 h-5'} />
                                     {/* Conditional Rendering */}
                                     {!collapsed && (
