@@ -107,8 +107,8 @@ function Sidebar({ collapsed, onToggle, currentPage, onPageChange }){
                     {/* Conditional Rendering */}
                     {!collapsed && (
                         <div>
-                            <h1 className="text-xl font-bold text-slate-800 dark:text-white">UNI CONNECT</h1>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">We Work Collectively</p>
+                            <h1 className="text-xl font-bold text-slate-800 dark:text-white">WE CONNECT</h1>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">We Connect. You Connect</p>
                         </div>
                     )}
                     
