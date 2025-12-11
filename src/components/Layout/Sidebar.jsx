@@ -108,7 +108,7 @@ function Sidebar({ collapsed, onToggle, currentPage, onPageChange }){
                     {!collapsed && (
                         <div>
                             <h1 className="text-xl font-bold text-slate-800 dark:text-white">WE CONNECT</h1>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">We Connect. You Connect</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">You Connect. We Connect</p>
                         </div>
                     )}
                     

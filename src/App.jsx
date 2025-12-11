@@ -2,9 +2,22 @@ import React, { useState } from 'react';
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 import Dashboard from './components/Dashboard/Dashboard';
-import Another from './components/Layout/Another';
 import Material from './components/Dashboard/Material'
 import Notification from './components/Dashboard/Notification';
+import SchoolSearch from './components/Dashboard/SchoolSearch';
+
+const brands = [
+  {label: 'Rivers State University', value: 'rsu'},
+  {label: 'University of Cross Rivers State', value: 'cross'},
+  {label: 'Convenant University', value: 'convenant'},
+  {label: 'University of Port Harcourt', value: 'uniport'},
+  {label: 'Babcock University', value: 'babcock'},
+  {label: 'Petroleum Training Institute Effurun', value: 'pti'},
+  {label: 'Delta State University', value: 'delsuu'},
+  {label: 'Lagos State University', value: 'unnilag'},
+  {label: 'kaduna State University', value: 'kaduna'},
+  {label: 'landmark University', value: 'landmark'},
+]
 
 function App() {
   const [sideBarCollapsed, setSideBarCollapsed] = useState(false);
@@ -27,6 +40,7 @@ function App() {
               {currentPage === "dashboard" && <Dashboard />}
               {currentPage === "analytics" && <Material />}
               {currentPage === "messages" && <Notification />}
+              {currentPage === "ecommerce" && <SchoolSearch options={brands}/>}
             </div>
           </main>
         </div>
