@@ -1,8 +1,7 @@
 import React from "react";
-import StatsGrid from './StatsGrid'
-import Recent from "./Recent";
+
 import Schools from "./Schools";
-import Uploads from "./uploads";
+import Recent from "./Recent";
 
 
 
@@ -12,7 +11,7 @@ function Material(){
             
             <Schools />
 
-            <Uploads />
+            <Recent />
 
             
 
