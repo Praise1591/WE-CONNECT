@@ -1,7 +1,7 @@
 import React from 'react'
 import { Search, Upload } from 'lucide-react'
-import Recent from './Recent'
-import Uploads from './uploads'
+
+
 
 
 function Schools() {
