@@ -3,7 +3,6 @@ import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 import Dashboard from './components/Dashboard/Dashboard';
 import Material from './components/Dashboard/Material'
-import Notification from './components/Dashboard/Notification';
 import SchoolSearch from './components/Dashboard/SchoolSearch';
 
 const brands = [
@@ -39,7 +38,7 @@ function App() {
             <div className='p-6 space-y-6'>
               {currentPage === "dashboard" && <Dashboard />}
               {currentPage === "analytics" && <Material />}
-              {currentPage === "messages" && <Notification />}
+              
               {currentPage === "ecommerce" && <SchoolSearch options={brands}/>}
             </div>
           </main>
