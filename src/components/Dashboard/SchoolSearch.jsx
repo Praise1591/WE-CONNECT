@@ -4,20 +4,20 @@ function SchoolSearch({options}) {
 
   const [searchText, setSearchText] = useState("");
   const [filterOptions, setFilterOptions] = useState([]);
-  const [selectOptions, setSelectOptions] = useState([]);
+  const [selectedOptions, setSelectedOptions] = useState([]);
 
   const setOption = (value) => {
-    if(selectOptions.includes(value)){
-      const opts= selectOptions.filter(item=>item !== value);
-      setSelectOptions([...opts])
+    if(selectedOptions.includes(value)){
+      const opts= selectedOptions.filter(item=>item !== value);
+      setSelectedOptions([...opts])
     }
     else{
-      setSelectOptions([...selectOptions.value])
+      setSelectedOptions([...selectedOptions.value])
     }
   }
 
   useEffect(() => {
-    const match = options.filter(item => item?.label.toLowerCase().includes(searchText?.toLowerCase()));
+    const match = options.filter(item => item?.value.toLowerCase().includes(searchText?.toLowerCase()));
     if(match){
       setFilterOptions(match)
     } else{
@@ -27,9 +27,10 @@ function SchoolSearch({options}) {
 
   return (
     <div className='border border-b-gray-200 rounded-md p-6'>
+      
       <div>
         <div>
-          {JSON.stringify[selectOptions]}
+          {JSON.stringify(selectedOptions)}
         </div>
         <input type="text" placeholder='Search' className='py-2 px-4 w-full outline-none' onKeyUp={(e)=>setSearchText(e.target.value)}/>
       </div>
@@ -38,7 +39,7 @@ function SchoolSearch({options}) {
           filterOptions.map(option =>{
             return(
               <div key={option.value} className="flex items-center gap-2 hover:bg-gray-200 cursor-pointer p-2" onClick={() => setOption(option.value)}>
-                <input type="checkbox" />
+                <input type="checkbox" checked={selectedOptions.includes(option.value)}/>
                 {option.label}
               </div>
             )

@@ -4,18 +4,19 @@ import Header from './components/Layout/Header';
 import Dashboard from './components/Dashboard/Dashboard';
 import Material from './components/Dashboard/Material'
 import SchoolSearch from './components/Dashboard/SchoolSearch';
+import Download from './components/Dashboard/Download';
 
 const brands = [
-  {label: 'Rivers State University', value: 'rsu'},
-  {label: 'University of Cross Rivers State', value: 'cross'},
-  {label: 'Convenant University', value: 'convenant'},
-  {label: 'University of Port Harcourt', value: 'uniport'},
-  {label: 'Babcock University', value: 'babcock'},
-  {label: 'Petroleum Training Institute Effurun', value: 'pti'},
-  {label: 'Delta State University', value: 'delsuu'},
-  {label: 'Lagos State University', value: 'unnilag'},
-  {label: 'kaduna State University', value: 'kaduna'},
-  {label: 'landmark University', value: 'landmark'},
+  {label: 'Rivers State University', value: 'rivers state university'},
+  {label: 'University of Cross Rivers State', value: 'university of cross rivers state'},
+  {label: 'Convenant University', value: 'convenant university'},
+  {label: 'University of Port Harcourt', value: 'university of portharcourt'},
+  {label: 'Babcock University', value: 'babcock university'},
+  {label: 'Petroleum Training Institute Effurun', value: 'petroleum training institute'},
+  {label: 'Delta State University', value: 'delta state university'},
+  {label: 'Lagos State University', value: 'lagos state university'},
+  {label: 'kaduna State University', value: 'kaduna state university'},
+  {label: 'landmark University', value: 'landmark university'},
 ]
 
 function App() {
@@ -38,7 +39,7 @@ function App() {
             <div className='p-6 space-y-6'>
               {currentPage === "dashboard" && <Dashboard />}
               {currentPage === "analytics" && <Material />}
-              
+              {currentPage === "users" && <Download />}
               {currentPage === "ecommerce" && <SchoolSearch options={brands}/>}
             </div>
           </main>
