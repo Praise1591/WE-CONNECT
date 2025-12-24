@@ -158,7 +158,7 @@ function Sidebar({ collapsed = false, onToggle, currentPage = "dashboard", onPag
                 WE CONNECT
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                You Connect. We Connect
+                I Connect. You Connect. We Connect
               </p>
             </div>
           )}

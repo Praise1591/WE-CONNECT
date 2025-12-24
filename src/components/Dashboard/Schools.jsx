@@ -190,6 +190,7 @@ function Schools({ onFiltersChange }) {
     { label: 'Civil Engineering', value: 'civil-eng' },
     { label: 'Physics', value: 'physics' },
     { label: 'Accountancy', value: 'acct' },
+    { label: 'Medicine and Surgery', value: 'medicine' },
   ];
 
   const getInitialSelected = (optionsList, savedLabels) => {

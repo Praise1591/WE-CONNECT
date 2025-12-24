@@ -4,8 +4,8 @@ import Schools from './Schools'; // Your custom multi-select component
 import UploadedMaterials from './UploadedMaterials';
 
 const allUploads = [
-  { id: 1, image: null, name: 'Damian Clarson', course: 'Pipeline Technology (PTE411)', category: 'Past Questions', school: 'Babcock University' },
-  { id: 2, image: null, name: 'Mahmood Bashiru', course: 'Anthropology (ANT211)', category: 'PDF Notes', school: 'Delta State University' },
+  { id: 1, image: null, name: 'Damian Clarson', course: 'Pipeline Technology (PTE411)', category: 'Past Questions', school: 'Babcock University'},
+  { id: 2, image: null, name: 'Mahmood Bashiru', course: 'Anthropology (ANT211)', category: 'PDF Notes', school: 'Delta State University'},
   { id: 3, image: null, name: 'Daniel Lawrence', course: 'Engineering Mathematics (MTH310)', category: 'Past Questions', school: 'Rivers State University' },
   { id: 4, image: null, name: 'Vivian Ejiofor', course: 'Economics Statistics (ESC211)', category: 'PDF Notes', school: 'Niger Delta University' },
   { id: 5, image: null, name: 'Prof. Matthew Sulere', course: 'Biochemistry (BCH401)', category: 'Technical Reviews', school: 'Lagos State University' },

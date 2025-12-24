@@ -1,5 +1,6 @@
 // Header.jsx
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Menu,
   Sun,
@@ -19,20 +20,50 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
 
-  const user = {
-    name: 'Alex Johnson',
-    school: 'Rivers State University',
+  const [user, setUser] = useState({
+    name: 'Guest',
+    school: '',
     isLoggedIn: false,
-  };
+  });
 
-  // Sync dark mode with localStorage and Settings page
+  // Load user from localStorage on mount
+  useEffect(() => {
+    const loadUser = () => {
+      const savedProfile = localStorage.getItem('userProfile');
+      if (savedProfile) {
+        const profile = JSON.parse(savedProfile);
+        setUser({
+          name: profile.name || 'User',
+          school: profile.school || '',
+          isLoggedIn: true,
+        });
+      } else {
+        setUser({
+          name: 'Guest',
+          school: '',
+          isLoggedIn: false,
+        });
+      }
+    };
+
+    loadUser();
+
+    // Listen for login/signup events from AuthForm
+    window.addEventListener('userLoggedIn', loadUser);
+
+    return () => {
+      window.removeEventListener('userLoggedIn', loadUser);
+    };
+  }, []);
+
+  // Dark Mode Setup
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const isDark = savedTheme === 'dark' || (savedTheme === null && prefersDark);
+    const shouldBeDark = savedTheme === 'dark' || (savedTheme === null && prefersDark);
 
-    setIsDarkMode(isDark);
-    if (isDark) {
+    setIsDarkMode(shouldBeDark);
+    if (shouldBeDark) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
@@ -44,28 +75,25 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
     setIsDarkMode(newDarkMode);
     document.documentElement.classList.toggle('dark', newDarkMode);
     localStorage.setItem('theme', newDarkMode ? 'dark' : 'light');
-
-    // Notify Settings page and any other component
     window.dispatchEvent(new Event('themeChanged'));
   };
-
-  // Listen for theme changes from Settings page
-  useEffect(() => {
-    const handleThemeChange = () => {
-      const savedTheme = localStorage.getItem('theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const isDark = savedTheme === 'dark' || (savedTheme === null && prefersDark);
-      setIsDarkMode(isDark);
-    };
-
-    window.addEventListener('themeChanged', handleThemeChange);
-    return () => window.removeEventListener('themeChanged', handleThemeChange);
-  }, []);
 
   const openAuth = (mode) => {
     setAuthMode(mode);
     setShowAuthModal(true);
     setIsProfileOpen(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('userProfile');
+    setUser({
+      name: 'Guest',
+      school: '',
+      isLoggedIn: false,
+    });
+    setIsProfileOpen(false);
+    window.dispatchEvent(new Event('userLoggedIn')); // Notify Sidebar too
+    window.location.reload(); // Optional: refresh to reset everything
   };
 
   const goToSettings = () => {
@@ -100,7 +128,7 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
 
           {/* Right */}
           <div className="flex items-center gap-3">
-            {/* Diamonds */}
+            {/* Diamonds & Coins */}
             <button className="hidden lg:flex items-center gap-3 py-3 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-medium shadow-lg">
               <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
                 <div className="w-5 h-5 bg-white rounded rotate-45" />
@@ -111,7 +139,6 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
               </span>
             </button>
 
-            {/* Coins */}
             <button className="hidden lg:flex items-center gap-3 py-3 px-6 bg-gradient-to-r from-yellow-500 to-orange-600 text-white rounded-2xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-medium shadow-lg">
               <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                 <div className="w-6 h-6 bg-white rounded-full" />
@@ -122,29 +149,39 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
               </span>
             </button>
 
-            {/* Dark Mode - Now synced with Settings */}
+            {/* Dark Mode Toggle */}
             <button
               onClick={toggleDarkMode}
-              className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="p-3 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all duration-300 shadow-md"
             >
-              {isDarkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              {isDarkMode ? (
+                <Sun className="w-5 h-5 text-yellow-400" />
+              ) : (
+                <Moon className="w-5 h-5 text-slate-700" />
+              )}
             </button>
 
             {/* Notifications */}
-            <button className="relative p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              <Bell className="w-5 h-5" />
+            <button className="relative p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
                 3
               </span>
             </button>
 
-            {/* Settings */}
-            
+            {/* Settings Button */}
+            <button
+              onClick={goToSettings}
+              className="p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Settings"
+            >
+              <Settings className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            </button>
 
-            {/* Profile Button */}
+            {/* Profile Dropdown Trigger */}
             <button
               onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-700 py-2"
+              className="flex items-center gap-3 pl-4 py-2"
             >
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
                 {user.isLoggedIn 
@@ -168,15 +205,15 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
         </div>
       </div>
 
-      {/* Dropdown - Fixed positioning */}
-      {isProfileOpen && (
-        <div className="fixed inset-0 z-[9999]">
-          <div
-            className="absolute inset-0 bg-black/20"
+      {/* Profile Dropdown Portal */}
+      {isProfileOpen && ReactDOM.createPortal(
+        <>
+          <div 
+            className="fixed inset-0 bg-black/40 z-[9998]" 
             onClick={() => setIsProfileOpen(false)}
           />
 
-          <div className="absolute right-8 top-20 w-72 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 py-4">
+          <div className="fixed right-6 top-20 z-[9999] w-72 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 py-4">
             {user.isLoggedIn ? (
               <>
                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
@@ -197,14 +234,20 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
                     <span className="font-medium">My Courses</span>
                   </button>
 
-                  <button className="w-full px-6 py-3 flex items-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors">
+                  <button
+                    onClick={goToSettings}
+                    className="w-full px-6 py-3 flex items-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
+                  >
                     <Settings className="w-5 h-5 text-slate-600 dark:text-slate-400" />
                     <span className="font-medium">Settings</span>
                   </button>
                 </div>
 
                 <div className="border-t border-slate-200 dark:border-slate-700 pt-2">
-                  <button className="w-full px-6 py-3 flex items-center gap-4 hover:bg-red-50 dark:hover:bg-red-900/30 text-left text-red-600 dark:text-red-400 transition-colors">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-6 py-3 flex items-center gap-4 hover:bg-red-50 dark:hover:bg-red-900/30 text-left text-red-600 dark:text-red-400 transition-colors"
+                  >
                     <LogOut className="w-5 h-5" />
                     <span className="font-medium">Logout</span>
                   </button>
@@ -227,7 +270,8 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
               </div>
             )}
           </div>
-        </div>
+        </>,
+        document.body
       )}
 
       {/* Auth Modal */}
