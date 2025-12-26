@@ -1,4 +1,4 @@
-// Connect.jsx
+// Connect.jsx — Mobile Optimized
 import React, { useState, useEffect } from 'react';
 import { 
   Zap, 
@@ -20,7 +20,7 @@ function Connect() {
   const [currentUser, setCurrentUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [connections, setConnections] = useState([]); // Your sent requests
+  const [connections, setConnections] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeTab, setActiveTab] = useState('feed');
   const [networkSearch, setNetworkSearch] = useState('');
@@ -157,9 +157,9 @@ function Connect() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-12 text-center">
-          <Zap className="w-20 h-20 text-purple-600 mx-auto mb-6" />
-          <h2 className="text-3xl font-bold text-slate-800 mb-4">Welcome to WE CONNECT</h2>
+        <div className="bg-white rounded-3xl shadow-2xl p-8 text-center max-w-sm w-full">
+          <Zap className="w-16 h-16 text-purple-600 mx-auto mb-6" />
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">Welcome to WE CONNECT</h2>
           <p className="text-slate-600">Please log in to continue</p>
         </div>
       </div>
@@ -167,29 +167,29 @@ function Connect() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-800 pb-20">
       {/* Header */}
       <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 sticky top-0 z-50 shadow-md">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl">
-              <Zap className="w-7 h-7 text-white" />
+        <div className="px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+              <Zap className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               WE CONNECT
             </h1>
           </div>
 
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => setActiveTab('feed')}
-              className={`font-medium ${activeTab === 'feed' ? 'text-purple-600' : 'text-slate-600 dark:text-slate-400'}`}
+              className={`font-medium text-sm ${activeTab === 'feed' ? 'text-purple-600' : 'text-slate-600 dark:text-slate-400'}`}
             >
               Feed
             </button>
             <button
               onClick={() => setActiveTab('network')}
-              className={`font-medium ${activeTab === 'network' ? 'text-purple-600' : 'text-slate-600 dark:text-slate-400'}`}
+              className={`font-medium text-sm ${activeTab === 'network' ? 'text-purple-600' : 'text-slate-600 dark:text-slate-400'}`}
             >
               Network
             </button>
@@ -197,9 +197,9 @@ function Connect() {
               onClick={() => setActiveTab('notifications')}
               className="relative"
             >
-              <Bell className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               {notifications.length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
                   {notifications.length}
                 </span>
               )}
@@ -208,63 +208,63 @@ function Connect() {
               onClick={() => setActiveTab('messages')}
               className="relative"
             >
-              <MessageCircle className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+              <MessageCircle className="w-5 h-5 text-slate-600 dark:text-slate-400" />
             </button>
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
               {currentUser.name[0].toUpperCase()}
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto p-6 space-y-8">
+      <div className="p-4 space-y-6 max-w-full">
         {activeTab === 'feed' && (
-          <div className="space-y-8">
-            {/* New Post with Media */}
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-6">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+          <div className="space-y-6">
+            {/* New Post */}
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-5">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
                   {currentUser.name[0].toUpperCase()}
                 </div>
                 <div className="flex-1">
                   <textarea
                     value={newPost}
                     onChange={(e) => setNewPost(e.target.value)}
-                    placeholder="Share campus happenings, ideas, or questions..."
-                    className="w-full p-4 rounded-2xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 resize-none focus:ring-2 focus:ring-purple-500 outline-none"
+                    placeholder="Share something with the community..."
+                    className="w-full p-3 rounded-2xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 resize-none focus:ring-2 focus:ring-purple-500 outline-none text-base"
                     rows="3"
                   />
                   {mediaPreview && (
-                    <div className="mt-4 relative">
+                    <div className="mt-3 relative">
                       {mediaPreview.type === 'image' ? (
-                        <img src={mediaPreview.url} alt="Preview" className="w-full rounded-2xl max-h-96 object-cover" />
+                        <img src={mediaPreview.url} alt="Preview" className="w-full rounded-2xl object-cover" />
                       ) : (
-                        <video src={mediaPreview.url} controls className="w-full rounded-2xl max-h-96" />
+                        <video src={mediaPreview.url} controls className="w-full rounded-2xl" />
                       )}
                       <button
                         onClick={removeMedia}
-                        className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600"
+                        className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600"
                       >
-                        <X size={16} />
+                        <X size={14} />
                       </button>
                     </div>
                   )}
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="flex gap-6">
-                      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400 cursor-pointer hover:text-purple-600">
-                        <ImageIcon size={20} />
-                        Photo
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400 cursor-pointer">
+                        <ImageIcon size={18} />
+                        <span className="text-sm">Photo</span>
                         <input type="file" accept="image/*" onChange={handleMediaUpload} className="hidden" />
                       </label>
-                      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400 cursor-pointer hover:text-purple-600">
-                        <VideoIcon size={20} />
-                        Video
+                      <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400 cursor-pointer">
+                        <VideoIcon size={18} />
+                        <span className="text-sm">Video</span>
                         <input type="file" accept="video/*" onChange={handleMediaUpload} className="hidden" />
                       </label>
                     </div>
                     <button
                       onClick={addPost}
-                      className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-xl hover:shadow-xl transition-all"
+                      className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-xl hover:shadow-lg transition-all text-sm"
                     >
                       Post
                     </button>
@@ -273,19 +273,19 @@ function Connect() {
               </div>
             </div>
 
-            {/* Posts Feed */}
+            {/* Posts */}
             {posts.map(post => (
-              <div key={post.id} className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+              <div key={post.id} className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
                       {post.author[0].toUpperCase()}
                     </div>
                     <div>
-                      <p className="font-bold text-slate-800 dark:text-white">{post.author}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                        <School size={16} />
-                        {post.school} • {post.role} • {post.timestamp}
+                      <p className="font-semibold text-slate-800 dark:text-white text-base">{post.author}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <School size={14} />
+                        {post.school} • {post.role}
                       </p>
                     </div>
                   </div>
@@ -294,45 +294,45 @@ function Connect() {
                       onClick={() => deletePost(post.id)}
                       className="text-red-500 hover:text-red-700"
                     >
-                      <Trash2 size={20} />
+                      <Trash2 size={18} />
                     </button>
                   )}
                 </div>
 
-                <p className="text-slate-700 dark:text-slate-300 mb-6">{post.content}</p>
+                <p className="text-slate-700 dark:text-slate-300 mb-4 text-base">{post.content}</p>
 
                 {post.media && (
-                  <div className="mb-6">
+                  <div className="mb-4">
                     {post.media.type === 'image' ? (
-                      <img src={post.media.url} alt="Post" className="w-full rounded-2xl max-h-96 object-cover" />
+                      <img src={post.media.url} alt="Post" className="w-full rounded-2xl object-cover" />
                     ) : (
-                      <video src={post.media.url} controls className="w-full rounded-2xl max-h-96" />
+                      <video src={post.media.url} controls className="w-full rounded-2xl" />
                     )}
                   </div>
                 )}
 
-                <div className="flex items-center gap-8 mb-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-6 py-3 border-t border-slate-200 dark:border-slate-700">
                   <button
                     onClick={() => likePost(post.id)}
-                    className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-colors"
+                    className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-red-500"
                   >
                     <Heart size={20} className={post.likes > 0 ? 'fill-red-500 text-red-500' : ''} />
-                    {post.likes}
+                    <span className="text-sm">{post.likes}</span>
                   </button>
                   <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                     <MessageSquare size={20} />
-                    {post.comments.length}
+                    <span className="text-sm">{post.comments.length}</span>
                   </div>
                 </div>
 
                 {/* Comments */}
-                <div className="space-y-4">
+                <div className="mt-4 space-y-3">
                   {post.comments.map((comment) => (
                     <div key={comment.id} className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                      <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
                         {comment.author[0].toUpperCase()}
                       </div>
-                      <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-2xl px-4 py-3 relative">
+                      <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-2xl px-3 py-2 relative">
                         <p className="font-medium text-sm text-slate-800 dark:text-white">{comment.author}</p>
                         <p className="text-sm text-slate-600 dark:text-slate-300">{comment.content}</p>
                         {comment.author === currentUser.name && (
@@ -340,7 +340,7 @@ function Connect() {
                             onClick={() => deleteComment(post.id, comment.id)}
                             className="absolute top-2 right-2 text-red-500 hover:text-red-700"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={14} />
                           </button>
                         )}
                       </div>
@@ -348,7 +348,7 @@ function Connect() {
                   ))}
 
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                    <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
                       {currentUser.name[0].toUpperCase()}
                     </div>
                     <input
@@ -356,13 +356,13 @@ function Connect() {
                       value={commentInputs[post.id] || ''}
                       onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
                       onKeyPress={(e) => e.key === 'Enter' && addComment(post.id, commentInputs[post.id] || '')}
-                      className="flex-1 px-4 py-3 rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 focus:ring-2 focus:ring-purple-500 outline-none"
+                      className="flex-1 px-3 py-2 rounded-full border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 focus:ring-2 focus:ring-purple-500 outline-none text-sm"
                     />
                     <button
                       onClick={() => addComment(post.id, commentInputs[post.id] || '')}
-                      className="p-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors"
+                      className="p-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
                     >
-                      <Send size={16} />
+                      <Send size={14} />
                     </button>
                   </div>
                 </div>
@@ -372,42 +372,40 @@ function Connect() {
         )}
 
         {activeTab === 'network' && (
-          <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-slate-800 dark:text-white mb-6">Network</h2>
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Network</h2>
 
             {/* Search Bar */}
-            <div className="max-w-3xl mx-auto mb-8">
-              <div className="relative">
-                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
-                <input
-                  type="text"
-                  placeholder="Search by name, school, department, or role..."
-                  value={networkSearch}
-                  onChange={(e) => setNetworkSearch(e.target.value)}
-                  className="w-full pl-16 pr-6 py-4 bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-4 focus:ring-purple-500/30 transition-all text-lg"
-                />
-              </div>
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search people..."
+                value={networkSearch}
+                onChange={(e) => setNetworkSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-800 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 text-base"
+              />
             </div>
 
-            {/* Pending Sent Requests */}
+            {/* Pending Requests */}
             {pendingSentRequests.length > 0 && (
               <div>
-                <h3 className="text-xl font-bold mb-4">Pending Sent Requests</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <h3 className="text-lg font-bold mb-3">Pending Requests</h3>
+                <div className="space-y-3">
                   {pendingSentRequests.map(conn => (
-                    <div key={conn.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-xl">
+                    <div key={conn.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-md p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                           {conn.name[0].toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-bold text-slate-800 dark:text-white">{conn.name}</p>
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{conn.role} • {conn.school}</p>
+                          <p className="font-medium text-slate-800 dark:text-white">{conn.name}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400">{conn.role} • {conn.school}</p>
                         </div>
                       </div>
                       <button
                         onClick={() => cancelConnectionRequest(conn.id)}
-                        className="px-6 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-all"
+                        className="px-4 py-2 bg-red-500 text-white font-medium rounded-xl hover:bg-red-600 text-sm"
                       >
                         Cancel
                       </button>
@@ -417,20 +415,20 @@ function Connect() {
               </div>
             )}
 
-            {/* Discover Students */}
-            <h3 className="text-xl font-bold mb-4">Discover People</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Discover People */}
+            <h3 className="text-lg font-bold mb-3">Discover People</h3>
+            <div className="grid grid-cols-1 gap-5">
               {filteredStudents.map(student => {
                 const connection = connections.find(c => c.id === student.id);
                 return (
-                  <div key={student.id} className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-6 text-center">
-                    <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-4 flex items-center justify-center text-white text-3xl font-bold">
+                  <div key={student.id} className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-5 text-center">
+                    <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-3 flex items-center justify-center text-white text-2xl font-bold">
                       {student.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                     </div>
-                    <h3 className="font-bold text-slate-800 dark:text-white mb-1">{student.name}</h3>
-                    <p className="text-slate-600 dark:text-slate-400 mb-1">{student.department}</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-500 flex items-center justify-center gap-2 mb-4">
-                      <School size={16} />
+                    <h3 className="font-bold text-slate-800 dark:text-white mb-1 text-lg">{student.name}</h3>
+                    <p className="text-slate-600 dark:text-slate-400 mb-2">{student.department}</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-500 flex items-center justify-center gap-2 mb-3">
+                      <School size={14} />
                       {student.school}
                     </p>
                     <p className="text-sm font-medium text-purple-600 mb-4">
@@ -440,17 +438,17 @@ function Connect() {
                       connection.status === 'pending' ? (
                         <button
                           onClick={() => cancelConnectionRequest(student.id)}
-                          className="w-full py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-all"
+                          className="w-full py-3 bg-red-500 text-white font-medium rounded-xl hover:bg-red-600 transition-all"
                         >
                           Cancel Request
                         </button>
                       ) : (
-                        <span className="text-green-600 dark:text-green-400 font-bold text-lg">Connected</span>
+                        <span className="text-green-600 dark:text-green-400 font-bold text-base">Connected</span>
                       )
                     ) : (
                       <button
                         onClick={() => sendConnectionRequest(student)}
-                        className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-xl hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                        className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium rounded-xl hover:shadow-xl transition-all flex items-center justify-center gap-2"
                       >
                         <UserPlus size={18} />
                         Connect
@@ -463,7 +461,7 @@ function Connect() {
           </div>
         )}
 
-        {/* Notifications and Messages tabs (keep your previous code) */}
+        {/* Notifications & Messages tabs can be added similarly with mobile spacing */}
       </div>
     </div>
   );

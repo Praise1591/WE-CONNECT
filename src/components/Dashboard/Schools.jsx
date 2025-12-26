@@ -1,3 +1,4 @@
+// Schools.jsx — Updated with Department Filter (replaces Course)
 import React from 'react';
 import { Search } from 'lucide-react';
 
@@ -176,21 +177,18 @@ function Schools({ onFiltersChange }) {
     { label: 'Babcock University', value: 'babcock' },
   ];
 
-  const courses = [
-    { label: 'Mathematics', value: 'math' },
-    { label: 'Petroleum Engineering', value: 'pet-eng' },
-    { label: 'Mechanical Engineering', value: 'mech-eng' },
-    { label: 'Biochemistry', value: 'biochem' },
-    { label: 'Electrical Engineering', value: 'elect-eng' },
+  const departments = [
+    { label: 'Petroleum Engineering', value: 'petroleum-engineering' },
+    { label: 'Medicine and Surgery', value: 'medicine-surgery' },
+    { label: 'Mechanical Engineering', value: 'mechanical-engineering' },
+    { label: 'Computer Science', value: 'computer-science' },
     { label: 'Law', value: 'law' },
     { label: 'Nursing', value: 'nursing' },
-    { label: 'Business Administration', value: 'bus-admin' },
-    { label: 'Mass Communication', value: 'mass-comm' },
-    { label: 'Chemistry', value: 'chem' },
-    { label: 'Civil Engineering', value: 'civil-eng' },
-    { label: 'Physics', value: 'physics' },
-    { label: 'Accountancy', value: 'acct' },
-    { label: 'Medicine and Surgery', value: 'medicine' },
+    { label: 'Biochemistry', value: 'biochemistry' },
+    { label: 'Economics', value: 'economics' },
+    { label: 'Chemistry', value: 'chemistry' },
+    { label: 'Mathematics', value: 'mathematics' },
+    { label: 'Anthropology', value: 'anthropology' },
   ];
 
   const getInitialSelected = (optionsList, savedLabels) => {
@@ -205,12 +203,10 @@ function Schools({ onFiltersChange }) {
   return (
     <div className="w-full py-8 px-4 bg-slate-50/50 dark:bg-slate-900/50">
       <div className="max-w-7xl mx-auto">
-        {/* Title - Responsive */}
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white text-center mb-8">
           Browse Educational Materials
         </h2>
 
-        {/* Filters Grid - Highly Responsive */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           <MultiSelectDropdown
             options={materialTypes}
@@ -229,11 +225,11 @@ function Schools({ onFiltersChange }) {
           />
 
           <MultiSelectDropdown
-            options={courses}
-            placeholder="Course"
-            searchPlaceholder="Search courses..."
-            onChange={handleFilterChange('course')}
-            initialSelected={getInitialSelected(courses, getSavedSelections('course'))}
+            options={departments}
+            placeholder="Department"
+            searchPlaceholder="Search departments..."
+            onChange={handleFilterChange('department')}
+            initialSelected={getInitialSelected(departments, getSavedSelections('department'))}
           />
         </div>
       </div>

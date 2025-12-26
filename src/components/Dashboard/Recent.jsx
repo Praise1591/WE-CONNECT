@@ -1,4 +1,4 @@
-// Recent.jsx
+// Recent.jsx — With Notification Triggers
 import React, { useState, useEffect } from 'react';
 import {
   PersonStanding,
@@ -32,53 +32,45 @@ const teachers = [
     school: 'Delta State University',
   },
   {
-    id: 1,
+    id: 3,
     image: p2,
-    name: 'Damian Clarson',
-    course: 'Pipeline Technology (PTE411)',
-    category: 'Past Question',
-    school: 'Babcock University',
+    name: 'Dr. Aisha Bello',
+    course: 'Advanced Law (LAW501)',
+    category: 'Video Tutorial',
+    school: 'Lagos State University',
   },
   {
-    id: 1,
+    id: 4,
     image: p2,
-    name: 'Damian Clarson',
-    course: 'Pipeline Technology (PTE411)',
+    name: 'Prof. Tunde Adebayo',
+    course: 'Business Strategy (BUS401)',
     category: 'Technical Reviews',
-    school: 'Babcock University',
+    school: 'Delta State University',
   },
   {
-    id: 1,
+    id: 5,
     image: p2,
-    name: 'Damian Clarson',
-    course: 'Pipeline Technology (PTE411)',
+    name: 'Chioma Eze',
+    course: 'Clinical Medicine (MED601)',
     category: 'Past Question',
-    school: 'Babcock University',
+    school: 'University of Port Harcourt',
   },
-  {
-    id: 1,
-    image: p2,
-    name: 'Damian Clarson',
-    course: 'Pipeline Technology (PTE411)',
-    category: 'Past Question',
-    school: 'Babcock University',
-  },
-  {
-    id: 1,
-    image: p2,
-    name: 'Damian Clarson',
-    course: 'Pipeline Technology (PTE411)',
-    category: 'Technical Reviews',
-    school: 'Babcock University',
-  },
-  // ... rest of your items
 ];
 
 function Recent() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [favorites, setFavorites] = useState(new Set());
+  const [currentUser, setCurrentUser] = useState(null);
 
-  // Load favorites from localStorage on mount
+  // Load current user
+  useEffect(() => {
+    const profile = localStorage.getItem('userProfile');
+    if (profile) {
+      setCurrentUser(JSON.parse(profile));
+    }
+  }, []);
+
+  // Load favorites from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('favoriteUploads');
     if (saved) {
@@ -86,21 +78,43 @@ function Recent() {
     }
   }, []);
 
-  // Save to localStorage whenever favorites change
-  useEffect(() => {
-    localStorage.setItem('favoriteUploads', JSON.stringify([...favorites]));
-  }, [favorites]);
+  // Save favorites and trigger notification
+  const toggleFavorite = (item) => {
+    const newFavorites = new Set(favorites);
+    const wasFavorited = newFavorites.has(item.id);
+    
+    if (wasFavorited) {
+      newFavorites.delete(item.id);
+    } else {
+      newFavorites.add(item.id);
+    }
 
-  const toggleFavorite = (id) => {
-    setFavorites((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
+    setFavorites(newFavorites);
+    localStorage.setItem('favoriteUploads', JSON.stringify([...newFavorites]));
+
+    // Trigger notification
+    if (currentUser) {
+      const message = wasFavorited
+        ? `You removed "${item.course}" by ${item.name} from favorites`
+        : `You added "${item.course}" by ${item.name} to favorites`;
+
+      const notif = {
+        id: Date.now(),
+        type: 'favorite',
+        message,
+        time: new Date().toLocaleString(),
+        read: false,
+      };
+
+      const savedNotifs = localStorage.getItem('appNotifications') || '[]';
+      const notifs = JSON.parse(savedNotifs);
+      notifs.unshift(notif); // Add to top
+      localStorage.setItem('appNotifications', JSON.stringify(notifs));
+
+      // Dispatch event for real-time update in Notification page
+      window.dispatchEvent(new Event('newNotification'));
+    }
+
     setOpenMenuId(null);
   };
 
@@ -110,13 +124,17 @@ function Recent() {
   };
 
   const getCategoryInfo = (category) => {
-    // ... same as before
     switch (category) {
-      case 'Past Question': return { icon: ScrollText, color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' };
-      case 'Note/PDF': return { icon: FileText, color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' };
-      case 'Video Tutorial': return { icon: Video, color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300' };
-      case 'Technical Reviews': return { icon: BookOpen, color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' };
-      default: return { icon: FileText, color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' };
+      case 'Past Question': 
+        return { icon: ScrollText, color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300' };
+      case 'Note/PDF': 
+        return { icon: FileText, color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' };
+      case 'Video Tutorial': 
+        return { icon: Video, color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300' };
+      case 'Technical Reviews': 
+        return { icon: BookOpen, color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' };
+      default: 
+        return { icon: FileText, color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' };
     }
   };
 
@@ -175,13 +193,31 @@ function Recent() {
                 {isMenuOpen && (
                   <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 z-50">
                     <button
-                      onClick={() => toggleFavorite(teacher.id)}
+                      onClick={() => toggleFavorite(teacher)}
                       className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-700 text-left"
                     >
                       <Heart size={18} className={isFavorited ? 'text-red-500 fill-red-500' : 'text-slate-600'} />
-                      <span className="text-sm">{isFavorited ? 'Remove from' : 'Add to'} Favorites</span>
+                      <span className="text-sm">
+                        {isFavorited ? 'Remove from' : 'Add to'} Favorites
+                      </span>
                     </button>
-                    {/* Other options... */}
+
+                    <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-700 text-left">
+                      <Download size={18} className="text-slate-600" />
+                      <span className="text-sm">Download</span>
+                    </button>
+
+                    <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-700 text-left">
+                      <Share2 size={18} className="text-slate-600" />
+                      <span className="text-sm">Share</span>
+                    </button>
+
+                    <hr className="my-2 border-slate-200 dark:border-slate-700" />
+
+                    <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-50 dark:hover:bg-red-900/30 text-left text-red-600 dark:text-red-400">
+                      <Flag size={18} />
+                      <span className="text-sm">Report</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -190,8 +226,13 @@ function Recent() {
         })}
       </div>
 
-      {/* Global backdrop */}
-      {openMenuId && <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />}
+      {/* Global backdrop to close menu on outside click */}
+      {openMenuId && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setOpenMenuId(null)} 
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // Sidebar.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   BookAIcon,
@@ -10,6 +10,8 @@ import {
   Settings,
   ChevronDown,
   Zap,
+  Banknote,
+  BanknoteArrowDown
 } from 'lucide-react';
 
 const menuItems = [
@@ -51,6 +53,11 @@ const menuItems = [
     icon: Settings,
     label: "Settings",
   },
+  {
+    id: "monetary",
+    icon: Banknote,
+    label: "Monetary Value",
+  },
 ];
 
 function Sidebar({ collapsed = false, onToggle, currentPage = "dashboard", onPageChange }) {
@@ -80,7 +87,6 @@ function Sidebar({ collapsed = false, onToggle, currentPage = "dashboard", onPag
 
     updateUserInfo();
 
-    // Listen for login/signup events
     window.addEventListener('storage', (e) => {
       if (e.key === 'userProfile') updateUserInfo();
     });
@@ -148,17 +154,17 @@ function Sidebar({ collapsed = false, onToggle, currentPage = "dashboard", onPag
       {/* Logo/Header */}
       <div className="p-6 border-b border-slate-200/50 dark:border-slate-700/50">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-            <Zap className="w-6 h-6 text-white" />
+          <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+            <Zap className="w-7 h-7 text-white" />
           </div>
 
           {!collapsed && (
             <div className="flex-1">
-              <h1 className="text-xl font-bold text-slate-800 dark:text-white">
+              <h1 className="text-2xl font-bold text-slate-800 dark:text-white leading-tight">
                 WE CONNECT
               </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                I Connect. You Connect. We Connect
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-tight">
+                You Connect. We Connect
               </p>
             </div>
           )}
@@ -171,9 +177,12 @@ function Sidebar({ collapsed = false, onToggle, currentPage = "dashboard", onPag
           const Icon = item.icon;
           const isActive = currentPage === item.id;
           const hasSubmenu = !!item.submenu;
-
           const displayCount =
-            item.id === "favorites" ? favoriteCount : item.count;
+            item.id === "favorites"
+              ? favoriteCount
+              : item.id === "connect"
+              ? item.count
+              : undefined;
 
           const showCountBadge = displayCount !== undefined && displayCount > 0;
 

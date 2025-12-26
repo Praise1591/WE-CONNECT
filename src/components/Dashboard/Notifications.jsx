@@ -1,110 +1,155 @@
-import React, { useState } from 'react';
+// Notification.jsx
+import React, { useState, useEffect } from 'react';
+import { Bell, Heart, MessageCircle, UserPlus, Users, X } from 'lucide-react';
 
-function FileManager() {
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+function Notification() {
+  const [notifications, setNotifications] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const handleUpload = (event) => {
-    const files = Array.from(event.target.files);
-    const newFiles = files.map((file) => ({
-      id: Math.random().toString(36).substr(2, 9), // Simple unique ID
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      url: URL.createObjectURL(file), // Creates a downloadable blob URL
-      fileObject: file, // Keep reference if needed
-    }));
+  useEffect(() => {
+    // Load current user
+    const profile = localStorage.getItem('userProfile');
+    if (profile) {
+      setCurrentUser(JSON.parse(profile));
+    }
 
-    setUploadedFiles((prev) => [...prev, ...newFiles]);
+    // Load all notifications from localStorage
+    const loadNotifications = () => {
+      const saved = localStorage.getItem('appNotifications');
+      if (saved) {
+        try {
+          const notifs = JSON.parse(saved);
+          // Sort by newest first
+          setNotifications(notifs.sort((a, b) => new Date(b.time) - new Date(a.time)));
+        } catch (e) {
+          setNotifications([]);
+        }
+      }
+    };
+
+    loadNotifications();
+
+    // Listen for new notifications
+    window.addEventListener('newNotification', loadNotifications);
+
+    return () => {
+      window.removeEventListener('newNotification', loadNotifications);
+    };
+  }, []);
+
+  const markAsRead = (id) => {
+    const updated = notifications.map(n => 
+      n.id === id ? { ...n, read: true } : n
+    );
+    setNotifications(updated);
+    localStorage.setItem('appNotifications', JSON.stringify(updated));
   };
 
-  const handleDownload = (file) => {
-    const link = document.createElement('a');
-    link.href = file.url;
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const clearAll = () => {
+    setNotifications([]);
+    localStorage.removeItem('appNotifications');
   };
 
-  const handleDelete = (id) => {
-    setUploadedFiles((prev) => prev.filter((file) => file.id !== id));
-    // Note: Revoke object URL to free memory if desired
+  const getIcon = (type) => {
+    switch (type) {
+      case 'like':
+        return <Heart className="w-5 h-5 text-red-500 fill-red-500" />;
+      case 'comment':
+        return <MessageCircle className="w-5 h-5 text-blue-500" />;
+      case 'connection_request':
+        return <UserPlus className="w-5 h-5 text-purple-500" />;
+      case 'connection_accepted':
+        return <Users className="w-5 h-5 text-green-500" />;
+      default:
+        return <Bell className="w-5 h-5 text-slate-500" />;
+    }
   };
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-12 text-center">
+          <Bell className="w-20 h-20 text-purple-600 mx-auto mb-6" />
+          <h2 className="text-3xl font-bold text-slate-800 mb-4">Notifications</h2>
+          <p className="text-slate-600">Please log in to view your notifications</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>File Manager</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-800">
+      <div className="max-w-4xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl">
+              <Bell className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
+                Notifications
+              </h1>
+              <p className="text-slate-600 dark:text-slate-400">
+                Stay updated with your community activity
+              </p>
+            </div>
+          </div>
 
-      {/* Upload Section */}
-      <section style={{ marginBottom: '40px', padding: '20px', border: '2px dashed #ccc', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-        <h2>Upload Files</h2>
-        <p>Drag and drop files here or click to select. Any file type is supported.</p>
-        <input
-          type="file"
-          multiple
-          onChange={handleUpload}
-          style={{ display: 'block', margin: '20px 0' }}
-        />
-        <small>Hold Ctrl/Cmd to select multiple files.</small>
-      </section>
+          {notifications.length > 0 && (
+            <button
+              onClick={clearAll}
+              className="px-6 py-3 bg-red-500 text-white font-medium rounded-xl hover:bg-red-600 transition-all"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
 
-      {/* Uploaded Files / Download Section */}
-      <section>
-        <h2>Uploaded Files ({uploadedFiles.length})</h2>
-        {uploadedFiles.length === 0 ? (
-          <p>No files uploaded yet.</p>
+        {/* Notifications List */}
+        {notifications.length === 0 ? (
+          <div className="text-center py-20">
+            <Bell className="w-24 h-24 text-slate-300 dark:text-slate-700 mx-auto mb-6" />
+            <h3 className="text-xl font-medium text-slate-600 dark:text-slate-400 mb-2">
+              No notifications yet
+            </h3>
+            <p className="text-slate-500 dark:text-slate-500">
+              When someone likes your post, comments, or sends a connection request, you'll see it here.
+            </p>
+          </div>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {uploadedFiles.map((file) => (
-              <li
-                key={file.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px',
-                  marginBottom: '10px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: '#fff',
-                }}
+          <div className="space-y-4">
+            {notifications.map((notif) => (
+              <div
+                key={notif.id}
+                className={`bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-5 flex items-start gap-4 transition-all ${
+                  !notif.read ? 'ring-2 ring-purple-500 ring-opacity-50' : ''
+                }`}
+                onClick={() => markAsRead(notif.id)}
               >
-                <div>
-                  <strong>{file.name}</strong>
-                  <br />
-                  <small>
-                    {file.type || 'Unknown type'} • {formatFileSize(file.size)}
-                  </small>
+                <div className="p-3 bg-slate-100 dark:bg-slate-700 rounded-xl">
+                  {getIcon(notif.type)}
                 </div>
-                <div>
-                  <button
-                    onClick={() => handleDownload(file)}
-                    style={{ marginRight: '10px', padding: '8px 12px', background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                  >
-                    Download
-                  </button>
-                  <button
-                    onClick={() => handleDelete(file.id)}
-                    style={{ padding: '8px 12px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                  >
-                    Delete
-                  </button>
+
+                <div className="flex-1">
+                  <p className="text-slate-800 dark:text-white font-medium">
+                    {notif.message}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {notif.time}
+                  </p>
                 </div>
-              </li>
+
+                {!notif.read && (
+                  <div className="w-3 h-3 bg-purple-600 rounded-full" />
+                )}
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
 
-export default FileManager;
+export default Notification;
