@@ -1,4 +1,4 @@
-// Recent.jsx — Synced with Your Beautiful Card Design + Favorites Sync
+// Recent.jsx — Updated with Proper Download Sync to DownloadsPage
 import React, { useState, useEffect } from 'react';
 import {
   PersonStanding,
@@ -11,9 +11,8 @@ import {
   Video,
   BookOpen,
   ScrollText,
-  Calendar,
+  Clock,
   Eye,
-  Clock
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import p2 from '/Image.jpg';
@@ -115,11 +114,33 @@ function Recent() {
     }
     setFavorites(newFavorites);
     localStorage.setItem('favoriteUploads', JSON.stringify([...newFavorites]));
-    window.dispatchEvent(new Event('favoritesUpdated')); // Sync with Favorites.jsx
+    window.dispatchEvent(new Event('favoritesUpdated'));
   };
 
-  const handleDownload = () => {
-    toast.success('Download started!');
+  // New: Handle actual download — saves material to downloadedMaterials
+  const handleDownload = (item) => {
+    // Get existing downloads
+    const existing = JSON.parse(localStorage.getItem('downloadedMaterials') || '[]');
+
+    // Prevent duplicates
+    if (existing.some(dl => dl.id === item.id)) {
+      toast.info('Already in your downloads');
+      return;
+    }
+
+    // Add new download with timestamp
+    const newDownload = {
+      ...item,
+      downloadDate: new Date().toISOString(),
+    };
+
+    const updatedDownloads = [...existing, newDownload];
+    localStorage.setItem('downloadedMaterials', JSON.stringify(updatedDownloads));
+
+    // Trigger update for DownloadsPage
+    window.dispatchEvent(new Event('downloadsUpdated'));
+
+    toast.success('Downloaded successfully! Check your Downloads page.');
   };
 
   const handleShare = () => {
@@ -219,7 +240,7 @@ function Recent() {
                 {/* Actions */}
                 <div className="flex items-center gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
                   <button
-                    onClick={handleDownload}
+                    onClick={() => handleDownload(item)}
                     className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center justify-center gap-2 group"
                   >
                     <Download size={18} />
