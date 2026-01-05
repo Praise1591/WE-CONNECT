@@ -79,20 +79,16 @@ function Material() {
   const hasActiveFilters = Object.values(filters).some(arr => arr.length > 0);
 
   const handleDownload = (upload) => {
-    // Show loading toast
-    const loadingToast = toast.loading("Downloading material...");
+    const loadingToast = toast.loading('Downloading material...');
 
-    // Simulate download delay
     setTimeout(() => {
       toast.update(loadingToast, {
         render: `"${upload.course}" downloaded successfully!`,
         type: "success",
         isLoading: false,
         autoClose: 3000,
-        closeButton: true,
       });
 
-      // Trigger notification
       const notif = {
         id: Date.now(),
         type: 'download',
@@ -106,7 +102,12 @@ function Material() {
       notifs.unshift(notif);
       localStorage.setItem('appNotifications', JSON.stringify(notifs));
       window.dispatchEvent(new Event('newNotification'));
-    }, 2000);
+
+      // Save full upload object to downloads
+      const downloads = JSON.parse(localStorage.getItem('downloadedMaterials') || '[]');
+      downloads.unshift(upload); // Add to beginning
+      localStorage.setItem('downloadedMaterials', JSON.stringify(downloads));
+    }, 2000); // Simulated delay
   };
 
   const toggleFavorite = (uploadId) => {

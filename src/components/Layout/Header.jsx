@@ -1,4 +1,4 @@
-// Header.jsx
+// Header.jsx — Fixed Logout + Profile Sync
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -11,6 +11,8 @@ import {
   LogOut,
   User,
   BookOpen,
+  Coins,
+  Gem
 } from 'lucide-react';
 import AuthForm from '../Dashboard/AuthForm';
 
@@ -22,260 +24,224 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
 
   const [user, setUser] = useState({
     name: 'Guest',
-    school: '',
+    displayText: 'Sign in to continue',
     isLoggedIn: false,
+    role: null,
+    coins: 0,
+    diamonds: 0,
   });
 
-  // Load user from localStorage on mount
+  // Load user from localStorage
   useEffect(() => {
     const loadUser = () => {
       const savedProfile = localStorage.getItem('userProfile');
       if (savedProfile) {
-        const profile = JSON.parse(savedProfile);
-        setUser({
-          name: profile.name || 'User',
-          school: profile.school || '',
-          isLoggedIn: true,
-        });
+        try {
+          const profile = JSON.parse(savedProfile);
+          let displayText = profile.school || 'Your University';
+          if (profile.role === 'tutor' && profile.specialization) {
+            displayText = profile.specialization;
+          }
+
+          setUser({
+            name: profile.name || 'User',
+            displayText,
+            isLoggedIn: true,
+            role: profile.role || null,
+            coins: profile.coins || 0,
+            diamonds: profile.diamonds || 0,
+          });
+        } catch (e) {
+          setUser({ name: 'Guest', displayText: 'Sign in to continue', isLoggedIn: false, coins: 0, diamonds: 0 });
+        }
       } else {
-        setUser({
-          name: 'Guest',
-          school: '',
-          isLoggedIn: false,
-        });
+        setUser({ name: 'Guest', displayText: 'Sign in to continue', isLoggedIn: false, coins: 0, diamonds: 0 });
       }
     };
 
     loadUser();
-
-    // Listen for login/signup events from AuthForm
     window.addEventListener('userLoggedIn', loadUser);
 
-    return () => {
-      window.removeEventListener('userLoggedIn', loadUser);
-    };
+    return () => window.removeEventListener('userLoggedIn', loadUser);
   }, []);
 
-  // Dark Mode Setup
+  // Dark Mode
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const shouldBeDark = savedTheme === 'dark' || (savedTheme === null && prefersDark);
-
-    setIsDarkMode(shouldBeDark);
-    if (shouldBeDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    const initialDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    setIsDarkMode(initialDark);
+    if (initialDark) document.documentElement.classList.add('dark');
   }, []);
 
   const toggleDarkMode = () => {
-    const newDarkMode = !isDarkMode;
-    setIsDarkMode(newDarkMode);
-    document.documentElement.classList.toggle('dark', newDarkMode);
-    localStorage.setItem('theme', newDarkMode ? 'dark' : 'light');
-    window.dispatchEvent(new Event('themeChanged'));
+    setIsDarkMode(!isDarkMode);
+    if (!isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
   };
 
   const openAuth = (mode) => {
     setAuthMode(mode);
     setShowAuthModal(true);
-    setIsProfileOpen(false);
   };
 
+  // Fixed Logout Function
   const handleLogout = () => {
     localStorage.removeItem('userProfile');
     setUser({
       name: 'Guest',
-      school: '',
+      displayText: 'Sign in to continue',
       isLoggedIn: false,
+      coins: 0,
+      diamonds: 0,
     });
     setIsProfileOpen(false);
-    window.dispatchEvent(new Event('userLoggedIn')); // Notify Sidebar too
-    window.location.reload(); // Optional: refresh to reset everything
+    window.dispatchEvent(new CustomEvent('userLoggedIn')); // Trigger update in Sidebar/Header
+    // Optional: redirect to home
+    // window.location.href = '/';
   };
-
-  const goToSettings = () => {
-    window.location.href = '/settings';
-  };
-
-  const diamonds = 12;
-  const coins = 20;
 
   return (
     <>
-      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 px-6 py-4">
-        <div className="flex items-center justify-between">
-          {/* Left */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onToggleSidebar}
-              className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
+      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+        {/* Left - Menu Toggle */}
+        <button
+          onClick={onToggleSidebar}
+          className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors lg:hidden"
+        >
+          <Menu size={24} className="text-slate-700 dark:text-slate-300" />
+        </button>
 
-            <div className="hidden md:block">
-              <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
-                Dashboard
-              </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {user.isLoggedIn ? `Welcome back, ${user.name.split(' ')[0]}!` : 'Welcome to WE CONNECT'}
-              </p>
-            </div>
+        {/* Center - Logo */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+            <BookOpen size={24} className="text-white" />
           </div>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white hidden sm:block">
+            WE CONNECT
+          </h1>
+        </div>
 
-          {/* Right */}
-          <div className="flex items-center gap-3">
-            {/* Diamonds & Coins */}
-            <button className="hidden lg:flex items-center gap-3 py-3 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-medium shadow-lg">
-              <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
-                <div className="w-5 h-5 bg-white rounded rotate-45" />
+        {/* Right - Coins, Diamonds, Actions */}
+        <div className="flex items-center gap-3 md:gap-4">
+          {/* Coins & Diamonds */}
+          {user.isLoggedIn && (
+            <div className="hidden sm:flex items-center gap-4 bg-slate-100/70 dark:bg-slate-700/70 rounded-2xl px-4 py-2">
+              <div className="flex items-center gap-2">
+                <Coins className="w-5 h-5 text-yellow-600" />
+                <span className="font-semibold text-slate-800 dark:text-white">{user.coins}</span>
               </div>
-              <span>Diamonds</span>
-              <span className="ml-2 px-3 py-1 bg-white/30 rounded-full text-sm font-bold">
-                {diamonds}
-              </span>
-            </button>
-
-            <button className="hidden lg:flex items-center gap-3 py-3 px-6 bg-gradient-to-r from-yellow-500 to-orange-600 text-white rounded-2xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-medium shadow-lg">
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                <div className="w-6 h-6 bg-white rounded-full" />
+              <div className="w-px h-6 bg-slate-300 dark:bg-slate-600" />
+              <div className="flex items-center gap-2">
+                <Gem className="w-5 h-5 text-purple-600" />
+                <span className="font-semibold text-slate-800 dark:text-white">{user.diamonds}</span>
               </div>
-              <span>Coins</span>
-              <span className="ml-2 px-3 py-1 bg-white/30 rounded-full text-sm font-bold">
-                {coins}
-              </span>
-            </button>
+            </div>
+          )}
 
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={toggleDarkMode}
-              className="p-3 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 transition-all duration-300 shadow-md"
-            >
-              {isDarkMode ? (
-                <Sun className="w-5 h-5 text-yellow-400" />
-              ) : (
-                <Moon className="w-5 h-5 text-slate-700" />
-              )}
-            </button>
+          {/* Mobile Coins/Diamonds */}
+          {user.isLoggedIn && (
+            <div className="flex sm:hidden items-center gap-2 bg-slate-100/70 dark:bg-slate-700/70 rounded-xl px-3 py-1.5">
+              <Coins className="w-4 h-4 text-yellow-600" />
+              <span className="text-sm font-bold">{user.coins}</span>
+              <Gem className="w-4 h-4 text-purple-600" />
+              <span className="text-sm font-bold">{user.diamonds}</span>
+            </div>
+          )}
 
-            {/* Notifications */}
-            <button className="relative p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                3
-              </span>
-            </button>
+          {/* Dark Mode */}
+          <button
+            onClick={toggleDarkMode}
+            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            {isDarkMode ? <Sun size={20} className="text-yellow-500" /> : <Moon size={20} className="text-slate-600" />}
+          </button>
 
-            {/* Settings Button */}
-            <button
-              onClick={goToSettings}
-              className="p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Settings"
-            >
-              <Settings className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-            </button>
+          {/* Notifications */}
+          <button className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative">
+            <Bell size={20} className="text-slate-700 dark:text-slate-300" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          </button>
 
-            {/* Profile Dropdown Trigger */}
+          {/* Profile Dropdown */}
+          <div className="relative">
             <button
               onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center gap-3 pl-4 py-2"
+              className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
-                {user.isLoggedIn 
-                  ? user.name.split(' ').map(n => n[0]).join('').toUpperCase()
-                  : <User className="w-6 h-6" />
-                }
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
+                {user.name.charAt(0).toUpperCase()}
               </div>
-
               <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-slate-800 dark:text-white">
-                  {user.isLoggedIn ? user.name : 'Guest'}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {user.isLoggedIn ? user.school : 'Sign in to continue'}
-                </p>
+                <p className="text-sm font-medium text-slate-800 dark:text-white">{user.name}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{user.displayText}</p>
               </div>
-
-              <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={16} className={`text-slate-600 dark:text-slate-400 transition-transform hidden md:block ${isProfileOpen ? 'rotate-180' : ''}`} />
             </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Profile Dropdown Portal */}
-      {isProfileOpen && ReactDOM.createPortal(
-        <>
-          <div 
-            className="fixed inset-0 bg-black/40 z-[9998]" 
-            onClick={() => setIsProfileOpen(false)}
-          />
-
-          <div className="fixed right-6 top-20 z-[9999] w-72 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 py-4">
-            {user.isLoggedIn ? (
+            {/* Dropdown */}
+            {isProfileOpen && (
               <>
-                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
-                      {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)} />
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50">
+                  {user.isLoggedIn ? (
+                    <>
+                      <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+                        <p className="font-semibold">{user.name}</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">{user.displayText}</p>
+                        <div className="flex items-center gap-4 mt-3">
+                          <div className="flex items-center gap-1">
+                            <Coins className="w-4 h-4 text-yellow-600" />
+                            <span className="text-sm font-medium">{user.coins}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Gem className="w-4 h-4 text-purple-600" />
+                            <span className="text-sm font-medium">{user.diamonds}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="py-2">
+                        <button className="w-full px-6 py-3 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-3">
+                          <User className="w-5 h-5" />
+                          Profile
+                        </button>
+                        <button className="w-full px-6 py-3 text-left hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-3">
+                          <Settings className="w-5 h-5" />
+                          Settings
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full px-6 py-3 text-left hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center gap-3"
+                        >
+                          <LogOut className="w-5 h-5" />
+                          Logout
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="py-2">
+                      <button onClick={() => openAuth('login')} className="w-full px-6 py-3 text-left hover:bg-slate-100 dark:hover:bg-slate-700">
+                        Log In
+                      </button>
+                      <button onClick={() => openAuth('register')} className="w-full px-6 py-3 text-left hover:bg-slate-100 dark:hover:bg-slate-700 text-purple-600 dark:text-purple-400">
+                        Create Account
+                      </button>
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-800 dark:text-white">{user.name}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{user.school}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="py-2">
-                  <button className="w-full px-6 py-3 flex items-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors">
-                    <BookOpen className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                    <span className="font-medium">My Courses</span>
-                  </button>
-
-                  <button
-                    onClick={goToSettings}
-                    className="w-full px-6 py-3 flex items-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-700 text-left transition-colors"
-                  >
-                    <Settings className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                    <span className="font-medium">Settings</span>
-                  </button>
-                </div>
-
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-2">
-                  <button
-                    onClick={handleLogout}
-                    className="w-full px-6 py-3 flex items-center gap-4 hover:bg-red-50 dark:hover:bg-red-900/30 text-left text-red-600 dark:text-red-400 transition-colors"
-                  >
-                    <LogOut className="w-5 h-5" />
-                    <span className="font-medium">Logout</span>
-                  </button>
+                  )}
                 </div>
               </>
-            ) : (
-              <div className="py-2">
-                <button
-                  onClick={() => openAuth('login')}
-                  className="w-full px-6 py-3 text-left hover:bg-slate-100 dark:hover:bg-slate-700 font-medium transition-colors"
-                >
-                  Log In
-                </button>
-                <button
-                  onClick={() => openAuth('register')}
-                  className="w-full px-6 py-3 text-left hover:bg-slate-100 dark:hover:bg-slate-700 font-medium text-purple-600 dark:text-purple-400 transition-colors"
-                >
-                  Create Account
-                </button>
-              </div>
             )}
           </div>
-        </>,
-        document.body
-      )}
+        </div>
+      </header>
 
       {/* Auth Modal */}
-      {showAuthModal && (
+      {showAuthModal && ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
           <div className="relative max-w-md w-full">
             <button
@@ -284,9 +250,12 @@ function Header({ sidebarCollapsed, onToggleSidebar }) {
             >
               ×
             </button>
-            <AuthForm initialMode={authMode} />
+            <AuthForm initialMode={authMode} 
+            onClose={() => setShowAuthModal(false)}   // ← This is what makes X work now
+            />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

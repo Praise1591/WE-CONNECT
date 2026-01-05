@@ -1,4 +1,4 @@
-// Download.jsx — With Delete Feature
+// DownloadsPage.jsx — With Delete Feature
 import React, { useState, useEffect } from 'react';
 import {
   PersonStanding,
@@ -16,20 +16,32 @@ function DownloadsPage() {
   const [openMenuId, setOpenMenuId] = useState(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('downloadedMaterials');
-    if (saved) {
-      try {
-        setDownloads(JSON.parse(saved));
-      } catch (e) {
-        console.error('Invalid downloads data');
+    const loadDownloads = () => {
+      const saved = localStorage.getItem('downloadedMaterials');
+      if (saved) {
+        try {
+          setDownloads(JSON.parse(saved));
+        } catch (e) {
+          console.error('Invalid downloads data');
+        }
       }
-    }
+    };
+
+    loadDownloads();
+
+    // Listen for updates
+    window.addEventListener('downloadsUpdated', loadDownloads);
+
+    return () => {
+      window.removeEventListener('downloadsUpdated', loadDownloads);
+    };
   }, []);
 
   const removeDownload = (id) => {
     const newDownloads = downloads.filter(item => item.id !== id);
     setDownloads(newDownloads);
     localStorage.setItem('downloadedMaterials', JSON.stringify(newDownloads));
+    window.dispatchEvent(new Event('downloadsUpdated'));
   };
 
   const toggleMenu = (id, e) => {

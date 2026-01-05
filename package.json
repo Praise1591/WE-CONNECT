@@ -10,14 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@paystack/inline-js": "^2.22.7",
     "@stripe/react-stripe-js": "^5.4.1",
     "@stripe/stripe-js": "^8.6.0",
     "@tailwindcss/vite": "^4.1.16",
-    "firebase": "^12.6.0",
+    "firebase": "^12.7.0",
     "lucide-react": "^0.548.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-interswitch": "^1.0.8",
+    "react-router-dom": "^7.11.0",
     "react-select": "^5.10.2",
     "react-toastify": "^11.0.5",
     "recharts": "^3.3.0",

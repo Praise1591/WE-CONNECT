@@ -13,6 +13,9 @@ import Connect from './components/Dashboard/Connect';
 import Notification from './components/Dashboard/Notifications';
 import DownloadsPage from './components/Dashboard/DownloadsPage';
 import MonetaryValue from './components/Dashboard/MonetaryValue';
+import About from './components/Dashboard/About';
+import AuthForm from './components/Dashboard/AuthForm';
+import UploadsData from './components/Dashboard/UploadsData';
 
 function App() {
   const [sideBarCollapsed, setSideBarCollapsed] = useState(false);
@@ -69,7 +72,10 @@ function App() {
               {currentPage === 'notifications' && <Notification />}
               {currentPage === 'settings' && <SettingsPage />}
               {currentPage === 'connect' && <Connect />}
+              {currentPage === 'upload' && <UploadsData />}
               {currentPage === 'monetary' && <MonetaryValue />}
+              {currentPage === 'about' && <About />}
+              
             </div>
           </main>
         </div>

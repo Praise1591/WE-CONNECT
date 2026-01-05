@@ -1,12 +1,21 @@
-// MonetaryValue.jsx — Fixed with Interswitch, Naira, Diamonds, Responsive, and Backend Example
+// MonetaryValue.jsx — Professional, Flexible Buy/Withdraw (Custom Amount + Clean UX) with Paystack
 import React, { useState, useEffect } from 'react';
-import { Banknote, CreditCard, Wallet, ArrowRight, Diamond } from 'lucide-react';
+import { Coins, Diamond, ArrowRight, Loader2, CreditCard, Wallet, Banknote, AlertCircle } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 function MonetaryValue() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [diamondsAmount, setDiamondsAmount] = useState(100); // Default diamonds to buy
-  const [paymentMethod, setPaymentMethod] = useState('card'); // Default payment method
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [coinsToBuy, setCoinsToBuy] = useState(''); // String for custom input
+  const [diamondsToWithdraw, setDiamondsToWithdraw] = useState(''); // String for custom input
+  const [withdrawMethod, setWithdrawMethod] = useState('bank');
+  const [withdrawDetails, setWithdrawDetails] = useState({
+    bankName: '',
+    accountNumber: '',
+    accountName: '',
+    mobileNumber: '',
+  });
+  const [isBuying, setIsBuying] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   useEffect(() => {
     const profile = localStorage.getItem('userProfile');
@@ -15,145 +24,240 @@ function MonetaryValue() {
     }
   }, []);
 
-  const diamondOptions = [100, 500, 1000, 5000]; // Predefined diamond amounts
-  const pricePerDiamond = 10; // 10 Naira per diamond (adjust as needed)
+  const coinPresets = [10, 50, 100, 200];
+  const pricePerCoin = 100; // ₦100 per coin (₦1000 = 10 coins)
+  const totalBuyAmount = parseInt(coinsToBuy) * pricePerCoin || 0;
 
-  const totalAmount = diamondsAmount * pricePerDiamond;
+  const diamondPresets = [10, 20, 50, 100];
+  const valuePerDiamond = 100; // 1 diamond = ₦100
+  const totalWithdrawAmount = parseInt(diamondsToWithdraw) * valuePerDiamond || 0;
 
-  const handleBuyDiamonds = () => {
-    setIsProcessing(true);
+  const withdrawMethods = [
+    { value: 'bank', label: 'Bank Transfer', icon: Banknote },
+    { value: 'mobile', label: 'Mobile Money (e.g., OPay, Palmpay)', icon: Wallet },
+  ];
 
-    // Manual Interswitch form submission
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'https://sandbox.webpay.interswitchng.com/paydirect/pay'; // Test URL; use live for production
-
-    const params = {
-      product_id: 'YOUR_PRODUCT_ID', // Replace with your Interswitch product ID
-      pay_item_id: 'YOUR_PAY_ITEM_ID', // Replace with your pay item ID
-      amount: totalAmount * 100, // In kobo (100 kobo = 1 Naira)
-      currency: '566', // NGN code
-      site_redirect_url: window.location.origin + '/monetary?success=true',
-      txn_ref: Date.now().toString(),
-      cust_id: currentUser?.email || 'guest',
-      cust_name: currentUser?.name || 'Guest',
-      // Add hash if required by your merchant setup
-    };
-
-    Object.keys(params).forEach(key => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = key;
-      input.value = params[key];
-      form.appendChild(input);
-    });
-
-    document.body.appendChild(form);
-    form.submit();
-
-    setIsProcessing(false);
+  const handleInputChange = (e) => {
+    setWithdrawDetails({ ...withdrawDetails, [e.target.name]: e.target.value });
   };
 
-  // On success (from callback)
-  useEffect(() => {
-    if (window.location.search.includes('success=true')) {
-      if (currentUser) {
-        const updated = { ...currentUser, diamonds: (currentUser.diamonds || 0) + diamondsAmount };
-        localStorage.setItem('userProfile', JSON.stringify(updated));
-        setCurrentUser(updated);
-        alert(`Success! ${diamondsAmount} diamonds added to your account.`);
-        window.history.replaceState({}, '', '/monetary');
-      }
+  const handleBuyCoins = () => {
+    if (!currentUser) {
+      toast.error('Please log in first');
+      return;
     }
-  }, [currentUser, diamondsAmount]);
+    if (!coinsToBuy || parseInt(coinsToBuy) < 1) {
+      toast.error('Enter a valid number of coins');
+      return;
+    }
+
+    setIsBuying(true);
+
+    // Dynamically load Paystack script
+    const script = document.createElement('script');
+    script.src = 'https://js.paystack.co/v2/inline.js';
+    script.onload = () => {
+      const handler = window.PaystackPop.setup({
+        key: 'pk_test_YOUR_PUBLIC_KEY_HERE', // Replace with your Paystack public key
+        email: currentUser.email,
+        amount: totalBuyAmount * 100, // in kobo
+        currency: 'NGN',
+        ref: 'WE_CONNECT_' + Math.floor((Math.random() * 1000000000) + 1),
+        metadata: {
+          coins: parseInt(coinsToBuy),
+          user_id: currentUser.email
+        },
+        callback: (response) => {
+          // TODO: Verify on backend with response.reference
+          const updated = { ...currentUser, coins: (currentUser.coins || 0) + parseInt(coinsToBuy) };
+          localStorage.setItem('userProfile', JSON.stringify(updated));
+          setCurrentUser(updated);
+          toast.success(`${coinsToBuy} coins added! 🎉`);
+          setCoinsToBuy('');
+          setIsBuying(false);
+        },
+        onClose: () => {
+          toast.info('Payment cancelled');
+          setIsBuying(false);
+        }
+      });
+      handler.openIframe();
+    };
+    script.onerror = () => {
+      toast.error('Failed to load Paystack');
+      setIsBuying(false);
+    };
+    document.body.appendChild(script);
+  };
+
+  const handleWithdraw = () => {
+    const amount = parseInt(diamondsToWithdraw);
+    if (!amount || amount < 10) {
+      toast.error('Minimum withdrawal is 10 diamonds');
+      return;
+    }
+    if ((currentUser.diamonds || 0) < amount) {
+      toast.error('Insufficient diamonds');
+      return;
+    }
+    if (withdrawMethod === 'bank' && (!withdrawDetails.bankName || !withdrawDetails.accountNumber || !withdrawDetails.accountName)) {
+      toast.error('Fill all bank details');
+      return;
+    }
+    if (withdrawMethod === 'mobile' && !withdrawDetails.mobileNumber) {
+      toast.error('Enter mobile number');
+      return;
+    }
+
+    setIsWithdrawing(true);
+
+    // TODO: Backend API for withdrawal
+    setTimeout(() => {
+      const updated = { ...currentUser, diamonds: currentUser.diamonds - amount };
+      localStorage.setItem('userProfile', JSON.stringify(updated));
+      setCurrentUser(updated);
+      toast.success(`₦${totalWithdrawAmount.toLocaleString()} withdrawal requested!`);
+      setDiamondsToWithdraw('');
+      setIsWithdrawing(false);
+    }, 2000);
+  };
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
-        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-10 text-center">
-          <Diamond className="w-20 h-20 text-purple-600 mx-auto mb-6" />
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Please log in to buy diamonds</h2>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-10 text-center max-w-sm w-full">
+          <Wallet className="w-20 h-20 text-indigo-600 mx-auto mb-6" />
+          <h2 className="text-2xl font-bold">Please log in</h2>
+          <p className="text-slate-600 dark:text-slate-400 mt-2">To manage your wallet</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <div className="p-4 md:p-6 max-w-2xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-3">
-            Buy Diamonds
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            Exchange Naira for diamonds to use in WE CONNECT
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 p-4">
+      <div className="max-w-md mx-auto space-y-6">
+        <div className="text-center py-6">
+          <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Wallet</h1>
+          <p className="text-slate-600 dark:text-slate-400 mt-2">Buy coins • Withdraw diamonds</p>
         </div>
 
-        {/* Current Balance */}
-        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-6 flex items-center justify-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white shadow-lg">
-            <Diamond className="w-7 h-7" />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow p-6 text-center">
+            <Coins className="w-10 h-10 text-amber-600 mx-auto mb-2" />
+            <p className="text-sm text-slate-500 dark:text-slate-400">Coins</p>
+            <p className="text-3xl font-bold text-slate-800 dark:text-white">{currentUser.coins || 0}</p>
           </div>
-          <div className="text-center">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Your Diamonds</p>
-            <p className="text-3xl font-bold text-slate-800 dark:text-white">
-              {currentUser.diamonds || 0}
-            </p>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow p-6 text-center">
+            <Diamond className="w-10 h-10 text-indigo-600 mx-auto mb-2" />
+            <p className="text-sm text-slate-500 dark:text-slate-400">Diamonds</p>
+            <p className="text-3xl font-bold text-slate-800 dark:text-white">{currentUser.diamonds || 0}</p>
           </div>
         </div>
 
-        {/* Select Amount */}
-        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-6">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">
-            Select Amount
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {diamondOptions.map(amount => (
+        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow p-6">
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-4">Buy Coins</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">₦1000 = 10 Coins</p>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {coinPresets.map(amount => (
               <button
                 key={amount}
-                onClick={() => setDiamondsAmount(amount)}
-                className={`p-4 rounded-xl transition-all duration-200 ${
-                  diamondsAmount === amount
-                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
-                    : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
+                onClick={() => setCoinsToBuy(amount)}
+                className={`p-4 rounded-xl transition-all ${
+                  coinsToBuy === amount ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
                 }`}
               >
-                <p className="font-bold">{amount} Diamonds</p>
-                <p className="text-sm">₦{amount * pricePerDiamond}</p>
+                <p className="text-lg font-medium">{amount} Coins</p>
+                <p className="text-sm">₦{(amount * pricePerCoin).toLocaleString()}</p>
               </button>
             ))}
           </div>
+          <input
+            type="number"
+            min="1"
+            value={coinsToBuy}
+            onChange={(e) => setCoinsToBuy(e.target.value)}
+            placeholder="Custom amount"
+            className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            onClick={handleBuyCoins}
+            disabled={isBuying || !coinsToBuy || parseInt(coinsToBuy) < 1}
+            className="w-full py-4 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {isBuying ? <Loader2 className="animate-spin" /> : <CreditCard />}
+            {isBuying ? 'Processing...' : `Buy for ₦${totalBuyAmount.toLocaleString()}`}
+          </button>
         </div>
 
-        {/* Payment Method */}
-        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl p-6">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">
-            Payment Method
-          </h2>
-          <div className="space-y-3">
-            <button
-              onClick={() => setPaymentMethod('interswitch')}
-              className={`w-full p-4 rounded-xl flex items-center gap-4 transition-all duration-200 ${
-                paymentMethod === 'interswitch' ? 'bg-blue-100 dark:bg-blue-900/50' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              <CreditCard className="w-6 h-6 text-blue-600" />
-              <span className="font-medium">Interswitch (Card/Bank)</span>
-            </button>
+        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow p-6">
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-white mb-4">Withdraw Diamonds</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Min 10 Diamonds = ₦1000</p>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {diamondPresets.map(amount => (
+              <button
+                key={amount}
+                onClick={() => setDiamondsToWithdraw(amount)}
+                disabled={(currentUser.diamonds || 0) < amount}
+                className={`p-4 rounded-xl transition-all ${
+                  diamondsToWithdraw === amount ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 font-bold' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                } ${(currentUser.diamonds || 0) < amount ? 'opacity-50' : ''}`}
+              >
+                <p className="text-lg font-medium">{amount} Diamonds</p>
+                <p className="text-sm">₦{(amount * valuePerDiamond).toLocaleString()}</p>
+              </button>
+            ))}
           </div>
+          <input
+            type="number"
+            min="10"
+            value={diamondsToWithdraw}
+            onChange={(e) => setDiamondsToWithdraw(e.target.value)}
+            placeholder="Custom amount (min 10)"
+            className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <div className="space-y-4 mb-6">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Withdrawal Method</label>
+            <div className="grid grid-cols-2 gap-4">
+              {withdrawMethods.map(method => (
+                <button
+                  key={method.value}
+                  onClick={() => setWithdrawMethod(method.value)}
+                  className={`p-4 rounded-xl flex items-center justify-center gap-3 transition-all ${
+                    withdrawMethod === method.value ? 'bg-purple-100 dark:bg-purple-900/30 border-purple-500' : 'bg-slate-100 dark:bg-slate-700'
+                  } border-2`}
+                >
+                  <method.icon className="w-6 h-6" />
+                  <span className="font-medium">{method.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {withdrawMethod === 'bank' && (
+            <div className="space-y-4">
+              <input name="bankName" value={withdrawDetails.bankName} onChange={handleInputChange} placeholder="Bank Name" className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl" />
+              <input name="accountNumber" value={withdrawDetails.accountNumber} onChange={handleInputChange} placeholder="Account Number" className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl" />
+              <input name="accountName" value={withdrawDetails.accountName} onChange={handleInputChange} placeholder="Account Name" className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl" />
+            </div>
+          )}
+          {withdrawMethod === 'mobile' && (
+            <input name="mobileNumber" value={withdrawDetails.mobileNumber} onChange={handleInputChange} placeholder="Mobile Number" className="w-full p-4 border border-slate-300 dark:border-slate-600 rounded-xl" />
+          )}
+          <button
+            onClick={handleWithdraw}
+            disabled={isWithdrawing || !diamondsToWithdraw || parseInt(diamondsToWithdraw) < 10 || (currentUser.diamonds || 0) < parseInt(diamondsToWithdraw)}
+            className="w-full mt-6 py-4 bg-purple-600 text-white font-semibold rounded-xl hover:bg-purple-700 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {isWithdrawing ? <Loader2 className="animate-spin" /> : <Banknote />}
+            {isWithdrawing ? 'Processing...' : `Withdraw ₦${totalWithdrawAmount.toLocaleString()}`}
+          </button>
+          {(currentUser.diamonds || 0) < parseInt(diamondsToWithdraw || 0) && (
+            <p className="text-red-500 text-sm mt-2 flex items-center gap-1">
+              <AlertCircle size={16} />
+              Insufficient diamonds
+            </p>
+          )}
         </div>
-
-        {/* Buy Button */}
-        <button
-          onClick={handleBuyDiamonds}
-          disabled={isProcessing}
-          className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-xl hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
-        >
-          <ArrowRight size={20} />
-          Buy Now - ₦{totalAmount}
-        </button>
       </div>
     </div>
   );
