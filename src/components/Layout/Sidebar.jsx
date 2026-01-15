@@ -1,4 +1,4 @@
-// Sidebar.jsx — FIXED: Proper Client-Side Navigation (No Page Reloads)
+// Sidebar.jsx
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
@@ -18,23 +18,25 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
 
 const menuItems = [
-  { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", badge: "New" },
-  { id: "materials", icon: BookAIcon, label: "Materials" },
-  { id: "upload", icon: Upload, label: "Upload Material" },
-  { id: "downloads", icon: DownloadIcon, label: "Downloads" },
-  { id: "favorites", icon: HeartIcon, label: "Favourites" },
-  { id: "notifications", icon: MessageSquare, label: "Notifications", badge: "12" },
-  { id: "connect", icon: Users, label: "Connect", count: "2.4k" },
-  { id: "monetary", icon: Banknote, label: "Wallet", count: "50 coins" },
-  { id: "settings", icon: Settings, label: "Settings" },
-  { id: "about", icon: Info, label: "About Us" },
+  { id: "dashboard",    path: "/dashboard",   icon: LayoutDashboard, label: "Dashboard",    badge: "New" },
+  { id: "materials",    path: "/materials",   icon: BookAIcon,       label: "Materials" },
+  { id: "upload",       path: "/upload",      icon: Upload,          label: "Upload Material" },
+  { id: "downloads",    path: "/downloads",   icon: DownloadIcon,    label: "Downloads" },
+  { id: "favorites",    path: "/favorites",   icon: HeartIcon,       label: "Favourites" },
+  { id: "notifications",path: "/notifications",icon: MessageSquare, label: "Notifications", badge: "12" },
+  { id: "connect",      path: "/connect",     icon: Users,           label: "Connect",      count: "2.4k" },
+  { id: "monetary",     path: "/monetary",    icon: Banknote,        label: "Wallet",       count: "50 coins" },
+  { id: "settings",     path: "/settings",    icon: Settings,        label: "Settings" },
+  { id: "about",        path: "/about",       icon: Info,            label: "About Us" },
 ];
 
-function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMobileOpen, onMobileClose }) {
+function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
   const [userName, setUserName] = useState('Guest');
   const [userDisplayText, setUserDisplayText] = useState('Sign in to continue');
+  const location = useLocation();
 
   const loadUser = () => {
     const profile = localStorage.getItem('userProfile');
@@ -62,9 +64,12 @@ function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMob
     return () => window.removeEventListener('userLoggedIn', loadUser);
   }, []);
 
-  const handleClick = (id) => {
-    onPageChange(id);
-    if (isMobileOpen) onMobileClose();
+  // Helper to improve active state detection (especially for dashboard root)
+  const isRouteActive = (path) => {
+    if (path === '/dashboard') {
+      return location.pathname === '/dashboard' || location.pathname === '/dashboard/';
+    }
+    return location.pathname.startsWith(path);
   };
 
   return (
@@ -83,14 +88,17 @@ function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMob
           {/* Menu Items */}
           <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             {menuItems.map(item => (
-              <button
+              <NavLink
                 key={item.id}
-                onClick={() => handleClick(item.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
-                  currentPage === item.id 
-                    ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
-                    : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
-                }`}
+                to={item.path}
+                onClick={() => isMobileOpen && onMobileClose()}
+                className={({ isActive }) => 
+                  `w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                    isActive || isRouteActive(item.path)
+                      ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
+                      : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                  }`
+                }
               >
                 <item.icon size={20} className="min-w-[20px]" />
                 {!collapsed && (
@@ -110,7 +118,7 @@ function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMob
                     )}
                   </>
                 )}
-              </button>
+              </NavLink>
             ))}
           </nav>
 
@@ -159,14 +167,17 @@ function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMob
 
               <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
                 {menuItems.map(item => (
-                  <button
+                  <NavLink
                     key={item.id}
-                    onClick={() => handleClick(item.id)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
-                      currentPage === item.id 
-                        ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
-                        : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
-                    }`}
+                    to={item.path}
+                    onClick={onMobileClose}
+                    className={({ isActive }) => 
+                      `w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                        isActive || isRouteActive(item.path)
+                          ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
+                          : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                      }`
+                    }
                   >
                     <item.icon size={20} className="min-w-[20px]" />
                     <span className="text-sm font-medium text-slate-800 dark:text-white flex-1 text-left">
@@ -182,7 +193,7 @@ function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMob
                         {item.count}
                       </span>
                     )}
-                  </button>
+                  </NavLink>
                 ))}
               </nav>
 

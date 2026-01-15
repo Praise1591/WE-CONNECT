@@ -1,6 +1,6 @@
 // App.jsx — FINAL WORKING VERSION with Landing page + Protected Routes
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom'; // Added Outlet
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -20,148 +20,131 @@ import Landing from './pages/Landing'; // Your new landing page
 
 import { auth } from '@/firebase';
 
-function ProtectedRoute({ children }) {
-  const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+// ── Auth Context ─────────────────────────────────────────────────────────────
+const AuthContext = createContext(null);
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);           // Firebase user object
+  const [profile, setProfile] = useState(null);     // Parsed from localStorage
+  const [loading, setLoading] = useState(true);     // Initial auth check
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      const savedProfile = localStorage.getItem('userProfile');
-      const profile = savedProfile ? JSON.parse(savedProfile) : null;
+    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+      setUser(firebaseUser);
 
-      if (user && profile) {
-        setIsAuthenticated(true);
-      } else {
-        setIsAuthenticated(false);
-        if (window.location.pathname !== '/') {
-          navigate('/');
+      if (firebaseUser) {
+        // Load profile from localStorage (set during login/signup)
+        const saved = localStorage.getItem('userProfile');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            // Basic validation: ensure it matches current user
+            if (parsed?.uid === firebaseUser.uid) {
+              setProfile(parsed);
+            } else {
+              setProfile(null);
+              localStorage.removeItem('userProfile');
+            }
+          } catch (e) {
+            console.error('Invalid profile in localStorage', e);
+            localStorage.removeItem('userProfile');
+            setProfile(null);
+          }
+        } else {
+          setProfile(null);
         }
+      } else {
+        setProfile(null);
+        localStorage.removeItem('userProfile');
       }
+
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [navigate]);
+  }, []);
+
+  const value = { user, profile, isAuthenticated: !!user && !!profile, loading };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+// Helper hook
+function useAuth() {
+  return useContext(AuthContext);
+}
+
+// Protected Route component (updated to wrap nested routes)
+function ProtectedLayout() {
+  const { isAuthenticated, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated && window.location.pathname !== '/') {
+      navigate('/', { replace: true });
+    }
+  }, [loading, isAuthenticated, navigate]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg font-medium text-slate-700 dark:text-slate-300">
+          Verifying session...
+        </div>
+      </div>
+    );
   }
 
-  return isAuthenticated ? children : null;
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return (
+    <DashboardLayout>
+      <Outlet /> {/* This renders the child routes (e.g., Dashboard, Materials) */}
+    </DashboardLayout>
+  );
 }
 
 function App() {
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-        <Routes>
-          {/* Public landing page - shown when not logged in */}
-          <Route path="/" element={<Landing />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+          <Routes>
+            {/* Public landing page - shown when not logged in */}
+            <Route path="/" element={<Landing />} />
 
-          {/* All protected dashboard routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/materials"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <Material />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/upload"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <UploadsData />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/favorites"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <Favorites />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <SettingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/connect"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <Connect />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/notifications"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <Notification />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/downloads"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <DownloadsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/monetary"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <MonetaryValue />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/about"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-                <About />
-              </ProtectedRoute>
-            }
-          />
+            {/* Protected routes now nested under /dashboard with shared layout */}
+            <Route element={<ProtectedLayout />}>
+              <Route path="dashboard" element={<Dashboard />} index /> {/* index makes /dashboard default to Dashboard */}
+              <Route path="materials" element={<Material />} />
+              <Route path="upload" element={<UploadsData />} />
+              <Route path="favorites" element={<Favorites />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="connect" element={<Connect />} />
+              <Route path="notifications" element={<Notification />} />
+              <Route path="downloads" element={<DownloadsPage />} />
+              <Route path="monetary" element={<MonetaryValue />} />
+              <Route path="about" element={<About />} />
+            </Route>
 
-          {/* Catch-all - redirect to landing */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Catch-all - redirect to landing */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
 
-        <ToastContainer position="bottom-right" theme="colored" />
-      </div>
-    </BrowserRouter>
+          <ToastContainer position="bottom-right" theme="colored" />
+        </div>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
-// Shared layout wrapper for all protected pages
+// Shared layout wrapper for all protected pages (updated to include children via Outlet)
 function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -187,7 +170,7 @@ function DashboardLayout() {
           onMobileMenuToggle={toggleMobileMenu}
         />
         <main className="p-6">
-          {/* Outlet would be here if using <Outlet />, but since we're using explicit routes, children are rendered directly */}
+          <Outlet /> {/* Render nested route content here */}
         </main>
       </div>
     </div>

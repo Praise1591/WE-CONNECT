@@ -1,4 +1,4 @@
-// Header.jsx — Mobile Menu Button Fixed & Working
+// Header.jsx — Mobile Menu Button Fixed & Working + Proper Firebase Logout with Redirect
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -15,9 +15,14 @@ import {
   Settings,
   Zap
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // Added for redirect after logout
+import { getAuth, signOut } from 'firebase/auth'; // Added for proper Firebase sign out
 import AuthForm from '../Dashboard/AuthForm';
 
 function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
+  const navigate = useNavigate(); // Hook for programmatic navigation
+  const auth = getAuth(); // Firebase auth instance
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -85,16 +90,27 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('userProfile');
-    setUser({
-      name: 'Guest',
-      displayText: 'Sign in to continue',
-      isLoggedIn: false,
-      coins: 0,
-      diamonds: 0,
-    });
-    setIsProfileOpen(false);
-    window.dispatchEvent(new CustomEvent('userLoggedIn'));
+    signOut(auth)
+      .then(() => {
+        // Sign-out successful from Firebase
+        localStorage.removeItem('userProfile');
+        setUser({
+          name: 'Guest',
+          displayText: 'Sign in to continue',
+          isLoggedIn: false,
+          coins: 0,
+          diamonds: 0,
+        });
+        setIsProfileOpen(false);
+        window.dispatchEvent(new CustomEvent('userLoggedIn'));
+
+        // Redirect to landing/home page
+        navigate('/');
+      })
+      .catch((error) => {
+        console.error('Logout error:', error);
+        // Optional: show toast/notification here if you want
+      });
   };
 
   return (
