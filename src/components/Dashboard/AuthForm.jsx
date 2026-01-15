@@ -27,7 +27,7 @@ import {
 import { 
   getFirestore, 
   doc, 
-  setDoc, 
+  setDoc,
   getDoc,
   enableIndexedDbPersistence 
 } from 'firebase/firestore';
@@ -48,7 +48,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Enable offline persistence (Firestore will queue operations and sync when online)
+// Enable offline persistence
 enableIndexedDbPersistence(db)
   .then(() => console.log('Firestore offline persistence enabled'))
   .catch((err) => {
@@ -104,10 +104,9 @@ function AuthForm({ initialMode = 'login', onClose }) {
       email: formData.email 
     });
 
-    let profile = null;  // declared here so it's in scope for the whole function
-
     try {
       let userCredential;
+      let profile = null;
 
       if (!isLogin) {
         // SIGN UP
@@ -152,31 +151,43 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
         const user = userCredential.user;
 
-        console.log("[LOGIN] Reading profile from Firestore...");
-        const userDocRef = doc(db, `users/${user.uid}`);
-        const userSnap = await getDoc(userDocRef);
+        // Create minimal profile for immediate localStorage save
+        // Full profile will be loaded in dashboard/context later
+        profile = {
+          uid: user.uid,
+          email: user.email,
+          name: formData.name || 'User', // fallback if name was provided
+          role: 'unknown', // will be updated when full profile loads
+          // Add other defaults as needed
+          coins: 0,
+          diamonds: 0,
+        };
 
-        if (userSnap.exists()) {
-          profile = userSnap.data();
-          console.log("[LOGIN] Profile loaded successfully");
-        } else {
-          throw new Error('Profile not found. Please contact support.');
-        }
+        // Optional: Try to fetch full profile if online (non-blocking)
+        // But don't await it to avoid offline errors
+        const userDocRef = doc(db, `users/${user.uid}`);
+        getDoc(userDocRef)
+          .then((userSnap) => {
+            if (userSnap.exists()) {
+              const fullProfile = userSnap.data();
+              localStorage.setItem('userProfile', JSON.stringify(fullProfile));
+              console.log("[LOGIN] Full profile fetched and saved async");
+            }
+          })
+          .catch((err) => {
+            console.warn("[LOGIN] Async profile fetch skipped (offline or error):", err);
+          });
 
         toast.success('Welcome back!');
       }
 
       // ── COMMON SUCCESS PATH ───────────────────────────────────────
-      console.log("[SUCCESS] Profile object:", profile);
-
       if (!profile || !profile.uid) {
-        console.error("[CRITICAL] Profile is missing or invalid");
-        throw new Error("Account created but session could not be saved. Please sign in again.");
+        throw new Error("Authentication successful but profile could not be prepared.");
       }
 
-      const profileString = JSON.stringify(profile);
-      localStorage.setItem('userProfile', profileString);
-      console.log("[SUCCESS] localStorage saved");
+      localStorage.setItem('userProfile', JSON.stringify(profile));
+      console.log("[SUCCESS] localStorage saved with profile");
 
       window.dispatchEvent(new CustomEvent('userLoggedIn'));
       console.log("[SUCCESS] userLoggedIn event dispatched");
@@ -186,7 +197,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
       setTimeout(() => {
         console.log("[REDIRECT] Navigating to /dashboard");
-        window.location.replace('/dashboard');  // using replace instead of href
+        window.location.replace('/dashboard');
       }, 1200);
 
     } catch (error) {
@@ -242,6 +253,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
     setGender(null);
   };
 
+  // ── UI remains EXACTLY the same ───────────────────────────────────────────
   return (
     <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 py-8 px-4">
       <div className="max-w-4xl mx-auto">
