@@ -1,4 +1,10 @@
-// src/firebase.js — Working version (no direct imports)
+// src/firebase.js — Modern modular Firebase v9+ syntax
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+
+// Your config
 const firebaseConfig = {
   apiKey: "AIzaSyBGnjkrRtYA6bsGrmN9zYrhsmlEdd2X8d8",
   authDomain: "we-connect-a473e.firebaseapp.com",
@@ -10,17 +16,23 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
 
-export const auth = firebase.auth();
-export const db = firebase.firestore();
-export const storage = firebase.storage();
+// Export services
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
 
-export const createUserWithEmailAndPassword = (email, password) => 
-  auth.createUserWithEmailAndPassword(email, password);
+// Export auth functions (used in AuthForm)
+export {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
 
-export const signInWithEmailAndPassword = (email, password) => 
-  auth.signInWithEmailAndPassword(email, password);
-
-export const doc = (path) => db.doc(path);
-export const setDoc = (ref, data) => ref.set(data);
+// Export Firestore helpers (used in AuthForm)
+export {
+  doc,
+  setDoc,
+  getDoc,
+} from "firebase/firestore";

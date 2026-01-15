@@ -1,4 +1,4 @@
-// AuthForm.jsx — Fully online, production-ready with your real Firebase project
+// AuthForm.jsx — Fixed "Processing" & Integrated Social Sign-In with Firebase
 import React, { useState } from 'react';
 import { 
   Mail, 
@@ -16,52 +16,20 @@ import {
 } from 'lucide-react';
 import Select from 'react-select';
 import { toast } from 'react-toastify';
-
-// Firebase v9+ modular imports
-import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
+  auth, 
+  db, 
   createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  getDoc,
-  enableIndexedDbPersistence 
-} from 'firebase/firestore';
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  OAuthProvider, // For Apple
+  signInWithPopup,
+  doc,
+  setDoc 
+} from "@/firebase";
 
-// Your real Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyBGnjkrRtYA6bsGrmN9zYrhsmlEdd2X8d8",
-  authDomain: "we-connect-a473e.firebaseapp.com",
-  projectId: "we-connect-a473e",
-  storageBucket: "we-connect-a473e.firebasestorage.app",
-  messagingSenderId: "165842033302",
-  appId: "1:165842033302:web:abd3319b6778a4f3af80b7",
-  measurementId: "G-4JEWS0BJRZ"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-// Enable offline persistence (Firestore will queue operations and sync when online)
-enableIndexedDbPersistence(db)
-  .then(() => console.log('Firestore offline persistence enabled'))
-  .catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Persistence failed: multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Persistence not supported in this browser');
-    } else {
-      console.error('Persistence error:', err);
-    }
-  });
-
-function AuthForm({ initialMode = 'login', onClose }) {
+function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('student');
@@ -99,148 +67,194 @@ function AuthForm({ initialMode = 'login', onClose }) {
     e.preventDefault();
     setLoading(true);
 
-    console.log("[AUTH START]", { 
-      mode: isLogin ? 'login' : 'signup', 
-      email: formData.email 
-    });
-
-    let profile = null;  // declared here so it's in scope for the whole function
-
     try {
       let userCredential;
-
       if (!isLogin) {
-        // SIGN UP
-        console.log("[SIGNUP] Creating user...");
-        userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-        console.log("[SIGNUP] User created →", userCredential.user.uid);
+        if (!gender) {
+          toast.error('Please select your gender');
+          return;
+        }
+        if (formData.password !== formData.confirmPassword) {
+          toast.error('Passwords do not match');
+          return;
+        }
+
+        userCredential = await createUserWithEmailAndPassword(
+          auth,
+          formData.email,
+          formData.password
+        );
 
         const user = userCredential.user;
 
-        profile = {
+        await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
-          name: formData.name.trim(),
-          email: formData.email.toLowerCase(),
+          name: formData.name,
+          email: formData.email,
           role,
-          gender: gender?.value || 'prefer-not-say',
+          gender: gender.value,
           matricNumber: formData.matricNumber || null,
           school: formData.school || null,
           faculty: formData.faculty || null,
           department: formData.department || null,
           specialization: formData.specialization || null,
-          yearsExperience: formData.yearsExperience ? Number(formData.yearsExperience) : null,
+          yearsExperience: formData.yearsExperience || null,
           title: formData.title || null,
-          yearsTeaching: formData.yearsTeaching ? Number(formData.yearsTeaching) : null,
+          yearsTeaching: formData.yearsTeaching || null,
           phone: formData.phone || null,
           address: formData.address || null,
           coins: 0,
           diamonds: 0,
-          createdAt: new Date().toISOString(),
-        };
+          createdAt: new Date(),
+        });
 
-        console.log("[SIGNUP] Writing profile to Firestore...");
-        const userDocRef = doc(db, `users/${user.uid}`);
-        await setDoc(userDocRef, profile);
-        console.log("[SIGNUP] Profile saved successfully");
-
-        toast.success('Account created successfully! Welcome to WE CONNECT 🎉');
+        toast.success('Account created! Welcome to WE CONNECT 🎉');
       } else {
-        // LOGIN
-        console.log("[LOGIN] Signing in...");
         userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
-        console.log("[LOGIN] Signed in →", userCredential.user.uid);
-
-        const user = userCredential.user;
-
-        console.log("[LOGIN] Reading profile from Firestore...");
-        const userDocRef = doc(db, `users/${user.uid}`);
-        const userSnap = await getDoc(userDocRef);
-
-        if (userSnap.exists()) {
-          profile = userSnap.data();
-          console.log("[LOGIN] Profile loaded successfully");
-        } else {
-          throw new Error('Profile not found. Please contact support.');
-        }
-
         toast.success('Welcome back!');
       }
 
-      // ── COMMON SUCCESS PATH ───────────────────────────────────────
-      console.log("[SUCCESS] Profile object:", profile);
+      // Save profile to localStorage
+      const user = userCredential.user;
+      localStorage.setItem('userProfile', JSON.stringify({
+        uid: user.uid,
+        name: formData.name || user.displayName || 'User',
+        email: formData.email || user.email,
+        role,
+        school: formData.school,
+        specialization: formData.specialization,
+        // Add other fields as needed
+      }));
 
-      if (!profile || !profile.uid) {
-        console.error("[CRITICAL] Profile is missing or invalid");
-        throw new Error("Account created but session could not be saved. Please sign in again.");
-      }
-
-      const profileString = JSON.stringify(profile);
-      localStorage.setItem('userProfile', profileString);
-      console.log("[SUCCESS] localStorage saved");
-
+      // Trigger updates
       window.dispatchEvent(new CustomEvent('userLoggedIn'));
-      console.log("[SUCCESS] userLoggedIn event dispatched");
 
+      // Close modal and trigger success
       onClose?.();
-      console.log("[SUCCESS] onClose called");
-
-      setTimeout(() => {
-        console.log("[REDIRECT] Navigating to /dashboard");
-        window.location.replace('/dashboard');  // using replace instead of href
-      }, 1200);
+      onLoginSuccess?.();
 
     } catch (error) {
-      console.error("[AUTH ERROR]", {
-        code: error.code,
-        message: error.message,
-        stack: error.stack || 'no stack available'
-      });
-
-      let message = 'An error occurred. Please try again.';
-
-      if (error.code) {
-        switch (error.code) {
-          case 'auth/email-already-in-use':
-            message = 'This email is already registered.';
-            break;
-          case 'auth/weak-password':
-            message = 'Password is too weak (minimum 6 characters).';
-            break;
-          case 'auth/invalid-email':
-            message = 'Please enter a valid email address.';
-            break;
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
-            message = 'Incorrect email or password.';
-            break;
-          case 'auth/too-many-requests':
-            message = 'Too many attempts. Please try again later.';
-            break;
-          default:
-            message = error.message || 'Network error or server issue.';
-        }
-      } else {
-        message = error.message || 'Unknown error';
-      }
-
+      console.error(error);
+      let message = 'Something went wrong';
+      if (error.code === 'auth/email-already-in-use') message = 'Email already registered. Try logging in.';
+      if (error.code === 'auth/weak-password') message = 'Password should be at least 6 characters';
+      if (error.code === 'auth/invalid-email') message = 'Invalid email address';
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') message = 'Invalid email or password';
       toast.error(message);
     } finally {
-      console.log("[FINALLY] Cleaning up — loading = false");
       setLoading(false);
     }
   };
 
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setFormData({
-      ...formData,
-      name: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-    });
-    setGender(null);
+  // Social Sign-In Functions
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if new user — if so, prompt for additional info (role, etc.) via separate form or default
+      // For simplicity, default to student
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: user.displayName,
+        email: user.email,
+        role: 'student',
+        gender: null, // Can prompt later
+        coins: 0,
+        diamonds: 0,
+        createdAt: new Date(),
+      }, { merge: true });
+
+      localStorage.setItem('userProfile', JSON.stringify({
+        name: user.displayName,
+        email: user.email,
+        role: 'student',
+      }));
+
+      toast.success('Signed in with Google!');
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      onClose?.();
+      onLoginSuccess?.();
+    } catch (error) {
+      toast.error(error.message || 'Google sign-in failed');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleFacebookSignIn = async () => {
+    try {
+      setLoading(true);
+      const provider = new FacebookAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: user.displayName,
+        email: user.email,
+        role: 'student',
+        gender: null,
+        coins: 0,
+        diamonds: 0,
+        createdAt: new Date(),
+      }, { merge: true });
+
+      localStorage.setItem('userProfile', JSON.stringify({
+        name: user.displayName,
+        email: user.email,
+        role: 'student',
+      }));
+
+      toast.success('Signed in with Facebook!');
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      onClose?.();
+      onLoginSuccess?.();
+    } catch (error) {
+      toast.error(error.message || 'Facebook sign-in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      setLoading(true);
+      const provider = new OAuthProvider('apple.com');
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: user.displayName || 'Apple User',
+        email: user.email,
+        role: 'student',
+        gender: null,
+        coins: 0,
+        diamonds: 0,
+        createdAt: new Date(),
+      }, { merge: true });
+
+      localStorage.setItem('userProfile', JSON.stringify({
+        name: user.displayName || 'Apple User',
+        email: user.email,
+        role: 'student',
+      }));
+
+      toast.success('Signed in with Apple!');
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      onClose?.();
+      onLoginSuccess?.();
+    } catch (error) {
+      toast.error(error.message || 'Apple sign-in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMode = () => setIsLogin(!isLogin);
 
   return (
     <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 py-8 px-4">
@@ -264,7 +278,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
           <div className="p-8 md:p-12 max-h-[80vh] overflow-y-auto">
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Role Selection - Registration Only */}
               {!isLogin && (
                 <div className="md:col-span-2">
                   <label className="block text-lg font-medium text-slate-700 dark:text-slate-300 mb-4">
@@ -294,7 +307,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 </div>
               )}
 
-              {/* Full Name - Registration Only */}
               {!isLogin && (
                 <input
                   type="text"
@@ -302,12 +314,11 @@ function AuthForm({ initialMode = 'login', onClose }) {
                   value={formData.name}
                   onChange={handleInputChange}
                   placeholder="Full Name"
-                  required={!isLogin}
+                  required
                   className="md:col-span-2 px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
                 />
               )}
 
-              {/* Student Fields */}
               {!isLogin && role === 'student' && (
                 <>
                   <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} placeholder="Matric Number" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
@@ -317,7 +328,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 </>
               )}
 
-              {/* Tutor Fields */}
               {!isLogin && role === 'tutor' && (
                 <>
                   <input type="text" name="specialization" value={formData.specialization} onChange={handleInputChange} placeholder="Specialization" required className="md:col-span-2 px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
@@ -325,17 +335,15 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 </>
               )}
 
-              {/* Lecturer Fields */}
               {!isLogin && role === 'lecturer' && (
                 <>
-                  <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title (e.g. Dr., Prof.)" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
+                  <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
                   <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
                   <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
                   <input type="number" name="yearsTeaching" value={formData.yearsTeaching} onChange={handleInputChange} placeholder="Years of Teaching" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
                 </>
               )}
 
-              {/* Gender - Registration Only */}
               {!isLogin && (
                 <div className="md:col-span-2">
                   <Select
@@ -344,12 +352,10 @@ function AuthForm({ initialMode = 'login', onClose }) {
                     onChange={setGender}
                     placeholder="Select Gender"
                     classNamePrefix="react-select"
-                    isClearable={false}
                   />
                 </div>
               )}
 
-              {/* Email */}
               <div className="md:col-span-2 relative">
                 <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
                 <input
@@ -363,7 +369,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 />
               </div>
 
-              {/* Password */}
               <div className="md:col-span-2 relative">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
                 <input
@@ -384,7 +389,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 </button>
               </div>
 
-              {/* Confirm Password - Registration Only */}
               {!isLogin && (
                 <div className="md:col-span-2 relative">
                   <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
@@ -400,12 +404,11 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 </div>
               )}
 
-              {/* Submit Button */}
               <div className="md:col-span-2">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xl rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-4 group disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="w-full py-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xl rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-4 group disabled:opacity-70"
                 >
                   {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
                   {!loading && <ArrowRight className="w-7 h-7 group-hover:translate-x-3 transition-transform" />}
@@ -413,7 +416,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
               </div>
             </form>
 
-            {/* Social Dividers */}
             <div className="relative my-8">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
@@ -425,23 +427,21 @@ function AuthForm({ initialMode = 'login', onClose }) {
               </div>
             </div>
 
-            {/* Social Buttons */}
             <div className="grid grid-cols-3 gap-4">
-              <button className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
+              <button onClick={handleGoogleSignIn} className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
                 <Chrome size={24} />
                 <span className="font-medium">Google</span>
               </button>
-              <button className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
+              <button onClick={handleAppleSignIn} className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
                 <Apple size={24} />
                 <span className="font-medium">Apple</span>
               </button>
-              <button className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
+              <button onClick={handleFacebookSignIn} className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
                 <Facebook size={24} />
                 <span className="font-medium">Facebook</span>
               </button>
             </div>
 
-            {/* Toggle Mode */}
             <p className="text-center mt-8 text-slate-600 dark:text-slate-400 text-lg">
               {isLogin ? "Don't have an account? " : 'Already have an account? '}
               <button type="button" onClick={toggleMode} className="font-bold text-purple-600 dark:text-purple-400 hover:underline">

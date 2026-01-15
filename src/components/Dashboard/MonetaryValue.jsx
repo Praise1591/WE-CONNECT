@@ -1,6 +1,6 @@
 // MonetaryValue.jsx — Professional, Flexible Buy/Withdraw (Custom Amount + Clean UX) with Paystack
 import React, { useState, useEffect } from 'react';
-import { Coins, Diamond, ArrowRight, Loader2, CreditCard, Wallet, Banknote, AlertCircle } from 'lucide-react';
+import { Coins, Diamond, ArrowRight, Loader2, CreditCard, Wallet, Banknote, AlertCircle, Gem } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 function MonetaryValue() {
@@ -149,7 +149,7 @@ function MonetaryValue() {
             <p className="text-3xl font-bold text-slate-800 dark:text-white">{currentUser.coins || 0}</p>
           </div>
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow p-6 text-center">
-            <Diamond className="w-10 h-10 text-indigo-600 mx-auto mb-2" />
+            <Gem className="w-10 h-10 text-indigo-600 mx-auto mb-2" />
             <p className="text-sm text-slate-500 dark:text-slate-400">Diamonds</p>
             <p className="text-3xl font-bold text-slate-800 dark:text-white">{currentUser.diamonds || 0}</p>
           </div>

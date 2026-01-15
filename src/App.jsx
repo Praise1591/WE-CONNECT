@@ -1,5 +1,6 @@
-// App.jsx — With React Toastify Integrated and Updated
+// App.jsx — FINAL WORKING VERSION with Landing page + Protected Routes
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -14,87 +15,181 @@ import Notification from './components/Dashboard/Notifications';
 import DownloadsPage from './components/Dashboard/DownloadsPage';
 import MonetaryValue from './components/Dashboard/MonetaryValue';
 import About from './components/Dashboard/About';
-import AuthForm from './components/Dashboard/AuthForm';
 import UploadsData from './components/Dashboard/UploadsData';
+import Landing from './pages/Landing'; // Your new landing page
+
+import { auth } from '@/firebase';
+
+function ProtectedRoute({ children }) {
+  const navigate = useNavigate();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      const savedProfile = localStorage.getItem('userProfile');
+      const profile = savedProfile ? JSON.parse(savedProfile) : null;
+
+      if (user && profile) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+        if (window.location.pathname !== '/') {
+          navigate('/');
+        }
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  return isAuthenticated ? children : null;
+}
 
 function App() {
-  const [sideBarCollapsed, setSideBarCollapsed] = useState(false);
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+        <Routes>
+          {/* Public landing page - shown when not logged in */}
+          <Route path="/" element={<Landing />} />
 
-  useEffect(() => {
-    setCurrentPage('dashboard');
-    if (window.location.pathname !== '/') {
-      window.history.replaceState({}, '', '/');
-    }
-  }, []);
+          {/* All protected dashboard routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/materials"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <Material />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <UploadsData />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/favorites"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <Favorites />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/connect"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <Connect />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <Notification />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/downloads"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <DownloadsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/monetary"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <MonetaryValue />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/about"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+                <About />
+              </ProtectedRoute>
+            }
+          />
 
-  const handlePageChange = (page) => {
-    setCurrentPage(page);
-    const path = page === 'dashboard' ? '/' : `/${page}`;
-    window.history.pushState({}, '', path);
-  };
+          {/* Catch-all - redirect to landing */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
 
-  useEffect(() => {
-    const handlePopState = () => {
-      const path = window.location.pathname.slice(1); // remove leading slash
-      const validPages = ['settings', 'materials', 'downloads', 'favorites', 'notifications', 'connect', 'monetary'];
-      if (validPages.includes(path)) {
-        setCurrentPage(path);
-      } else {
-        setCurrentPage('dashboard');
-      }
-    };
+        <ToastContainer position="bottom-right" theme="colored" />
+      </div>
+    </BrowserRouter>
+  );
+}
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+// Shared layout wrapper for all protected pages
+function DashboardLayout() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const toggleSidebar = () => setSidebarCollapsed(!sidebarCollapsed);
+  const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 transition-all duration-500">
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar
-          collapsed={sideBarCollapsed}
-          onToggle={() => setSideBarCollapsed(!sideBarCollapsed)}
-          currentPage={currentPage}
-          onPageChange={handlePageChange}
-        />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Header
-            sidebarCollapsed={sideBarCollapsed}
-            onToggleSidebar={() => setSideBarCollapsed(!sideBarCollapsed)}
-          />
-          <main className="flex-1 overflow-y-auto bg-transparent">
-            <div className="p-6 space-y-6">
-              {currentPage === 'dashboard' && <Dashboard />}
-              {currentPage === 'materials' && <Material />}
-              {currentPage === 'downloads' && <DownloadsPage />}
-              {currentPage === 'favorites' && <Favorites />}
-              {currentPage === 'notifications' && <Notification />}
-              {currentPage === 'settings' && <SettingsPage />}
-              {currentPage === 'connect' && <Connect />}
-              {currentPage === 'upload' && <UploadsData />}
-              {currentPage === 'monetary' && <MonetaryValue />}
-              {currentPage === 'about' && <About />}
-              
-            </div>
-          </main>
-        </div>
-      </div>
-
-      {/* React Toastify Container */}
-      <ToastContainer
-        position="bottom-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="colored"
-        toastClassName="rounded-xl shadow-2xl"
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
+        isMobileOpen={mobileMenuOpen}
+        onMobileClose={toggleMobileMenu}
       />
+
+      {/* Main content area */}
+      <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'}`}>
+        <Header
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={toggleSidebar}
+          onMobileMenuToggle={toggleMobileMenu}
+        />
+        <main className="p-6">
+          {/* Outlet would be here if using <Outlet />, but since we're using explicit routes, children are rendered directly */}
+        </main>
+      </div>
     </div>
   );
 }

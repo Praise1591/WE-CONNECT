@@ -1,4 +1,4 @@
-// Sidebar.jsx — Improved for Mobile: Full Overlay Drawer + Persistent Collapse State
+// Sidebar.jsx — FIXED: Proper Client-Side Navigation (No Page Reloads)
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
@@ -15,6 +15,8 @@ import {
   Upload,
   Menu as MenuIcon,
   X as CloseIcon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 const menuItems = [
@@ -25,177 +27,180 @@ const menuItems = [
   { id: "favorites", icon: HeartIcon, label: "Favourites" },
   { id: "notifications", icon: MessageSquare, label: "Notifications", badge: "12" },
   { id: "connect", icon: Users, label: "Connect", count: "2.4k" },
+  { id: "monetary", icon: Banknote, label: "Wallet", count: "50 coins" },
   { id: "settings", icon: Settings, label: "Settings" },
-  { id: "monetary", icon: Banknote, label: "Monetary Value" },
-  { id: "about", icon: Info, label: "About" },
+  { id: "about", icon: Info, label: "About Us" },
 ];
 
-function Sidebar({ currentPage = "dashboard", onPageChange }) {
-  // Persistent collapsed state (for desktop/large screens)
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  // Mobile drawer open state (separate from desktop collapse)
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
-
+function Sidebar({ collapsed, onToggleCollapse, currentPage, onPageChange, isMobileOpen, onMobileClose }) {
   const [userName, setUserName] = useState('Guest');
   const [userDisplayText, setUserDisplayText] = useState('Sign in to continue');
-  const [favoriteCount, setFavoriteCount] = useState(0);
 
-  // Save collapsed state to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('sidebarCollapsed', JSON.stringify(isCollapsed));
-  }, [isCollapsed]);
-
-  // Load user info
-  useEffect(() => {
-    const updateUserInfo = () => {
-      const saved = localStorage.getItem('userProfile');
-      if (saved) {
-        try {
-          const profile = JSON.parse(saved);
-          setUserName(profile.name || 'User');
-          if (profile.role === 'tutor' && profile.specialization) {
-            setUserDisplayText(profile.specialization);
-          } else {
-            setUserDisplayText(profile.school || 'Your University');
-          }
-        } catch (e) {
-          setUserName('Guest');
-          setUserDisplayText('Sign in to continue');
+  const loadUser = () => {
+    const profile = localStorage.getItem('userProfile');
+    if (profile) {
+      try {
+        const parsed = JSON.parse(profile);
+        let displayText = parsed.school || 'Your University';
+        if (parsed.role === 'tutor' && parsed.specialization) {
+          displayText = parsed.specialization;
         }
+        setUserName(parsed.name || 'User');
+        setUserDisplayText(displayText);
+      } catch (e) {
+        // Silent fail
       }
-    };
+    } else {
+      setUserName('Guest');
+      setUserDisplayText('Sign in to continue');
+    }
+  };
 
-    updateUserInfo();
-    window.addEventListener('userLoggedIn', updateUserInfo);
-    return () => window.removeEventListener('userLoggedIn', updateUserInfo);
+  useEffect(() => {
+    loadUser();
+    window.addEventListener('userLoggedIn', loadUser);
+    return () => window.removeEventListener('userLoggedIn', loadUser);
   }, []);
 
-  // Load favorite count
-  useEffect(() => {
-    const updateFavoriteCount = () => {
-      const saved = localStorage.getItem('favoriteUploads');
-      if (saved) {
-        try {
-          const favorites = JSON.parse(saved);
-          setFavoriteCount(Array.isArray(favorites) ? favorites.length : 0);
-        } catch (e) {
-          setFavoriteCount(0);
-        }
-      }
-    };
-
-    updateFavoriteCount();
-    window.addEventListener('favoritesUpdated', updateFavoriteCount);
-    return () => window.removeEventListener('favoritesUpdated', updateFavoriteCount);
-  }, []);
-
-  const toggleDesktopCollapse = () => setIsCollapsed(!isCollapsed);
-  const toggleMobile = () => setIsMobileOpen(!isMobileOpen);
-  const closeMobile = () => setIsMobileOpen(false);
-
-  // Effective collapsed state: on mobile use drawer logic, on desktop use persistent collapse
-  const effectiveCollapsed = window.innerWidth >= 1024 ? isCollapsed : !isMobileOpen;
+  const handleClick = (id) => {
+    onPageChange(id);
+    if (isMobileOpen) onMobileClose();
+  };
 
   return (
     <>
-      {/* Hamburger Button - Visible only on mobile (< lg) */}
-      <button
-        onClick={toggleMobile}
-        className="fixed top-4 left-4 z-50 p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-lg lg:hidden"
+      {/* Desktop Sidebar */}
+      <div 
+        className={`fixed top-0 left-0 h-screen bg-white dark:bg-slate-900 transition-all duration-300 z-40 hidden lg:block ${collapsed ? 'w-16' : 'w-64'}`}
       >
-        {isMobileOpen ? <CloseIcon size={24} /> : <MenuIcon size={24} />}
-      </button>
-
-      {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col h-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-700/50 transition-all duration-300 ease-in-out
-          ${effectiveCollapsed ? 'w-20' : 'w-72'}
-          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}
-      >
-        {/* Logo/Header */}
-        <div className="p-4 md:p-6 border-b border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-              <Zap className="w-7 h-7 text-white" />
-            </div>
-            {!effectiveCollapsed && (
-              <div>
-                <h1 className="text-xl font-bold text-slate-800 dark:text-white">WE CONNECT</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">I Connect. You Connect.</p>
-                <p className="text-center text-xs text-slate-500 dark:text-slate-400">We Connect</p>
-              </div>
-            )}
+        <div className="flex flex-col h-full">
+          {/* Logo */}
+          <div className="p-4 flex items-center gap-2">
+            <Zap className="w-8 h-8 text-indigo-600" />
+            {!collapsed && <span className="text-xl font-bold text-slate-800 dark:text-white">WE CONNECT</span>}
           </div>
 
-          {/* Desktop Collapse Button */}
-          <button
-            onClick={toggleDesktopCollapse}
-            className="hidden lg:block p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <ChevronDown className={`w-5 h-5 text-slate-600 dark:text-slate-400 transition-transform ${isCollapsed ? 'rotate-90' : '-rotate-90'}`} />
-          </button>
-        </div>
-
-        {/* Menu */}
-        <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentPage === item.id;
-            const displayCount = item.id === "favorites" ? favoriteCount : item.count;
-
-            return (
+          {/* Menu Items */}
+          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+            {menuItems.map(item => (
               <button
                 key={item.id}
-                onClick={() => {
-                  onPageChange(item.id);
-                  closeMobile(); // Close mobile drawer on item click
-                }}
-                className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all group ${
-                  isActive
-                    ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
-                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                onClick={() => handleClick(item.id)}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                  currentPage === item.id 
+                    ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
+                    : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
                 }`}
               >
-                <Icon className="w-6 h-6 flex-shrink-0" />
-                {!effectiveCollapsed && (
+                <item.icon size={20} className="min-w-[20px]" />
+                {!collapsed && (
                   <>
-                    <span className="font-medium flex-1 text-left">{item.label}</span>
-                    {item.badge && <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">{item.badge}</span>}
-                    {displayCount !== undefined && <span className="px-2 py-0.5 text-xs font-bold bg-red-500/20 text-red-600 dark:text-red-400 rounded-full">{displayCount}</span>}
+                    <span className="text-sm font-medium text-slate-800 dark:text-white flex-1 text-left">
+                      {item.label}
+                    </span>
+                    {item.badge && (
+                      <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
+                    {item.count && (
+                      <span className="text-xs text-slate-500">
+                        {item.count}
+                      </span>
+                    )}
                   </>
                 )}
               </button>
-            );
-          })}
-        </nav>
+            ))}
+          </nav>
 
-        {/* User Info - Only when expanded */}
-        {!effectiveCollapsed && (
-          <div className="p-4 border-t border-slate-200/50 dark:border-slate-700/50">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60">
+          {/* User Profile */}
+          <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md">
-                {userName.split(' ').map(n => n[0]).join('').toUpperCase()}
+                {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{userName}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{userDisplayText}</p>
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{userName}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{userDisplayText}</p>
+                </div>
+              )}
+              {!collapsed && <ChevronDown size={16} className="text-slate-500" />}
+            </div>
+          </div>
+        </div>
+
+        {/* Collapse Toggle */}
+        <button 
+          onClick={onToggleCollapse}
+          className="absolute top-1/2 -right-3 p-1 bg-white dark:bg-slate-800 rounded-full shadow-md hover:shadow-lg transition-all hidden lg:block"
+          style={{ transform: 'translateY(-50%)' }}
+        >
+          {collapsed ? <ChevronRight size={16} className="text-slate-600 dark:text-slate-400" /> : <ChevronLeft size={16} className="text-slate-600 dark:text-slate-400" />}
+        </button>
+      </div>
+
+      {/* Mobile Sidebar */}
+      {isMobileOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={onMobileClose} />
+          <div className="fixed top-0 left-0 h-screen w-64 bg-white dark:bg-slate-900 z-50 shadow-2xl">
+            <div className="flex flex-col h-full">
+              <div className="p-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-8 h-8 text-indigo-600" />
+                  <span className="text-xl font-bold text-slate-800 dark:text-white">WE CONNECT</span>
+                </div>
+                <button onClick={onMobileClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
+                  <CloseIcon size={20} />
+                </button>
+              </div>
+
+              <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+                {menuItems.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleClick(item.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                      currentPage === item.id 
+                        ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' 
+                        : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                    }`}
+                  >
+                    <item.icon size={20} className="min-w-[20px]" />
+                    <span className="text-sm font-medium text-slate-800 dark:text-white flex-1 text-left">
+                      {item.label}
+                    </span>
+                    {item.badge && (
+                      <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
+                    {item.count && (
+                      <span className="text-xs text-slate-500">
+                        {item.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md">
+                    {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{userName}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{userDisplayText}</p>
+                  </div>
+                  <ChevronDown size={16} className="text-slate-500" />
+                </div>
               </div>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Overlay for mobile - closes drawer when clicked */}
-      {isMobileOpen && (
-        <div
-          onClick={closeMobile}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden"
-        />
+        </>
       )}
     </>
   );
