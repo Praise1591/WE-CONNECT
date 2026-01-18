@@ -12,17 +12,21 @@ import {
   X,
   Chrome,
   Apple,
-  Facebook
+  Facebook,
+  Phone,
+  Home
 } from 'lucide-react';
 import Select from 'react-select';
-import { toast } from 'react-toastify';
+import toast from 'react-hot-toast';
 
 // Firebase v9+ modular imports
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword 
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -93,6 +97,78 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    const provider = new GoogleAuthProvider();
+    
+    // Optional: shows account chooser
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      console.log("[GOOGLE SIGN-IN] Success →", user.uid, user.email);
+
+      const userDocRef = doc(db, `users/${user.uid}`);
+      const userSnap = await getDoc(userDocRef);
+
+      let profile;
+
+      if (!userSnap.exists()) {
+        // New user — create basic profile
+        console.log("[GOOGLE] New user — creating profile");
+
+        profile = {
+          uid: user.uid,
+          name: user.displayName || 'Google User',
+          email: user.email?.toLowerCase() || '',
+          role: 'student',           // default — you can improve later
+          gender: 'prefer-not-say',
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+          createdAt: new Date().toISOString(),
+        };
+
+        await setDoc(userDocRef, profile);
+        toast.success('Account created with Google! Welcome 🎉');
+      } else {
+        // Returning user
+        profile = userSnap.data();
+        toast.success('Welcome back!');
+      }
+
+      localStorage.setItem('userProfile', JSON.stringify(profile));
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      onClose?.();
+
+      setTimeout(() => {
+        console.log("[REDIRECT] Navigating to /dashboard");
+        window.location.replace('/dashboard');
+      }, 1200);
+
+    } catch (error) {
+      console.error("[GOOGLE AUTH ERROR]", {
+        code: error.code,
+        message: error.message
+      });
+
+      let message = 'Google sign-in failed. Please try again.';
+      if (error.code === 'auth/popup-closed-by-user') {
+        message = 'Sign-in cancelled.';
+      } else if (error.code === 'auth/too-many-requests') {
+        message = 'Too many attempts. Try again later.';
+      }
+
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -253,61 +329,60 @@ function AuthForm({ initialMode = 'login', onClose }) {
     setGender(null);
   };
 
-  // ── UI remains EXACTLY the same ───────────────────────────────────────────
   return (
-    <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl overflow-hidden">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 z-10 p-3 rounded-full bg-white/80 dark:bg-slate-700/80 hover:bg-white dark:hover:bg-slate-600 transition-all shadow-lg"
-          >
-            <X size={24} className="text-slate-700 dark:text-slate-300" />
-          </button>
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 min-h-screen flex items-center justify-center p-4">
+      <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden max-w-4xl w-full">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/80 dark:bg-slate-700/80 hover:bg-white dark:hover:bg-slate-600 transition-all shadow-md"
+        >
+          <X size={20} className="text-slate-700 dark:text-slate-300" />
+        </button>
 
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-10 text-center text-white">
-            <h1 className="text-4xl font-bold mb-3">
-              {isLogin ? 'Welcome Back' : 'Join WE CONNECT'}
-            </h1>
-            <p className="text-xl opacity-90">
-              {isLogin ? 'Sign in to your account' : 'Create your free account'}
-            </p>
-          </div>
+        <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-8 text-center text-white">
+          <h1 className="text-3xl font-bold mb-2">
+            {isLogin ? 'Welcome Back' : 'Join WE CONNECT'}
+          </h1>
+          <p className="text-lg opacity-90">
+            {isLogin ? 'Sign in to continue your journey' : 'Create your account and connect today'}
+          </p>
+        </div>
 
-          <div className="p-8 md:p-12 max-h-[80vh] overflow-y-auto">
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Role Selection - Registration Only */}
-              {!isLogin && (
-                <div className="md:col-span-2">
-                  <label className="block text-lg font-medium text-slate-700 dark:text-slate-300 mb-4">
-                    Who are you?
-                  </label>
-                  <div className="grid grid-cols-3 gap-4">
-                    {[
-                      { value: 'student', icon: GraduationCap, label: 'Student' },
-                      { value: 'tutor', icon: Briefcase, label: 'Tutor' },
-                      { value: 'lecturer', icon: Award, label: 'Lecturer' },
-                    ].map((r) => (
-                      <button
-                        key={r.value}
-                        type="button"
-                        onClick={() => setRole(r.value)}
-                        className={`p-6 rounded-2xl flex flex-col items-center gap-3 transition-all ${
-                          role === r.value
-                            ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-xl'
-                            : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
-                        }`}
-                      >
-                        <r.icon className="w-10 h-10" />
-                        <span className="font-semibold">{r.label}</span>
-                      </button>
-                    ))}
-                  </div>
+        <div className="p-6 md:p-10 max-h-[70vh] overflow-y-auto">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Role Selection - Registration Only */}
+            {!isLogin && (
+              <div>
+                <label className="block text-md font-medium text-slate-700 dark:text-slate-300 mb-3">
+                  Select Your Role
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { value: 'student', icon: GraduationCap, label: 'Student' },
+                    { value: 'tutor', icon: Briefcase, label: 'Tutor' },
+                    { value: 'lecturer', icon: Award, label: 'Lecturer' },
+                  ].map((r) => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setRole(r.value)}
+                      className={`p-4 rounded-xl flex flex-col items-center gap-2 transition-all duration-300 ${
+                        role === r.value
+                          ? 'bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-md scale-105'
+                          : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      }`}
+                    >
+                      <r.icon className="w-8 h-8" />
+                      <span className="font-medium text-sm">{r.label}</span>
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Full Name - Registration Only */}
-              {!isLogin && (
+            {/* Full Name - Registration Only */}
+            {!isLogin && (
+              <div className="relative">
                 <input
                   type="text"
                   name="name"
@@ -315,152 +390,190 @@ function AuthForm({ initialMode = 'login', onClose }) {
                   onChange={handleInputChange}
                   placeholder="Full Name"
                   required={!isLogin}
-                  className="md:col-span-2 px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
-                />
-              )}
-
-              {/* Student Fields */}
-              {!isLogin && role === 'student' && (
-                <>
-                  <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} placeholder="Matric Number" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="text" name="faculty" value={formData.faculty} onChange={handleInputChange} placeholder="Faculty" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                </>
-              )}
-
-              {/* Tutor Fields */}
-              {!isLogin && role === 'tutor' && (
-                <>
-                  <input type="text" name="specialization" value={formData.specialization} onChange={handleInputChange} placeholder="Specialization" required className="md:col-span-2 px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="number" name="yearsExperience" value={formData.yearsExperience} onChange={handleInputChange} placeholder="Years of Experience" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                </>
-              )}
-
-              {/* Lecturer Fields */}
-              {!isLogin && role === 'lecturer' && (
-                <>
-                  <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title (e.g. Dr., Prof.)" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                  <input type="number" name="yearsTeaching" value={formData.yearsTeaching} onChange={handleInputChange} placeholder="Years of Teaching" required className="px-6 py-4 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all" />
-                </>
-              )}
-
-              {/* Gender - Registration Only */}
-              {!isLogin && (
-                <div className="md:col-span-2">
-                  <Select
-                    options={genderOptions}
-                    value={gender}
-                    onChange={setGender}
-                    placeholder="Select Gender"
-                    classNamePrefix="react-select"
-                    isClearable={false}
-                  />
-                </div>
-              )}
-
-              {/* Email */}
-              <div className="md:col-span-2 relative">
-                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  placeholder="Email Address"
-                  required
-                  className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-lg"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
                 />
               </div>
+            )}
 
-              {/* Password */}
-              <div className="md:col-span-2 relative">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
+            {/* Student Fields */}
+            {!isLogin && role === 'student' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} placeholder="Matric Number" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+                <input type="text" name="faculty" value={formData.faculty} onChange={handleInputChange} placeholder="Faculty" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+              </div>
+            )}
+
+            {/* Tutor Fields */}
+            {!isLogin && role === 'tutor' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="text" name="specialization" value={formData.specialization} onChange={handleInputChange} placeholder="Specialization" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 md:col-span-2" />
+                <input type="number" name="yearsExperience" value={formData.yearsExperience} onChange={handleInputChange} placeholder="Years of Experience" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+              </div>
+            )}
+
+            {/* Lecturer Fields */}
+            {!isLogin && role === 'lecturer' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title (e.g. Dr., Prof.)" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+                <input type="number" name="yearsTeaching" value={formData.yearsTeaching} onChange={handleInputChange} placeholder="Years of Teaching" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
+              </div>
+            )}
+
+            {/* Gender - Registration Only */}
+            {!isLogin && (
+              <div>
+                <Select
+                  options={genderOptions}
+                  value={gender}
+                  onChange={setGender}
+                  placeholder="Select Gender"
+                  classNamePrefix="react-select"
+                  isClearable={false}
+                />
+              </div>
+            )}
+
+            {/* Phone and Address - Registration Only, Optional */}
+            {!isLogin && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    placeholder="Phone Number (optional)"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                  />
+                </div>
+                <div className="relative md:col-span-2">
+                  <Home className="absolute left-4 top-4 text-slate-400 w-5 h-5" />
+                  <textarea
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    placeholder="Address (optional)"
+                    rows={3}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Email */}
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                placeholder="Email Address"
+                required
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+              />
+            </div>
+
+            {/* Password */}
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                placeholder="Password"
+                required
+                className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+
+            {/* Confirm Password - Registration Only */}
+            {!isLogin && (
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
                   onChange={handleInputChange}
-                  placeholder="Password"
+                  placeholder="Confirm Password"
                   required
-                  className="w-full pl-14 pr-14 py-5 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-lg"
+                  className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                 >
-                  {showPassword ? <EyeOff size={24} /> : <Eye size={24} />}
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+            )}
 
-              {/* Confirm Password - Registration Only */}
-              {!isLogin && (
-                <div className="md:col-span-2 relative">
-                  <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-6 h-6" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleInputChange}
-                    placeholder="Confirm Password"
-                    required
-                    className="w-full pl-14 pr-14 py-5 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-lg"
-                  />
-                </div>
-              )}
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+              {!loading && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+            </button>
+          </form>
 
-              {/* Submit Button */}
-              <div className="md:col-span-2">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xl rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-4 group disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
-                  {!loading && <ArrowRight className="w-7 h-7 group-hover:translate-x-3 transition-transform" />}
-                </button>
-              </div>
-            </form>
-
-            {/* Social Dividers */}
-            <div className="relative my-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                  Or continue with
-                </span>
-              </div>
+          {/* Social Dividers */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
             </div>
-
-            {/* Social Buttons */}
-            <div className="grid grid-cols-3 gap-4">
-              <button className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
-                <Chrome size={24} />
-                <span className="font-medium">Google</span>
-              </button>
-              <button className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
-                <Apple size={24} />
-                <span className="font-medium">Apple</span>
-              </button>
-              <button className="flex items-center justify-center gap-3 py-4 border border-slate-300 dark:border-slate-600 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
-                <Facebook size={24} />
-                <span className="font-medium">Facebook</span>
-              </button>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-3 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                Or continue with
+              </span>
             </div>
-
-            {/* Toggle Mode */}
-            <p className="text-center mt-8 text-slate-600 dark:text-slate-400 text-lg">
-              {isLogin ? "Don't have an account? " : 'Already have an account? '}
-              <button type="button" onClick={toggleMode} className="font-bold text-purple-600 dark:text-purple-400 hover:underline">
-                {isLogin ? 'Sign Up' : 'Log In'}
-              </button>
-            </p>
           </div>
+
+          {/* Social Buttons */}
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-300 disabled:opacity-50"
+            >
+              <Chrome size={20} />
+              <span className="font-medium text-sm">Google</span>
+            </button>
+            <button className="flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-300">
+              <Apple size={20} />
+              <span className="font-medium text-sm">Apple</span>
+            </button>
+            <button className="flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-300">
+              <Facebook size={20} />
+              <span className="font-medium text-sm">Facebook</span>
+            </button>
+          </div>
+
+          {/* Toggle Mode */}
+          <p className="text-center mt-6 text-slate-600 dark:text-slate-400 text-sm">
+            {isLogin ? "Don't have an account? " : 'Already have an account? '}
+            <button type="button" onClick={toggleMode} className="font-bold text-purple-500 dark:text-purple-400 hover:underline">
+              {isLogin ? 'Sign Up' : 'Log In'}
+            </button>
+          </p>
         </div>
       </div>
     </div>

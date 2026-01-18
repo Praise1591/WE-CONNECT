@@ -15,13 +15,13 @@ import {
   Settings,
   Zap
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // Added for redirect after logout
-import { getAuth, signOut } from 'firebase/auth'; // Added for proper Firebase sign out
+import { useNavigate } from 'react-router-dom';
+import { getAuth, signOut } from 'firebase/auth';
 import AuthForm from '../Dashboard/AuthForm';
 
 function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
-  const navigate = useNavigate(); // Hook for programmatic navigation
-  const auth = getAuth(); // Firebase auth instance
+  const navigate = useNavigate();
+  const auth = getAuth();
 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -36,52 +36,99 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
     diamonds: 0,
   });
 
-  // Load user
+  // ── Improved user profile loading & sync logic ─────────────────────────────────
   useEffect(() => {
     const loadUser = () => {
       const savedProfile = localStorage.getItem('userProfile');
-      if (savedProfile) {
-        try {
-          const profile = JSON.parse(savedProfile);
-          let displayText = profile.school || 'Your University';
-          if (profile.role === 'tutor' && profile.specialization) {
-            displayText = profile.specialization;
+      if (!savedProfile) {
+        setUser({
+          name: 'Guest',
+          displayText: 'Sign in to continue',
+          isLoggedIn: false,
+          coins: 0,
+          diamonds: 0,
+        });
+        return;
+      }
+
+      try {
+        const profile = JSON.parse(savedProfile);
+
+        let displayText = 'Connected';
+
+        if (profile.role === 'student' && profile.school) {
+          displayText = profile.school.trim();
+        } else if (profile.role === 'tutor' && profile.specialization) {
+          displayText = profile.specialization.trim();
+        } else if (profile.role === 'lecturer') {
+          if (profile.title && profile.school) {
+            displayText = `${profile.title.trim()} • ${profile.school.trim()}`;
+          } else if (profile.school) {
+            displayText = profile.school.trim();
+          } else if (profile.department) {
+            displayText = profile.department.trim();
           }
-          setUser({
-            name: profile.name || 'User',
-            displayText,
-            isLoggedIn: true,
-            coins: profile.coins || 0,
-            diamonds: profile.diamonds || 0,
-          });
-        } catch (e) {
-          setUser({ name: 'Guest', displayText: 'Sign in to continue', isLoggedIn: false, coins: 0, diamonds: 0 });
         }
+
+        setUser({
+          name: (profile.name || 'User').trim(),
+          displayText: displayText || 'Your profile',
+          isLoggedIn: true,
+          coins: Number(profile.coins ?? 0),
+          diamonds: Number(profile.diamonds ?? 0),
+        });
+      } catch (err) {
+        console.error('Failed to parse userProfile from localStorage:', err);
+        localStorage.removeItem('userProfile'); // clean up broken data
+        setUser({
+          name: 'Guest',
+          displayText: 'Sign in to continue',
+          isLoggedIn: false,
+          coins: 0,
+          diamonds: 0,
+        });
       }
     };
+
+    // Load immediately
     loadUser();
-    window.addEventListener('userLoggedIn', loadUser);
-    return () => window.removeEventListener('userLoggedIn', loadUser);
+
+    // Listen for login/signup success from AuthForm
+    const handleLoginEvent = () => {
+      // Small delay → gives time for localStorage write to complete
+      setTimeout(loadUser, 150);
+    };
+
+    window.addEventListener('userLoggedIn', handleLoginEvent);
+
+    // Also react to direct localStorage changes (multi-tab / mobile Safari quirk)
+    const handleStorageChange = (e) => {
+      if (e.key === 'userProfile') {
+        handleLoginEvent();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('userLoggedIn', handleLoginEvent);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
-  // Dark mode
+  // Dark mode handling
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-    setIsDarkMode(initialDark);
-    if (initialDark) document.documentElement.classList.add('dark');
+    const shouldBeDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+    setIsDarkMode(shouldBeDark);
+    document.documentElement.classList.toggle('dark', shouldBeDark);
   }, []);
 
   const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    if (!isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
+    const newDark = !isDarkMode;
+    setIsDarkMode(newDark);
+    document.documentElement.classList.toggle('dark', newDark);
+    localStorage.setItem('theme', newDark ? 'dark' : 'light');
   };
 
   const openAuth = (mode) => {
@@ -92,7 +139,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
   const handleLogout = () => {
     signOut(auth)
       .then(() => {
-        // Sign-out successful from Firebase
         localStorage.removeItem('userProfile');
         setUser({
           name: 'Guest',
@@ -103,24 +149,19 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
         });
         setIsProfileOpen(false);
         window.dispatchEvent(new CustomEvent('userLoggedIn'));
-
-        // Redirect to landing/home page
         navigate('/');
       })
       .catch((error) => {
-        console.error('Logout error:', error);
-        // Optional: show toast/notification here if you want
+        console.error('Logout failed:', error);
       });
   };
 
+  // ── JSX remains mostly unchanged, only minor polish on name/display ───────────
   return (
     <>
-      {/* Fixed Header */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-lg z-40 border-b border-slate-200/50 dark:border-slate-700/50">
         <div className="h-full px-4 flex items-center justify-between">
-          {/* Left Side */}
           <div className="flex items-center gap-4">
-            {/* MOBILE MENU BUTTON - Now visible and working on small screens */}
             <button
               onClick={onMobileMenuToggle}
               className="p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur shadow-md hover:shadow-lg transition-all lg:hidden z-50"
@@ -128,7 +169,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
               <Menu size={26} className="text-slate-700 dark:text-slate-300" />
             </button>
 
-            {/* Desktop Sidebar Toggle (hidden on mobile) */}
             <button
               onClick={onToggleSidebar}
               className="hidden lg:block p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
@@ -136,7 +176,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
               <Menu size={24} className="text-slate-700 dark:text-slate-300" />
             </button>
 
-            {/* Logo */}
             <div className="flex items-center gap-3">
               <Zap className="w-9 h-9 text-indigo-600" />
               <span className="text-xl font-bold text-slate-800 dark:text-white hidden sm:block">
@@ -145,7 +184,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
             </div>
           </div>
 
-          {/* Center Search (Desktop Only) */}
           <div className="flex-1 max-w-xl mx-8 hidden md:block">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -157,9 +195,7 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
             </div>
           </div>
 
-          {/* Right Side */}
           <div className="flex items-center gap-4">
-            {/* Dark Mode */}
             <button
               onClick={toggleDarkMode}
               className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -167,23 +203,25 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
               {isDarkMode ? <Sun size={22} className="text-yellow-500" /> : <Moon size={22} className="text-slate-600" />}
             </button>
 
-            {/* Notifications */}
             <button className="relative p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
               <Bell size={22} className="text-slate-700 dark:text-slate-300" />
               <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></span>
             </button>
 
-            {/* Profile */}
             <button
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">
-                {user.name.charAt(0).toUpperCase()}
+                {(user.name || '?')[0].toUpperCase()}
               </div>
               <div className="hidden md:block text-left">
-                <p className="text-sm font-semibold text-slate-800 dark:text-white">{user.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{user.displayText}</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-white truncate max-w-[200px]">
+                  {user.name}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
+                  {user.displayText}
+                </p>
               </div>
               <ChevronDown size={18} className={`hidden md:block transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -197,8 +235,8 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
           <div className="fixed inset-0 z-30" onClick={() => setIsProfileOpen(false)} />
           <div className="absolute top-20 right-6 w-72 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-40 overflow-hidden">
             <div className="p-5 border-b border-slate-200 dark:border-slate-700">
-              <p className="font-bold text-lg">{user.name}</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{user.displayText}</p>
+              <p className="font-bold text-lg truncate">{user.name}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{user.displayText}</p>
               {user.isLoggedIn && (
                 <div className="flex gap-6 mt-4">
                   <div className="flex items-center gap-2">
