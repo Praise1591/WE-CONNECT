@@ -20,6 +20,48 @@ import Landing from './pages/Landing'; // Your new landing page
 
 import { auth } from '@/firebase';
 
+// ── Error Boundary Component ─────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught in About:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+          <div className="max-w-lg text-center rounded-xl bg-white dark:bg-slate-800 p-8 shadow-2xl">
+            <h2 className="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">Oops! Something went wrong</h2>
+            <p className="text-slate-600 dark:text-slate-300 mb-6">
+              We're sorry — an error occurred on the About page. Our team has been notified.
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-8">
+              Error: {this.state.error?.message || 'Unknown error'}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-md"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // ── Auth Context ─────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
 
@@ -130,7 +172,7 @@ function App() {
               <Route path="notifications" element={<Notification />} />
               <Route path="downloads" element={<DownloadsPage />} />
               <Route path="monetary" element={<MonetaryValue />} />
-              <Route path="about" element={<About />} />
+              <Route path="about" element={<ErrorBoundary><About /></ErrorBoundary>} /> {/* Wrapped About with ErrorBoundary */}
             </Route>
 
             {/* Catch-all - redirect to landing */}
