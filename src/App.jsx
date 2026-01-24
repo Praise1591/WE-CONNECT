@@ -1,6 +1,8 @@
 // App.jsx — FINAL WORKING VERSION with Landing page + Protected Routes
+// Improved responsiveness for mobile, tablet & desktop
+
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom'; // Added Outlet
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -16,7 +18,7 @@ import DownloadsPage from './components/Dashboard/DownloadsPage';
 import MonetaryValue from './components/Dashboard/MonetaryValue';
 import About from './components/Dashboard/About';
 import UploadsData from './components/Dashboard/UploadsData';
-import Landing from './pages/Landing'; // Your new landing page
+import Landing from './pages/Landing';
 
 import { auth } from '@/firebase';
 
@@ -38,18 +40,20 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-          <div className="max-w-lg text-center rounded-xl bg-white dark:bg-slate-800 p-8 shadow-2xl">
-            <h2 className="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">Oops! Something went wrong</h2>
-            <p className="text-slate-600 dark:text-slate-300 mb-6">
-              We're sorry — an error occurred on the About page. Our team has been notified.
+        <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+          <div className="max-w-md sm:max-w-lg text-center rounded-xl bg-white dark:bg-slate-800 p-6 sm:p-8 shadow-xl sm:shadow-2xl">
+            <h2 className="text-2xl sm:text-3xl font-bold text-red-600 dark:text-red-400 mb-4">
+              Oops! Something went wrong
+            </h2>
+            <p className="text-slate-600 dark:text-slate-300 mb-4 sm:mb-6 text-sm sm:text-base">
+              We're sorry — an error occurred. Our team has been notified.
             </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-8">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-6 sm:mb-8">
               Error: {this.state.error?.message || 'Unknown error'}
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-md"
+              className="px-6 sm:px-8 py-2.5 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-md text-sm sm:text-base"
             >
               Reload Page
             </button>
@@ -66,21 +70,19 @@ class ErrorBoundary extends React.Component {
 const AuthContext = createContext(null);
 
 function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);           // Firebase user object
-  const [profile, setProfile] = useState(null);     // Parsed from localStorage
-  const [loading, setLoading] = useState(true);     // Initial auth check
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
       setUser(firebaseUser);
 
       if (firebaseUser) {
-        // Load profile from localStorage (set during login/signup)
         const saved = localStorage.getItem('userProfile');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            // Basic validation: ensure it matches current user
             if (parsed?.uid === firebaseUser.uid) {
               setProfile(parsed);
             } else {
@@ -115,12 +117,11 @@ function AuthProvider({ children }) {
   );
 }
 
-// Helper hook
 function useAuth() {
   return useContext(AuthContext);
 }
 
-// Protected Route component (updated to wrap nested routes)
+// Protected Layout
 function ProtectedLayout() {
   const { isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
@@ -133,8 +134,8 @@ function ProtectedLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg font-medium text-slate-700 dark:text-slate-300">
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-base sm:text-lg font-medium text-slate-700 dark:text-slate-300">
           Verifying session...
         </div>
       </div>
@@ -147,7 +148,7 @@ function ProtectedLayout() {
 
   return (
     <DashboardLayout>
-      <Outlet /> {/* This renders the child routes (e.g., Dashboard, Materials) */}
+      <Outlet />
     </DashboardLayout>
   );
 }
@@ -158,12 +159,12 @@ function App() {
       <BrowserRouter>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
           <Routes>
-            {/* Public landing page - shown when not logged in */}
+            {/* Public landing page */}
             <Route path="/" element={<Landing />} />
 
-            {/* Protected routes now nested under /dashboard with shared layout */}
+            {/* Protected routes with shared layout */}
             <Route element={<ProtectedLayout />}>
-              <Route path="dashboard" element={<Dashboard />} index /> {/* index makes /dashboard default to Dashboard */}
+              <Route path="dashboard" element={<Dashboard />} index />
               <Route path="materials" element={<Material />} />
               <Route path="upload" element={<UploadsData />} />
               <Route path="favorites" element={<Favorites />} />
@@ -172,21 +173,26 @@ function App() {
               <Route path="notifications" element={<Notification />} />
               <Route path="downloads" element={<DownloadsPage />} />
               <Route path="monetary" element={<MonetaryValue />} />
-              <Route path="about" element={<ErrorBoundary><About /></ErrorBoundary>} /> {/* Wrapped About with ErrorBoundary */}
+              <Route path="about" element={<ErrorBoundary><About /></ErrorBoundary>} />
             </Route>
 
-            {/* Catch-all - redirect to landing */}
+            {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
 
-          <ToastContainer position="bottom-right" theme="colored" />
+          <ToastContainer 
+            position="bottom-right" 
+            theme="colored" 
+            toastClassName="!rounded-lg !shadow-lg sm:!text-base"
+            bodyClassName="!text-sm sm:!text-base"
+          />
         </div>
       </BrowserRouter>
     </AuthProvider>
   );
 }
 
-// Shared layout wrapper for all protected pages (updated to include children via Outlet)
+// Shared layout for protected pages
 function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -196,7 +202,7 @@ function DashboardLayout() {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar */}
+      {/* Sidebar - assumed to handle mobile drawer internally */}
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebar}
@@ -204,15 +210,20 @@ function DashboardLayout() {
         onMobileClose={toggleMobileMenu}
       />
 
-      {/* Main content area */}
-      <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'}`}>
+      {/* Main content */}
+      <div 
+        className={`
+          flex-1 transition-all duration-300 ease-in-out
+          ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'}
+        `}
+      >
         <Header
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={toggleSidebar}
           onMobileMenuToggle={toggleMobileMenu}
         />
-        <main className="p-6">
-          <Outlet /> {/* Render nested route content here */}
+        <main className="p-4 sm:p-6 lg:p-8 max-w-screen-2xl mx-auto">
+          <Outlet />
         </main>
       </div>
     </div>
