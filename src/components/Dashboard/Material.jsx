@@ -1,9 +1,11 @@
-// Material.jsx — Original design + Supabase Storage downloads
+// Material.jsx — Updated for Storj (presigned GET URLs for downloads)
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import Schools from './Schools';
-import { Download, Heart, FileText, Video, BookOpen, ScrollText, PersonStanding } from 'lucide-react';
+import { Download, Heart, FileText, Video, BookOpen, ScrollText, PersonStanding, Loader2 } from 'lucide-react';
 import { supabase } from '@/supabase';
+
+const BUCKET_NAME = "we-connect"; // ← CHANGE THIS to your actual Storj bucket name
 
 function Material() {
   const [filters, setFilters] = useState({
@@ -14,6 +16,7 @@ function Material() {
 
   const [materials, setMaterials] = useState([]);
   const [favorites, setFavorites] = useState(new Set());
+  const [downloadingId, setDownloadingId] = useState(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('materialFilters');
@@ -29,32 +32,6 @@ function Material() {
   useEffect(() => {
     localStorage.setItem('materialFilters', JSON.stringify(filters));
   }, [filters]);
-
-  useEffect(() => {
-    const fetchMaterials = async () => {
-      const { data, error } = await supabase
-        .from('materials')
-        .select('*')
-        .order('uploaded_at', { ascending: false });
-
-      if (error) {
-        console.error('Fetch error:', error);
-        toast.error('Failed to load materials');
-        return;
-      }
-      setMaterials(data || []);
-    };
-
-    fetchMaterials();
-
-    // Real-time
-    const channel = supabase
-      .channel('materials-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, fetchMaterials)
-      .subscribe();
-
-    return () => channel.unsubscribe();
-  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('favoriteUploads');
@@ -74,6 +51,31 @@ function Material() {
     localStorage.setItem('favoriteUploads', JSON.stringify([...favorites]));
   }, [favorites]);
 
+  useEffect(() => {
+    const fetchMaterials = async () => {
+      const { data, error } = await supabase
+        .from('materials')
+        .select('*')
+        .order('uploaded_at', { ascending: false });
+
+      if (error) {
+        console.error('Fetch error:', error);
+        toast.error('Failed to load materials');
+        return;
+      }
+      setMaterials(data || []);
+    };
+
+    fetchMaterials();
+
+    const channel = supabase
+      .channel('materials-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, fetchMaterials)
+      .subscribe();
+
+    return () => channel.unsubscribe();
+  }, []);
+
   const handleFiltersChange = ({ field, values }) => {
     setFilters(prev => ({
       ...prev,
@@ -86,7 +88,6 @@ function Material() {
       const matchCategory = filters.category.length === 0 || filters.category.includes(material.category);
       const matchSchool = filters.school.length === 0 || filters.school.includes(material.school);
       const matchDepartment = filters.department.length === 0 || filters.department.includes(material.department || 'General');
-
       return matchCategory && matchSchool && matchDepartment;
     });
   }, [materials, filters]);
@@ -103,37 +104,58 @@ function Material() {
   };
 
   const handleDownload = async (material) => {
-    const loadingToast = toast.loading('Preparing download...');
+    const loadingToast = toast.loading(`Preparing "${material.name}"...`);
+    setDownloadingId(material.id);
 
     try {
-      // Increment download count
       await supabase
         .from('materials')
         .update({ downloads: material.downloads + 1 })
         .eq('id', material.id);
 
-      // Get public or signed URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('materials')
-        .getPublicUrl(material.file_path);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Not authenticated");
 
-      // For videos/PDFs, publicUrl should work directly
-      window.open(publicUrl, '_blank');
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-storj-download-url`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fileKey: material.file_path,
+            bucket: BUCKET_NAME,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Failed to get download link: ${errText}`);
+      }
+
+      const { url: signedUrl } = await res.json();
+
+      window.open(signedUrl, '_blank');
 
       toast.update(loadingToast, {
-        render: `"${material.course}" downloaded!`,
+        render: `"${material.course}" ready!`,
         type: 'success',
         isLoading: false,
-        autoClose: 3000,
+        autoClose: 4000,
       });
     } catch (error) {
       console.error('Download error:', error);
       toast.update(loadingToast, {
-        render: 'Download failed',
+        render: 'Could not prepare download – try again',
         type: 'error',
         isLoading: false,
-        autoClose: 3000,
+        autoClose: 5000,
       });
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -146,10 +168,6 @@ function Material() {
       default: return { icon: FileText, color: 'bg-slate-500 text-white' };
     }
   };
-
-  // ──────────────────────────────────────────────────────────────
-  // Your original JSX - 100% unchanged
-  // ──────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
@@ -184,6 +202,7 @@ function Material() {
             filteredMaterials.map((material) => {
               const { icon: CategoryIcon, color: badgeColor } = getCategoryInfo(material.category);
               const isFavorited = favorites.has(material.id);
+              const isDownloading = downloadingId === material.id;
 
               return (
                 <div
@@ -227,10 +246,17 @@ function Material() {
 
                     <button
                       onClick={() => handleDownload(material)}
-                      className="flex-1 py-3 flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-300"
+                      disabled={isDownloading}
+                      className="flex-1 py-3 flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-300 disabled:opacity-60"
                     >
-                      <Download size={16} />
-                      <span className="text-sm font-medium">Download</span>
+                      {isDownloading ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Download size={16} />
+                      )}
+                      <span className="text-sm font-medium">
+                        {isDownloading ? 'Preparing...' : 'Download'}
+                      </span>
                     </button>
                   </div>
                 </div>

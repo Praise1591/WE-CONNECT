@@ -1,4 +1,4 @@
-// AuthForm.jsx — Fully online, production-ready with your real Firebase project
+// AuthForm.jsx — Fully online, production-ready with Supabase
 import React, { useState } from 'react';
 import { 
   Mail, 
@@ -18,52 +18,12 @@ import {
 } from 'lucide-react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';           // ← ADDED
 
-// Firebase v9+ modular imports
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc,
-  getDoc,
-  enableIndexedDbPersistence 
-} from 'firebase/firestore';
-
-// Your real Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyBGnjkrRtYA6bsGrmN9zYrhsmlEdd2X8d8",
-  authDomain: "we-connect-a473e.firebaseapp.com",
-  projectId: "we-connect-a473e",
-  storageBucket: "we-connect-a473e.firebasestorage.app",
-  messagingSenderId: "165842033302",
-  appId: "1:165842033302:web:abd3319b6778a4f3af80b7",
-  measurementId: "G-4JEWS0BJRZ"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-// Enable offline persistence
-enableIndexedDbPersistence(db)
-  .then(() => console.log('Firestore offline persistence enabled'))
-  .catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Persistence failed: multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Persistence not supported in this browser');
-    } else {
-      console.error('Persistence error:', err);
-    }
-  });
+// Supabase
+import { supabase } from '../../lib/supabaseClient'
+// or
+// import { supabase } from '@/lib/supabaseClient'
 
 function AuthForm({ initialMode = 'login', onClose }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
@@ -88,6 +48,8 @@ function AuthForm({ initialMode = 'login', onClose }) {
   });
   const [loading, setLoading] = useState(false);
 
+  const navigate = useNavigate();                        // ← ADDED
+
   const genderOptions = [
     { value: 'male', label: 'Male' },
     { value: 'female', label: 'Female' },
@@ -101,70 +63,21 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
-    const provider = new GoogleAuthProvider();
-    
-    // Optional: shows account chooser
-    provider.setCustomParameters({
-      prompt: 'select_account'
-    });
-
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      console.log("[GOOGLE SIGN-IN] Success →", user.uid, user.email);
-
-      const userDocRef = doc(db, `users/${user.uid}`);
-      const userSnap = await getDoc(userDocRef);
-
-      let profile;
-
-      if (!userSnap.exists()) {
-        // New user — create basic profile
-        console.log("[GOOGLE] New user — creating profile");
-
-        profile = {
-          uid: user.uid,
-          name: user.displayName || 'Google User',
-          email: user.email?.toLowerCase() || '',
-          role: 'student',           // default — you can improve later
-          gender: 'prefer-not-say',
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          createdAt: new Date().toISOString(),
-        };
-
-        await setDoc(userDocRef, profile);
-        toast.success('Account created with Google! Welcome 🎉');
-      } else {
-        // Returning user
-        profile = userSnap.data();
-        toast.success('Welcome back!');
-      }
-
-      localStorage.setItem('userProfile', JSON.stringify(profile));
-      window.dispatchEvent(new CustomEvent('userLoggedIn'));
-      onClose?.();
-
-      setTimeout(() => {
-        console.log("[REDIRECT] Navigating to /dashboard");
-        window.location.replace('/dashboard');
-      }, 1200);
-
-    } catch (error) {
-      console.error("[GOOGLE AUTH ERROR]", {
-        code: error.code,
-        message: error.message
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
       });
 
+      if (error) throw error;
+    } catch (error) {
+      console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
-      if (error.code === 'auth/popup-closed-by-user') {
+      if (error.message?.includes('popup')) {
         message = 'Sign-in cancelled.';
-      } else if (error.code === 'auth/too-many-requests') {
-        message = 'Too many attempts. Try again later.';
       }
-
       toast.error(message);
     } finally {
       setLoading(false);
@@ -175,144 +88,115 @@ function AuthForm({ initialMode = 'login', onClose }) {
     e.preventDefault();
     setLoading(true);
 
-    console.log("[AUTH START]", { 
-      mode: isLogin ? 'login' : 'signup', 
-      email: formData.email 
-    });
-
     try {
-      let userCredential;
       let profile = null;
 
       if (!isLogin) {
         // SIGN UP
-        console.log("[SIGNUP] Creating user...");
-        userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-        console.log("[SIGNUP] User created →", userCredential.user.uid);
+        if (formData.password !== formData.confirmPassword) {
+          throw new Error("Passwords do not match");
+        }
 
-        const user = userCredential.user;
+        const email = formData.email.trim();
+        const password = formData.password.trim();
 
-        profile = {
-          uid: user.uid,
-          name: formData.name.trim(),
-          email: formData.email.toLowerCase(),
-          role,
-          gender: gender?.value || 'prefer-not-say',
-          matricNumber: formData.matricNumber || null,
-          school: formData.school || null,
-          faculty: formData.faculty || null,
-          department: formData.department || null,
-          specialization: formData.specialization || null,
-          yearsExperience: formData.yearsExperience ? Number(formData.yearsExperience) : null,
-          title: formData.title || null,
-          yearsTeaching: formData.yearsTeaching ? Number(formData.yearsTeaching) : null,
-          phone: formData.phone || null,
-          address: formData.address || null,
-          coins: 0,
-          diamonds: 0,
-          createdAt: new Date().toISOString(),
-        };
+        if (!email) throw new Error("Please enter your email address");
+        if (!password) throw new Error("Password is required");
+        if (password.length < 6) throw new Error("Password must be at least 6 characters long");
 
-        console.log("[SIGNUP] Writing profile to Firestore...");
-        const userDocRef = doc(db, `users/${user.uid}`);
-        await setDoc(userDocRef, profile);
-        console.log("[SIGNUP] Profile saved successfully");
+        console.log('Attempting signup with:', { email, passwordLength: password.length });
 
-        toast.success('Account created successfully! Welcome to WE CONNECT 🎉');
-      } else {
-        // LOGIN
-        console.log("[LOGIN] Signing in...");
-        userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
-        console.log("[LOGIN] Signed in →", userCredential.user.uid);
-
-        const user = userCredential.user;
-
-        // Create minimal profile for immediate localStorage save
-        // Full profile will be loaded in dashboard/context later
-        profile = {
-          uid: user.uid,
-          email: user.email,
-          name: formData.name || 'User', // fallback if name was provided
-          role: 'unknown', // will be updated when full profile loads
-          // Add other defaults as needed
-          coins: 0,
-          diamonds: 0,
-        };
-
-        // Optional: Try to fetch full profile if online (non-blocking)
-        // But don't await it to avoid offline errors
-        const userDocRef = doc(db, `users/${user.uid}`);
-        getDoc(userDocRef)
-          .then((userSnap) => {
-            if (userSnap.exists()) {
-              const fullProfile = userSnap.data();
-              localStorage.setItem('userProfile', JSON.stringify(fullProfile));
-              console.log("[LOGIN] Full profile fetched and saved async");
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: formData.name.trim(),
+              role: role,
             }
-          })
-          .catch((err) => {
-            console.warn("[LOGIN] Async profile fetch skipped (offline or error):", err);
-          });
+          }
+        });
+
+        if (signUpError) {
+          let detailedMsg = signUpError.message;
+          if (signUpError.status === 422 && signUpError.data?.msg) {
+            detailedMsg = signUpError.data.msg;
+          }
+          throw new Error(detailedMsg || signUpError.message);
+        }
+
+        if (!signUpData.user?.id || signUpData.user.identities?.length === 0) {
+          throw new Error("This email is already registered. Please sign in instead.");
+        }
+
+        toast.success('Account created! Check your email to confirm your account. Your profile will be set up automatically after confirmation.');
+      } 
+      else {
+        // LOGIN
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email.trim(),
+          password: formData.password,
+        });
+
+        if (signInError) throw signInError;
+        if (!signInData.user) throw new Error("Login failed");
+
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', signInData.user.id)
+          .maybeSingle();
+
+        profile = profileData || {
+          id: signInData.user.id,
+          email: signInData.user.email,
+          name: 'User',
+          role: 'unknown',
+          coins: 0,
+          diamonds: 0,
+        };
 
         toast.success('Welcome back!');
+
+        // ── ADDED: redirect to dashboard after successful login ────────
+        navigate('/dashboard', { replace: true });
       }
 
       // ── COMMON SUCCESS PATH ───────────────────────────────────────
-      if (!profile || !profile.uid) {
-        throw new Error("Authentication successful but profile could not be prepared.");
+      if (profile) {
+        localStorage.setItem('userProfile', JSON.stringify(profile));
       }
-
-      localStorage.setItem('userProfile', JSON.stringify(profile));
-      console.log("[SUCCESS] localStorage saved with profile");
-
       window.dispatchEvent(new CustomEvent('userLoggedIn'));
-      console.log("[SUCCESS] userLoggedIn event dispatched");
-
       onClose?.();
-      console.log("[SUCCESS] onClose called");
-
-      setTimeout(() => {
-        console.log("[REDIRECT] Navigating to /dashboard");
-        window.location.replace('/dashboard');
-      }, 1200);
 
     } catch (error) {
-      console.error("[AUTH ERROR]", {
-        code: error.code,
-        message: error.message,
-        stack: error.stack || 'no stack available'
-      });
+      console.error("[AUTH ERROR]", error);
 
       let message = 'An error occurred. Please try again.';
 
-      if (error.code) {
-        switch (error.code) {
-          case 'auth/email-already-in-use':
-            message = 'This email is already registered.';
-            break;
-          case 'auth/weak-password':
-            message = 'Password is too weak (minimum 6 characters).';
-            break;
-          case 'auth/invalid-email':
-            message = 'Please enter a valid email address.';
-            break;
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
-            message = 'Incorrect email or password.';
-            break;
-          case 'auth/too-many-requests':
-            message = 'Too many attempts. Please try again later.';
-            break;
-          default:
-            message = error.message || 'Network error or server issue.';
-        }
+      if (error.message?.includes('Signup requires a valid password') || 
+          error.message?.toLowerCase().includes('password')) {
+        message = 'Password is required and must be at least 6 characters.';
+      } else if (
+        error.message?.includes('User already registered') ||
+        error.message?.includes('already registered') ||
+        error.message?.includes('This email is already registered')
+      ) {
+        message = 'This email is already in use. Please sign in or use a different email.';
+      } else if (error.message?.includes('invalid') && error.message?.includes('email')) {
+        message = 'Please enter a valid email address.';
+      } else if (error.message?.includes('Invalid login credentials')) {
+        message = 'Incorrect email or password.';
+      } else if (error.message?.includes('too many requests')) {
+        message = 'Too many attempts. Please try again later.';
+      } else if (error.message?.includes('security policy') || error.code === '42501') {
+        message = 'Permission issue during signup — profile setup is handled automatically. Try confirming your email and logging in.';
       } else {
-        message = error.message || 'Unknown error';
+        message = error.message || 'Network/server issue – check your inputs.';
       }
 
       toast.error(message);
     } finally {
-      console.log("[FINALLY] Cleaning up — loading = false");
       setLoading(false);
     }
   };
@@ -328,6 +212,10 @@ function AuthForm({ initialMode = 'login', onClose }) {
     });
     setGender(null);
   };
+
+  // ────────────────────────────────────────────────────────────────
+  // The rest of the component (JSX) remains completely unchanged
+  // ────────────────────────────────────────────────────────────────
 
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 min-h-screen flex items-center justify-center p-4">
