@@ -1,29 +1,15 @@
-// AuthForm.jsx — Fully online, production-ready with Supabase
+// AuthForm.jsx — with more vibrant inputs (gradient bg + vivid focus states)
 import React, { useState } from 'react';
 import { 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ArrowRight, 
-  GraduationCap, 
-  Briefcase, 
-  Award,
-  X,
-  Chrome,
-  Apple,
-  Facebook,
-  Phone,
-  Home
+  Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
+  Briefcase, Award, X, Chrome, Apple, Facebook, Phone, Home 
 } from 'lucide-react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';           // ← ADDED
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
-// Supabase
-import { supabase } from '../../lib/supabaseClient'
-// or
-// import { supabase } from '@/lib/supabaseClient'
+import { supabase } from '../../lib/supabaseClient';
 
 function AuthForm({ initialMode = 'login', onClose }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
@@ -31,24 +17,13 @@ function AuthForm({ initialMode = 'login', onClose }) {
   const [role, setRole] = useState('student');
   const [gender, setGender] = useState(null);
   const [formData, setFormData] = useState({
-    name: '',
-    matricNumber: '',
-    school: '',
-    faculty: '',
-    department: '',
-    specialization: '',
-    yearsExperience: '',
-    title: '',
-    yearsTeaching: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    phone: '',
-    address: '',
+    name: '', matricNumber: '', school: '', faculty: '', department: '',
+    specialization: '', yearsExperience: '', title: '', yearsTeaching: '',
+    email: '', password: '', confirmPassword: '', phone: '', address: '',
   });
   const [loading, setLoading] = useState(false);
 
-  const navigate = useNavigate();                        // ← ADDED
+  const navigate = useNavigate();
 
   const genderOptions = [
     { value: 'male', label: 'Male' },
@@ -66,18 +41,13 @@ function AuthForm({ initialMode = 'login', onClose }) {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`,
-        },
+        options: { redirectTo: `${window.location.origin}/dashboard` },
       });
-
       if (error) throw error;
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
-      if (error.message?.includes('popup')) {
-        message = 'Sign-in cancelled.';
-      }
+      if (error.message?.includes('popup')) message = 'Sign-in cancelled.';
       toast.error(message);
     } finally {
       setLoading(false);
@@ -92,7 +62,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
       let profile = null;
 
       if (!isLogin) {
-        // SIGN UP
         if (formData.password !== formData.confirmPassword) {
           throw new Error("Passwords do not match");
         }
@@ -103,8 +72,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
         if (!email) throw new Error("Please enter your email address");
         if (!password) throw new Error("Password is required");
         if (password.length < 6) throw new Error("Password must be at least 6 characters long");
-
-        console.log('Attempting signup with:', { email, passwordLength: password.length });
 
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
@@ -117,14 +84,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
           }
         });
 
-        if (signUpError) {
-          let detailedMsg = signUpError.message;
-          if (signUpError.status === 422 && signUpError.data?.msg) {
-            detailedMsg = signUpError.data.msg;
-          }
-          throw new Error(detailedMsg || signUpError.message);
-        }
-
+        if (signUpError) throw signUpError;
         if (!signUpData.user?.id || signUpData.user.identities?.length === 0) {
           throw new Error("This email is already registered. Please sign in instead.");
         }
@@ -132,7 +92,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
         toast.success('Account created! Check your email to confirm your account. Your profile will be set up automatically after confirmation.');
       } 
       else {
-        // LOGIN
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: formData.email.trim(),
           password: formData.password,
@@ -157,12 +116,9 @@ function AuthForm({ initialMode = 'login', onClose }) {
         };
 
         toast.success('Welcome back!');
-
-        // ── ADDED: redirect to dashboard after successful login ────────
         navigate('/dashboard', { replace: true });
       }
 
-      // ── COMMON SUCCESS PATH ───────────────────────────────────────
       if (profile) {
         localStorage.setItem('userProfile', JSON.stringify(profile));
       }
@@ -213,149 +169,160 @@ function AuthForm({ initialMode = 'login', onClose }) {
     setGender(null);
   };
 
-  // ────────────────────────────────────────────────────────────────
-  // The rest of the component (JSX) remains completely unchanged
-  // ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 min-h-screen flex items-center justify-center p-4">
-      <div className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden max-w-4xl w-full">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/80 dark:bg-slate-700/80 hover:bg-white dark:hover:bg-slate-600 transition-all shadow-md"
-        >
-          <X size={20} className="text-slate-700 dark:text-slate-300" />
-        </button>
+    <div className="relative bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden max-w-4xl w-full border border-indigo-100/40 dark:border-indigo-900/30">
 
-        <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-8 text-center text-white">
-          <h1 className="text-3xl font-bold mb-2">
-            {isLogin ? 'Welcome Back' : 'Join WE CONNECT'}
-          </h1>
-          <p className="text-lg opacity-90">
-            {isLogin ? 'Sign in to continue your journey' : 'Create your account and connect today'}
-          </p>
-        </div>
+      {/* Header */}
+      <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-700 px-8 py-10 md:px-12 md:py-14 text-center text-white overflow-hidden rounded-t-3xl">
+        <div className="absolute inset-0 bg-[url('/weconnect-logo.png')] bg-[length:140px] opacity-[0.07] mix-blend-multiply pointer-events-none" />
+        <h1 className="text-4xl md:text-5xl font-black tracking-tight drop-shadow-2xl mb-3">
+          {isLogin ? 'Welcome Back' : 'Join WE CONNECT'}
+        </h1>
+        <p className="text-lg md:text-xl opacity-90 max-w-2xl mx-auto font-light leading-relaxed">
+          {isLogin 
+            ? 'Continue your academic journey with thousands of shared resources' 
+            : 'Create your account and start collaborating smarter today'}
+        </p>
+      </div>
 
-        <div className="p-6 md:p-10 max-h-[70vh] overflow-y-auto">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Role Selection - Registration Only */}
-            {!isLogin && (
-              <div>
-                <label className="block text-md font-medium text-slate-700 dark:text-slate-300 mb-3">
-                  Select Your Role
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { value: 'student', icon: GraduationCap, label: 'Student' },
-                    { value: 'tutor', icon: Briefcase, label: 'Tutor' },
-                    { value: 'lecturer', icon: Award, label: 'Lecturer' },
-                  ].map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      onClick={() => setRole(r.value)}
-                      className={`p-4 rounded-xl flex flex-col items-center gap-2 transition-all duration-300 ${
-                        role === r.value
-                          ? 'bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-md scale-105'
-                          : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'
-                      }`}
-                    >
-                      <r.icon className="w-8 h-8" />
-                      <span className="font-medium text-sm">{r.label}</span>
-                    </button>
-                  ))}
-                </div>
+      <div className="p-6 md:p-10 lg:p-12 space-y-10 max-h-[76vh] overflow-y-auto">
+
+        <form onSubmit={handleSubmit} className="space-y-9">
+
+          {/* Role selection – unchanged logic, slightly more vivid active state */}
+          {!isLogin && (
+            <div className="space-y-6">
+              <h3 className="text-2xl font-bold text-center text-slate-800 dark:text-slate-100">
+                Choose your role
+              </h3>
+              <div className="grid grid-cols-3 gap-4 md:gap-6">
+                {[
+                  { value: 'student',  icon: GraduationCap, label: 'Student',  color: 'indigo' },
+                  { value: 'tutor',    icon: Briefcase,    label: 'Tutor',    color: 'purple' },
+                  { value: 'lecturer', icon: Award,        label: 'Lecturer', color: 'pink'   },
+                ].map((r) => (
+                  <motion.button
+                    key={r.value}
+                    type="button"
+                    whileHover={{ scale: 1.06, y: -3 }}
+                    whileTap={{ scale: 0.975 }}
+                    onClick={() => setRole(r.value)}
+                    className={`group relative flex flex-col items-center gap-4 p-6 rounded-2xl border-2 transition-all duration-300 backdrop-blur-md ${
+                      role === r.value
+                        ? `border-${r.color}-400 bg-gradient-to-br from-${r.color}-600/90 to-${r.color}-700/90 text-white shadow-xl shadow-${r.color}-500/40`
+                        : 'border-slate-200/70 dark:border-slate-700/50 bg-white/50 dark:bg-slate-800/50 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md'
+                    }`}
+                  >
+                    <r.icon className={`w-9 h-9 transition-colors ${
+                      role === r.value ? 'text-white' : 'text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
+                    }`} strokeWidth={2.25} />
+                    <span className="font-semibold text-base">{r.label}</span>
+                  </motion.button>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Full Name - Registration Only */}
+          {/* All inputs – more vibrant version */}
+          <div className="grid gap-6 md:grid-cols-2">
+
             {!isLogin && (
-              <div className="relative">
+              <div className="relative md:col-span-2">
                 <input
                   type="text"
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
                   placeholder="Full Name"
-                  required={!isLogin}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                  required
+                  className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white text-base transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
                 />
               </div>
             )}
 
-            {/* Student Fields */}
             {!isLogin && role === 'student' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} placeholder="Matric Number" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-                <input type="text" name="faculty" value={formData.faculty} onChange={handleInputChange} placeholder="Faculty" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-              </div>
+              <>
+                <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} placeholder="Matric Number" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="text" name="faculty" value={formData.faculty} onChange={handleInputChange} placeholder="Faculty" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+              </>
             )}
 
-            {/* Tutor Fields */}
             {!isLogin && role === 'tutor' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" name="specialization" value={formData.specialization} onChange={handleInputChange} placeholder="Specialization" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 md:col-span-2" />
-                <input type="number" name="yearsExperience" value={formData.yearsExperience} onChange={handleInputChange} placeholder="Years of Experience" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-              </div>
+              <>
+                <input type="text" name="specialization" value={formData.specialization} onChange={handleInputChange} placeholder="Specialization" required className="md:col-span-2 w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="number" name="yearsExperience" value={formData.yearsExperience} onChange={handleInputChange} placeholder="Years of Experience" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+              </>
             )}
 
-            {/* Lecturer Fields */}
             {!isLogin && role === 'lecturer' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title (e.g. Dr., Prof.)" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-                <input type="number" name="yearsTeaching" value={formData.yearsTeaching} onChange={handleInputChange} placeholder="Years of Teaching" required className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300" />
-              </div>
+              <>
+                <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title (e.g. Dr., Prof.)" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+                <input type="number" name="yearsTeaching" value={formData.yearsTeaching} onChange={handleInputChange} placeholder="Years of Teaching" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
+              </>
             )}
 
-            {/* Gender - Registration Only */}
             {!isLogin && (
-              <div>
-                <Select
-                  options={genderOptions}
-                  value={gender}
-                  onChange={setGender}
-                  placeholder="Select Gender"
-                  classNamePrefix="react-select"
-                  isClearable={false}
-                />
-              </div>
-            )}
+              <>
+                <div className="md:col-span-2">
+                  <Select
+                    options={genderOptions}
+                    value={gender}
+                    onChange={setGender}
+                    placeholder="Select Gender"
+                    classNamePrefix="react-select"
+                    isClearable={false}
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        background: 'linear-gradient(to bottom right, rgba(99,102,241,0.08), rgba(168,85,247,0.07), rgba(244,63,94,0.06))',
+                        borderColor: 'rgba(99,102,241,0.4)',
+                        borderRadius: '0.75rem',
+                        padding: '0.25rem',
+                        boxShadow: '0 1px 3px rgba(99,102,241,0.1)',
+                        ':hover': { borderColor: 'rgb(168,85,247)' },
+                      }),
+                      menu: (base) => ({ ...base, borderRadius: '0.75rem', backgroundColor: 'white', boxShadow: '0 10px 25px -5px rgba(99,102,241,0.2)' }),
+                      option: (base, state) => ({
+                        ...base,
+                        backgroundColor: state.isSelected ? 'rgb(99,102,241)' : state.isFocused ? 'rgba(168,85,247,0.1)' : 'transparent',
+                        color: state.isSelected ? 'white' : 'inherit',
+                      }),
+                    }}
+                  />
+                </div>
 
-            {/* Phone and Address - Registration Only, Optional */}
-            {!isLogin && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
                   <input
                     type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={handleInputChange}
                     placeholder="Phone Number (optional)"
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                    className="group w-full pl-12 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
                   />
                 </div>
+
                 <div className="relative md:col-span-2">
-                  <Home className="absolute left-4 top-4 text-slate-400 w-5 h-5" />
+                  <Home className="absolute left-4 top-4 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
                   <textarea
                     name="address"
                     value={formData.address}
                     onChange={handleInputChange}
                     placeholder="Address (optional)"
                     rows={3}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300 resize-none"
+                    className="group w-full pl-12 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20 resize-none"
                   />
                 </div>
-              </div>
+              </>
             )}
 
-            {/* Email */}
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <div className="relative md:col-span-2">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
               <input
                 type="email"
                 name="email"
@@ -363,13 +330,12 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 onChange={handleInputChange}
                 placeholder="Email Address"
                 required
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                className="group w-full pl-12 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
               />
             </div>
 
-            {/* Password */}
             <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 name="password"
@@ -377,21 +343,20 @@ function AuthForm({ initialMode = 'login', onClose }) {
                 onChange={handleInputChange}
                 placeholder="Password"
                 required
-                className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                className="group w-full pl-12 pr-12 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400/80 hover:text-purple-500 dark:hover:text-purple-400 transition-colors p-1"
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
 
-            {/* Confirm Password - Registration Only */}
             {!isLogin && (
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   name="confirmPassword"
@@ -399,71 +364,84 @@ function AuthForm({ initialMode = 'login', onClose }) {
                   onChange={handleInputChange}
                   placeholder="Confirm Password"
                   required
-                  className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                  className="group w-full pl-12 pr-12 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400/80 hover:text-purple-500 dark:hover:text-purple-400 transition-colors p-1"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
             )}
+          </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+          {/* Submit button – keeping previous vivid style */}
+          <motion.button
+            whileHover={{ scale: 1.025, y: -1 }}
+            whileTap={{ scale: 0.985 }}
+            type="submit"
+            disabled={loading}
+            className="w-full py-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:shadow-purple-500/40 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-3 group relative overflow-hidden"
+          >
+            <span className="relative z-10 flex items-center gap-2.5">
+              {loading ? 'Processing…' : (isLogin ? 'Sign In' : 'Create Free Account')}
               {!loading && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
-            </button>
-          </form>
+            </span>
+            <span className="absolute inset-0 bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500" />
+          </motion.button>
+        </form>
 
-          {/* Social Dividers */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-300 dark:border-slate-600"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-3 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                Or continue with
-              </span>
-            </div>
+        {/* Divider & social buttons – unchanged */}
+        <div className="relative py-3">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-300/60 dark:border-slate-600/50" />
           </div>
-
-          {/* Social Buttons */}
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-300 disabled:opacity-50"
-            >
-              <Chrome size={20} />
-              <span className="font-medium text-sm">Google</span>
-            </button>
-            <button className="flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-300">
-              <Apple size={20} />
-              <span className="font-medium text-sm">Apple</span>
-            </button>
-            <button className="flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-300">
-              <Facebook size={20} />
-              <span className="font-medium text-sm">Facebook</span>
-            </button>
+          <div className="relative flex justify-center">
+            <span className="bg-white dark:bg-slate-900 px-6 text-sm text-slate-500 dark:text-slate-400 font-medium">
+              or continue with
+            </span>
           </div>
-
-          {/* Toggle Mode */}
-          <p className="text-center mt-6 text-slate-600 dark:text-slate-400 text-sm">
-            {isLogin ? "Don't have an account? " : 'Already have an account? '}
-            <button type="button" onClick={toggleMode} className="font-bold text-purple-500 dark:text-purple-400 hover:underline">
-              {isLogin ? 'Sign Up' : 'Log In'}
-            </button>
-          </p>
         </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="flex items-center justify-center gap-3 py-4 border border-slate-300/70 dark:border-slate-600/60 rounded-2xl hover:bg-gradient-to-br hover:from-red-50/80 hover:to-orange-50/80 dark:hover:from-slate-800/70 dark:hover:to-slate-700/70 transition-all duration-300 shadow-sm hover:shadow group disabled:opacity-50"
+          >
+            <Chrome className="w-6 h-6 text-red-600" />
+            <span className="font-medium text-slate-700 dark:text-slate-200">Google</span>
+          </button>
+          <button disabled className="flex items-center justify-center gap-3 py-4 border border-slate-300/70 dark:border-slate-600/60 rounded-2xl opacity-55 cursor-not-allowed">
+            <Apple className="w-6 h-6" />
+            <span className="font-medium text-slate-700 dark:text-slate-200">Apple</span>
+          </button>
+          <button disabled className="flex items-center justify-center gap-3 py-4 border border-slate-300/70 dark:border-slate-600/60 rounded-2xl opacity-55 cursor-not-allowed">
+            <Facebook className="w-6 h-6 text-blue-600" />
+            <span className="font-medium text-slate-700 dark:text-slate-200">Facebook</span>
+          </button>
+        </div>
+
+        <p className="text-center text-slate-600 dark:text-slate-400 pt-4 text-base">
+          {isLogin ? "Don't have an account? " : 'Already have an account? '}
+          <button
+            type="button"
+            onClick={toggleMode}
+            className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors ml-1"
+          >
+            {isLogin ? 'Sign up' : 'Log in'}
+          </button>
+        </p>
       </div>
+
+      <button
+        onClick={onClose}
+        className="absolute top-5 right-5 z-20 p-3 rounded-2xl bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-700 transition-all shadow-lg hover:shadow-xl hover:scale-105"
+      >
+        <X size={24} className="text-slate-700 dark:text-slate-300" />
+      </button>
     </div>
   );
 }
