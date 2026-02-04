@@ -38,6 +38,7 @@ function Connect() {
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
+  const [userData, setUserData] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [connections, setConnections] = useState([]);
   const [messages, setMessages] = useState({});
@@ -73,7 +74,8 @@ function Connect() {
         localStorage.setItem('userProfile', JSON.stringify(defaultUser));
         profile = JSON.stringify(defaultUser);
       }
-      setCurrentUser(JSON.parse(profile));
+      const parsedProfile = JSON.parse(profile);
+      setCurrentUser(parsedProfile);
 
       // Initialize dummy users if not present
       let storedUsers = localStorage.getItem('connectUsers');
@@ -87,11 +89,23 @@ function Connect() {
         localStorage.setItem('connectUsers', JSON.stringify(dummyUsers));
         storedUsers = JSON.stringify(dummyUsers);
       }
-      setUsers(JSON.parse(storedUsers));
+      const parsedUsers = JSON.parse(storedUsers);
+      setUsers(parsedUsers);
+
+      // Initialize user data
+      let storedUserData = JSON.parse(localStorage.getItem('connectUserData') || '{}');
+      parsedUsers.forEach(u => {
+        if (!storedUserData[u.id]) {
+          storedUserData[u.id] = { connections: [], notifications: [] };
+        }
+      });
+      if (!storedUserData[parsedProfile.id]) {
+        storedUserData[parsedProfile.id] = { connections: [], notifications: [] };
+      }
+      setUserData(storedUserData);
+      localStorage.setItem('connectUserData', JSON.stringify(storedUserData));
 
       setPosts(JSON.parse(localStorage.getItem('connectPosts') || '[]'));
-      setNotifications(JSON.parse(localStorage.getItem('connectNotifications') || '[]'));
-      setConnections(JSON.parse(localStorage.getItem('connectConnections') || '[]'));
       setMessages(JSON.parse(localStorage.getItem('connectMessages') || '{}'));
 
       setIsLoading(false);
@@ -100,25 +114,80 @@ function Connect() {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (currentUser && userData[currentUser.id]) {
+      setConnections(userData[currentUser.id].connections || []);
+      setNotifications(userData[currentUser.id].notifications || []);
+    }
+  }, [userData, currentUser]);
+
+  useEffect(() => {
+    if (currentUser && notifications.length === 0) {
+      const alice = users.find(u => u.name === 'Alice Johnson');
+      if (alice && !connections.includes(alice.id)) {
+        addNotification({
+          title: 'Connection Request',
+          message: `${alice.name} wants to connect with you.`,
+          type: 'connection_request',
+          from: alice.id,
+          to: currentUser.id
+        });
+        addNotification({
+          title: 'Connection request sent',
+          message: `To ${currentUser.name}`,
+          type: 'request_sent',
+          to: alice.id,
+          extra: { to: currentUser.id }
+        });
+      }
+    }
+  }, [notifications, connections, currentUser, users]);
+
+  useEffect(() => {
+    localStorage.setItem('connectUserData', JSON.stringify(userData));
+  }, [userData]);
+
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  const addNotification = (title, message) => {
+  const addNotification = (options) => {
+    const { title, message, type = 'general', from = null, to = currentUser.id, extra = {} } = options;
     const notif = { 
       id: Date.now(), 
       title, 
       message, 
+      type, 
+      from, 
+      extra, 
       timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
     };
-    const updated = [notif, ...notifications];
-    setNotifications(updated);
-    localStorage.setItem('connectNotifications', JSON.stringify(updated));
-    toast.info(`${title}: ${message}`);
+    setUserData(prev => {
+      const newData = { ...prev };
+      newData[to] = newData[to] || { connections: [], notifications: [] };
+      newData[to].notifications = [...(newData[to].notifications || []), notif];
+      return newData;
+    });
+    if (to === currentUser.id) {
+      toast.info(`${title}: ${message}`);
+    }
   };
 
-  const removeNotification = (id) => {
-    const updated = notifications.filter(n => n.id !== id);
-    setNotifications(updated);
-    localStorage.setItem('connectNotifications', JSON.stringify(updated));
+  const removeNotification = (id, userId = currentUser.id) => {
+    setUserData(prev => {
+      const newData = { ...prev };
+      if (newData[userId]) {
+        newData[userId].notifications = newData[userId].notifications.filter(n => n.id !== id);
+      }
+      return newData;
+    });
+  };
+
+  const updateUserConnections = (userId, newConns) => {
+    setUserData(prev => {
+      const newData = { ...prev };
+      newData[userId] = newData[userId] || { connections: [], notifications: [] };
+      newData[userId].connections = newConns;
+      return newData;
+    });
   };
 
   const handleNewPost = () => {
@@ -130,7 +199,7 @@ function Connect() {
       content: newPost,
       media: mediaPreview,
       mediaType,
-      likes: 0,
+      likes: [],
       comments: [],
       timestamp: new Date().toLocaleString(),
     };
@@ -144,30 +213,36 @@ function Connect() {
     toast.success('Posted!');
 
     // Notify connections (simulated)
-    connections.forEach(conn => addNotification('New Post', `${currentUser.name} shared a new post.`));
+    connections.forEach(conn => addNotification({ title: 'New Post', message: `${currentUser.name} shared a new post.`, to: conn }));
   };
 
   const handleLike = (postId) => {
-    const updated = posts.map(p => 
-      p.id === postId ? { ...p, likes: p.likes + 1 } : p
-    );
+    const updated = posts.map(p => {
+      if (p.id === postId) {
+        let likes = [...p.likes];
+        if (likes.includes(currentUser.id)) {
+          likes = likes.filter(id => id !== currentUser.id);
+        } else {
+          likes.push(currentUser.id);
+          if (p.user.id !== currentUser.id) {
+            addNotification({ title: 'Like', message: `${currentUser.name} liked your post.`, to: p.user.id });
+          }
+        }
+        return { ...p, likes };
+      }
+      return p;
+    });
     setPosts(updated);
     localStorage.setItem('connectPosts', JSON.stringify(updated));
-
-    // Add notification to post owner if not self
-    const post = posts.find(p => p.id === postId);
-    if (post.user.id !== currentUser.id) {
-      addNotification('Like', `${currentUser.name} liked your post.`);
-    }
   };
 
   const handleComment = (postId) => {
-    const comment = commentInputs[postId]?.trim();
-    if (!comment) return toast.error('Comment cannot be empty');
+    const content = commentInputs[postId]?.trim();
+    if (!content) return toast.error('Comment cannot be empty');
 
     const updated = posts.map(p => 
       p.id === postId 
-        ? { ...p, comments: [...p.comments, { user: currentUser.name, content: comment }] } 
+        ? { ...p, comments: [...p.comments, { id: Date.now(), userId: currentUser.id, name: currentUser.name, content }] } 
         : p
     );
     setPosts(updated);
@@ -178,8 +253,19 @@ function Connect() {
     // Add notification to post owner if not self
     const post = posts.find(p => p.id === postId);
     if (post.user.id !== currentUser.id) {
-      addNotification('Comment', `${currentUser.name} commented on your post.`);
+      addNotification({ title: 'Comment', message: `${currentUser.name} commented on your post.`, to: post.user.id });
     }
+  };
+
+  const handleDeleteComment = (postId, commentId) => {
+    const updated = posts.map(p => 
+      p.id === postId 
+        ? { ...p, comments: p.comments.filter(c => c.id !== commentId) } 
+        : p
+    );
+    setPosts(updated);
+    localStorage.setItem('connectPosts', JSON.stringify(updated));
+    toast.success('Comment deleted');
   };
 
   const handleMediaUpload = (e) => {
@@ -194,16 +280,71 @@ function Connect() {
     }
   };
 
-  const handleConnect = (userId) => {
+  const sendConnectionRequest = (userId) => {
     if (connections.includes(userId)) return toast.error('Already connected');
-    
-    const updated = [...connections, userId];
-    setConnections(updated);
-    localStorage.setItem('connectConnections', JSON.stringify(updated));
-    toast.success('Connection added!');
+    if (notifications.some(n => n.type === 'request_sent' && n.extra.to === userId)) return toast.error('Request pending');
 
-    // Simulate mutual connection and notification
-    addNotification('New Connection', `You are now connected with ${users.find(u => u.id === userId).name}`);
+    addNotification({
+      title: 'Connection Request',
+      message: `${currentUser.name} wants to connect with you.`,
+      type: 'connection_request',
+      from: currentUser.id,
+      to: userId
+    });
+    addNotification({
+      title: 'Connection request sent',
+      message: `To ${users.find(u => u.id === userId).name}`,
+      type: 'request_sent',
+      extra: { to: userId }
+    });
+    toast.success('Request sent!');
+  };
+
+  const handleCancelRequest = (to, notifId) => {
+    removeNotification(notifId);
+    const recipNotifs = userData[to]?.notifications || [];
+    const reqNotif = recipNotifs.find(n => n.type === 'connection_request' && n.from === currentUser.id);
+    if (reqNotif) {
+      removeNotification(reqNotif.id, to);
+    }
+    toast.info('Request cancelled');
+  };
+
+  const handleAcceptConnection = (from, notifId) => {
+    if (connections.includes(from)) return;
+    updateUserConnections(currentUser.id, [...connections, from]);
+    updateUserConnections(from, [...(userData[from]?.connections || []), currentUser.id]);
+    addNotification({
+      title: 'Connection Accepted',
+      message: `${currentUser.name} accepted your connection request.`,
+      type: 'connection_accepted',
+      to: from
+    });
+    // Remove corresponding request_sent from sender
+    const senderNotifs = userData[from]?.notifications || [];
+    const sentNotif = senderNotifs.find(n => n.type === 'request_sent' && n.extra.to === currentUser.id);
+    if (sentNotif) {
+      removeNotification(sentNotif.id, from);
+    }
+    removeNotification(notifId);
+    toast.success('Connection accepted!');
+  };
+
+  const handleRejectConnection = (from, notifId) => {
+    addNotification({
+      title: 'Connection Rejected',
+      message: `${currentUser.name} rejected your connection request.`,
+      type: 'connection_rejected',
+      to: from
+    });
+    // Remove corresponding request_sent from sender
+    const senderNotifs = userData[from]?.notifications || [];
+    const sentNotif = senderNotifs.find(n => n.type === 'request_sent' && n.extra.to === currentUser.id);
+    if (sentNotif) {
+      removeNotification(sentNotif.id, from);
+    }
+    removeNotification(notifId);
+    toast.info('Connection rejected');
   };
 
   const getChatId = (userId1, userId2) => {
@@ -232,16 +373,15 @@ function Connect() {
     setNewMessage('');
 
     // Add notification to recipient
-    addNotification('New Message', `${currentUser.name} sent you a message.`);
+    addNotification({ title: 'New Message', message: `${currentUser.name} sent you a message.`, to: selectedChat });
   };
 
   const filteredUsers = users.filter(u => 
-    u.id !== currentUser.id && 
-    u.name.toLowerCase().includes(networkSearch.toLowerCase()) &&
-    !connections.includes(u.id)
+    u.id !== currentUser?.id && 
+    u.name.toLowerCase().includes(networkSearch.toLowerCase())
   );
 
-  if (isLoading) {
+  if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950">
         <Loader2 className="w-10 h-10 text-indigo-600 dark:text-indigo-400 animate-spin" />
@@ -251,7 +391,7 @@ function Connect() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      <div className="max-w-screen-2xl mx-auto px-3 xs:px-4 sm:px-3 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
+      <div className="w-full max-w-screen-xl mx-auto px-3 xs:px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
 
         {/* Header — Modern with profile icon */}
         <header className="flex items-center justify-between mb-5 sm:mb-6 lg:mb-8">
@@ -318,18 +458,18 @@ function Connect() {
                   />
 
                   {mediaPreview && (
-                    <div className="mt-3 rounded-xl overflow-hidden max-h-[220px] xs:max-h-[260px] sm:max-h-[340px] lg:max-h-[420px] relative">
+                    <div className="mt-3 rounded-xl overflow-hidden max-h-[220px] xs:max-h-[260px] sm:max-h-[340px] lg:max-h-[420px] relative max-w-full mx-auto">
                       {mediaType === 'video' ? (
                         <video 
                           src={mediaPreview} 
                           controls 
-                          className="w-full h-auto max-h-inherit object-contain bg-black/10" 
+                          className="w-full max-w-full h-auto object-contain bg-black/10" 
                         />
                       ) : (
                         <img 
                           src={mediaPreview} 
                           alt="preview" 
-                          className="w-full h-auto max-h-inherit object-contain" 
+                          className="w-full max-w-full h-auto object-contain" 
                         />
                       )}
                       <button
@@ -402,11 +542,11 @@ function Connect() {
                       <p className="text-sm sm:text-base lg:text-[17px] leading-relaxed whitespace-pre-wrap">{post.content}</p>
 
                       {post.media && (
-                        <div className="rounded-xl overflow-hidden max-h-[240px] xs:max-h-[280px] sm:max-h-[360px] lg:max-h-[480px] bg-black/10">
+                        <div className="rounded-xl overflow-hidden max-h-[240px] xs:max-h-[280px] sm:max-h-[360px] lg:max-h-[480px] bg-black/10 max-w-full mx-auto">
                           {post.mediaType === 'video' ? (
-                            <video src={post.media} controls className="w-full h-auto object-contain" />
+                            <video src={post.media} controls className="w-full max-w-full h-auto object-contain" />
                           ) : (
-                            <img src={post.media} alt="Post media" className="w-full h-auto object-contain" />
+                            <img src={post.media} alt="Post media" className="w-full max-w-full h-auto object-contain" />
                           )}
                         </div>
                       )}
@@ -418,9 +558,9 @@ function Connect() {
                         >
                           <Heart 
                             size={20} 
-                            className={post.likes > 0 ? "fill-red-500 text-red-500" : ""}
+                            className={post.likes.includes(currentUser.id) ? "fill-red-500 text-red-500" : ""}
                           />
-                          <span className="text-sm">{post.likes}</span>
+                          <span className="text-sm">{post.likes.length}</span>
                         </button>
                         <button className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/20">
                           <MessageSquare size={20} />
@@ -431,9 +571,19 @@ function Connect() {
                       {/* Comments Section — Expandable for better UX */}
                       {post.comments?.length > 0 && (
                         <div className="space-y-2 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
-                          {post.comments.map((comment, idx) => (
-                            <div key={idx} className="text-sm text-slate-700 dark:text-slate-300">
-                              <span className="font-semibold">{comment.user}:</span> {comment.content}
+                          {post.comments.map((comment) => (
+                            <div key={comment.id} className="text-sm text-slate-700 dark:text-slate-300 flex justify-between items-start">
+                              <div>
+                                <span className="font-semibold">{comment.name}:</span> {comment.content}
+                              </div>
+                              {comment.userId === currentUser.id && (
+                                <button
+                                  onClick={() => handleDeleteComment(post.id, comment.id)}
+                                  className="text-red-500 hover:text-red-700 p-1 -m-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 transition"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -472,7 +622,7 @@ function Connect() {
                   />
                 </div>
 
-                {/* Connections List or Empty */}
+                {/* Users List or Empty */}
                 {filteredUsers.length === 0 ? (
                   <motion.div 
                     variants={emptyStateVariants}
@@ -487,27 +637,45 @@ function Connect() {
                     </p>
                   </motion.div>
                 ) : (
-                  filteredUsers.map(user => (
-                    <motion.div
-                      key={user.id}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3 sm:gap-4">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                          {user.name[0]}
-                        </div>
-                        <p className="font-semibold text-sm sm:text-base">{user.name}</p>
-                      </div>
-                      <button
-                        onClick={() => handleConnect(user.id)}
-                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 text-sm shadow-md"
+                  filteredUsers.map(user => {
+                    const isConnected = connections.includes(user.id);
+                    const pendingNotif = notifications.find(n => n.type === 'request_sent' && n.extra.to === user.id);
+                    const isPending = !!pendingNotif;
+                    return (
+                      <motion.div
+                        key={user.id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between"
                       >
-                        <UserPlus size={16} /> Connect
-                      </button>
-                    </motion.div>
-                  ))
+                        <div className="flex items-center gap-3 sm:gap-4">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                            {user.name[0]}
+                          </div>
+                          <p className="font-semibold text-sm sm:text-base">{user.name}</p>
+                        </div>
+                        {isConnected ? (
+                          <span className="px-4 py-2 bg-green-600 text-white rounded-full font-medium text-sm shadow-md">
+                            Connected
+                          </span>
+                        ) : isPending ? (
+                          <button
+                            onClick={() => handleCancelRequest(user.id, pendingNotif.id)}
+                            className="px-4 py-2 bg-gray-600 text-white rounded-full hover:bg-gray-700 flex items-center gap-2 text-sm shadow-md"
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => sendConnectionRequest(user.id)}
+                            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 text-sm shadow-md"
+                          >
+                            <UserPlus size={16} /> Connect
+                          </button>
+                        )}
+                      </motion.div>
+                    );
+                  })
                 )}
 
                 {/* Your Connections Section */}
@@ -522,7 +690,13 @@ function Connect() {
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
                               {user?.name[0]}
                             </div>
-                            <p className="font-medium text-sm sm:text-base">{user?.name}</p>
+                            <p className="font-medium text-sm sm:text-base flex-1">{user?.name}</p>
+                            <button
+                              onClick={() => setSelectedChat(connId) && setActiveTab('messages')}
+                              className="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm"
+                            >
+                              Message
+                            </button>
                           </div>
                         );
                       })}
@@ -663,6 +837,30 @@ function Connect() {
                         <p className="font-semibold text-sm sm:text-base">{notif.title}</p>
                         <p className="text-sm text-slate-600 dark:text-slate-300">{notif.message}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{notif.timestamp}</p>
+                        {notif.type === 'connection_request' && (
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => handleAcceptConnection(notif.from, notif.id)}
+                              className="px-3 py-1 bg-green-600 text-white rounded-full text-sm"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleRejectConnection(notif.from, notif.id)}
+                              className="px-3 py-1 bg-red-600 text-white rounded-full text-sm"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {notif.type === 'request_sent' && (
+                          <button
+                            onClick={() => handleCancelRequest(notif.extra.to, notif.id)}
+                            className="mt-2 px-3 py-1 bg-gray-600 text-white rounded-full text-sm"
+                          >
+                            Cancel Request
+                          </button>
+                        )}
                       </div>
                       <button
                         onClick={() => removeNotification(notif.id)}
