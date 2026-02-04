@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.966.0",
+    "@aws-sdk/client-s3": "^3.981.0",
+    "@aws-sdk/lib-storage": "^3.981.0",
     "@aws-sdk/s3-request-presigner": "^3.966.0",
+    "@aws-sdk/types": "^3.973.1",
     "@nhost/nhost-js": "^4.2.1",
     "@nhost/react": "^3.11.2",
     "@paystack/inline-js": "^2.22.7",
@@ -40,7 +42,8 @@
     "react-toastify": "^11.0.5",
     "recharts": "^3.3.0",
     "tailwindcss": "^4.1.16",
-    "tsparticles": "^3.9.1"
+    "tsparticles": "^3.9.1",
+    "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

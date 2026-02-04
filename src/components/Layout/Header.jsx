@@ -291,10 +291,13 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
             <div className="p-2 sm:p-3">
               {user.isLoggedIn ? (
                 <>
-                  <button className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 sm:gap-3 text-sm">
-                    <User size={16} />
-                    <span>Profile</span>
-                  </button>
+                  <button
+                  onClick={() => navigate('/profile')}
+                  className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 sm:gap-3 text-sm"
+                >
+                  <User size={16} />
+                  <span>Profile</span>
+                </button>
                   <button className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 sm:gap-3 text-sm">
                     <Settings size={16} />
                     <span>Settings</span>
