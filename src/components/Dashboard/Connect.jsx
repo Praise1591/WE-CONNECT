@@ -251,7 +251,7 @@ function Connect() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      <div className="max-w-screen-2xl mx-auto px-3 xs:px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
+      <div className="max-w-screen-2xl mx-auto px-3 xs:px-4 sm:px-3 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
 
         {/* Header — Modern with profile icon */}
         <header className="flex items-center justify-between mb-5 sm:mb-6 lg:mb-8">
