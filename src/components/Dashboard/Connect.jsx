@@ -1,4 +1,5 @@
 // Connect.jsx — Fixed mobile blank screen (removed backdrop-blur, fallback opacity, safer animations)
+// Updates: AnimatePresence mode="wait", simplified variants (no x-slide), forced GPU acceleration
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -10,9 +11,15 @@ import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tabVariants = {
-  initial: { opacity: 0, x: -15 },
-  animate: { opacity: 1, x: 0, transition: { duration: 0.3, ease: "easeOut" } },
-  exit: { opacity: 0, x: 15, transition: { duration: 0.2 } }
+  initial: { opacity: 0 },
+  animate: { 
+    opacity: 1, 
+    transition: { duration: 0.4, ease: "easeOut" } 
+  },
+  exit: { 
+    opacity: 0, 
+    transition: { duration: 0.22 } 
+  }
 };
 
 const emptyStateVariants = {
@@ -383,7 +390,7 @@ function Connect() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-hidden">
       <div className="w-full max-w-screen-xl mx-auto px-3 xs:px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
 
         <header className="flex items-center justify-between mb-5 sm:mb-6 lg:mb-8">
@@ -428,7 +435,7 @@ function Connect() {
           ))}
         </div>
 
-        <AnimatePresence mode="sync">  {/* Changed from "wait" → safer on mobile */}
+        <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
             variants={tabVariants}
@@ -436,9 +443,15 @@ function Connect() {
             animate="animate"
             exit="exit"
             className="space-y-4 sm:space-y-5 lg:space-y-6"
+            style={{
+              willChange: 'opacity',
+              transform: 'translateZ(0)',
+              WebkitTransform: 'translateZ(0)',
+            }}
           >
             {activeTab === 'feed' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                {/* ... feed content remains unchanged ... */}
                 <div className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-slate-200/30 dark:border-slate-700/30">
                   <textarea
                     value={newPost}
@@ -510,6 +523,7 @@ function Connect() {
                       transition={{ duration: 0.3 }}
                       className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 space-y-3 sm:space-y-4 border border-slate-200/30 dark:border-slate-700/30"
                     >
+                      {/* ... rest of post rendering unchanged ... */}
                       <div className="flex items-center gap-2.5 sm:gap-3 lg:gap-4">
                         <div className="w-9 h-9 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base sm:text-lg flex-shrink-0">
                           {post.user?.name?.[0] || '?'}
@@ -591,6 +605,7 @@ function Connect() {
 
             {activeTab === 'network' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                {/* ... network tab content remains unchanged ... */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                   <input
@@ -685,6 +700,7 @@ function Connect() {
 
             {activeTab === 'messages' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                {/* ... messages tab content remains unchanged ... */}
                 {selectedChat ? (
                   <div className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-slate-200/30 dark:border-slate-700/30">
                     <div className="flex items-center gap-3 mb-4 border-b border-slate-200/30 dark:border-slate-700/30 pb-3">
@@ -785,6 +801,7 @@ function Connect() {
 
             {activeTab === 'notifications' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                {/* ... notifications tab content remains unchanged ... */}
                 {notifications.length === 0 ? (
                   <motion.div 
                     variants={emptyStateVariants}
