@@ -1,4 +1,4 @@
-// Connect.jsx — Fixed mobile blank screen (removed backdrop-blur, fallback opacity, safer animations)
+// Connect.jsx — Enhanced with better UI/UX, trends, and full social features including chat
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -38,7 +38,6 @@ function Connect() {
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
-  const [userData, setUserData] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [connections, setConnections] = useState([]);
   const [messages, setMessages] = useState({});
@@ -74,9 +73,9 @@ function Connect() {
         localStorage.setItem('userProfile', JSON.stringify(defaultUser));
         profile = JSON.stringify(defaultUser);
       }
-      const parsedProfile = JSON.parse(profile);
-      setCurrentUser(parsedProfile);
+      setCurrentUser(JSON.parse(profile));
 
+      // Initialize dummy users if not present
       let storedUsers = localStorage.getItem('connectUsers');
       if (!storedUsers) {
         const dummyUsers = [
@@ -88,22 +87,11 @@ function Connect() {
         localStorage.setItem('connectUsers', JSON.stringify(dummyUsers));
         storedUsers = JSON.stringify(dummyUsers);
       }
-      const parsedUsers = JSON.parse(storedUsers);
-      setUsers(parsedUsers);
-
-      let storedUserData = JSON.parse(localStorage.getItem('connectUserData') || '{}');
-      parsedUsers.forEach(u => {
-        if (!storedUserData[u.id]) {
-          storedUserData[u.id] = { connections: [], notifications: [] };
-        }
-      });
-      if (!storedUserData[parsedProfile.id]) {
-        storedUserData[parsedProfile.id] = { connections: [], notifications: [] };
-      }
-      setUserData(storedUserData);
-      localStorage.setItem('connectUserData', JSON.stringify(storedUserData));
+      setUsers(JSON.parse(storedUsers));
 
       setPosts(JSON.parse(localStorage.getItem('connectPosts') || '[]'));
+      setNotifications(JSON.parse(localStorage.getItem('connectNotifications') || '[]'));
+      setConnections(JSON.parse(localStorage.getItem('connectConnections') || '[]'));
       setMessages(JSON.parse(localStorage.getItem('connectMessages') || '{}'));
 
       setIsLoading(false);
@@ -112,80 +100,25 @@ function Connect() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (currentUser && userData[currentUser.id]) {
-      setConnections(userData[currentUser.id].connections || []);
-      setNotifications(userData[currentUser.id].notifications || []);
-    }
-  }, [userData, currentUser]);
-
-  useEffect(() => {
-    if (currentUser && notifications.length === 0) {
-      const alice = users.find(u => u.name === 'Alice Johnson');
-      if (alice && !connections.includes(alice.id)) {
-        addNotification({
-          title: 'Connection Request',
-          message: `${alice.name} wants to connect with you.`,
-          type: 'connection_request',
-          from: alice.id,
-          to: currentUser.id
-        });
-        addNotification({
-          title: 'Connection request sent',
-          message: `To ${currentUser.name}`,
-          type: 'request_sent',
-          to: alice.id,
-          extra: { to: currentUser.id }
-        });
-      }
-    }
-  }, [notifications, connections, currentUser, users]);
-
-  useEffect(() => {
-    localStorage.setItem('connectUserData', JSON.stringify(userData));
-  }, [userData]);
-
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  const addNotification = (options) => {
-    const { title, message, type = 'general', from = null, to = currentUser.id, extra = {} } = options;
+  const addNotification = (title, message) => {
     const notif = { 
       id: Date.now(), 
       title, 
       message, 
-      type, 
-      from, 
-      extra, 
       timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
     };
-    setUserData(prev => {
-      const newData = { ...prev };
-      newData[to] = newData[to] || { connections: [], notifications: [] };
-      newData[to].notifications = [...(newData[to].notifications || []), notif];
-      return newData;
-    });
-    if (to === currentUser.id) {
-      toast.info(`${title}: ${message}`);
-    }
+    const updated = [notif, ...notifications];
+    setNotifications(updated);
+    localStorage.setItem('connectNotifications', JSON.stringify(updated));
+    toast.info(`${title}: ${message}`);
   };
 
-  const removeNotification = (id, userId = currentUser.id) => {
-    setUserData(prev => {
-      const newData = { ...prev };
-      if (newData[userId]) {
-        newData[userId].notifications = newData[userId].notifications.filter(n => n.id !== id);
-      }
-      return newData;
-    });
-  };
-
-  const updateUserConnections = (userId, newConns) => {
-    setUserData(prev => {
-      const newData = { ...prev };
-      newData[userId] = newData[userId] || { connections: [], notifications: [] };
-      newData[userId].connections = newConns;
-      return newData;
-    });
+  const removeNotification = (id) => {
+    const updated = notifications.filter(n => n.id !== id);
+    setNotifications(updated);
+    localStorage.setItem('connectNotifications', JSON.stringify(updated));
   };
 
   const handleNewPost = () => {
@@ -197,7 +130,7 @@ function Connect() {
       content: newPost,
       media: mediaPreview,
       mediaType,
-      likes: [],
+      likes: 0,
       comments: [],
       timestamp: new Date().toLocaleString(),
     };
@@ -210,36 +143,31 @@ function Connect() {
     setMediaType(null);
     toast.success('Posted!');
 
-    connections.forEach(conn => addNotification({ title: 'New Post', message: `${currentUser.name} shared a new post.`, to: conn }));
+    // Notify connections (simulated)
+    connections.forEach(conn => addNotification('New Post', `${currentUser.name} shared a new post.`));
   };
 
   const handleLike = (postId) => {
-    const updated = posts.map(p => {
-      if (p.id === postId) {
-        let likes = [...p.likes];
-        if (likes.includes(currentUser.id)) {
-          likes = likes.filter(id => id !== currentUser.id);
-        } else {
-          likes.push(currentUser.id);
-          if (p.user.id !== currentUser.id) {
-            addNotification({ title: 'Like', message: `${currentUser.name} liked your post.`, to: p.user.id });
-          }
-        }
-        return { ...p, likes };
-      }
-      return p;
-    });
+    const updated = posts.map(p => 
+      p.id === postId ? { ...p, likes: p.likes + 1 } : p
+    );
     setPosts(updated);
     localStorage.setItem('connectPosts', JSON.stringify(updated));
+
+    // Add notification to post owner if not self
+    const post = posts.find(p => p.id === postId);
+    if (post.user.id !== currentUser.id) {
+      addNotification('Like', `${currentUser.name} liked your post.`);
+    }
   };
 
   const handleComment = (postId) => {
-    const content = commentInputs[postId]?.trim();
-    if (!content) return toast.error('Comment cannot be empty');
+    const comment = commentInputs[postId]?.trim();
+    if (!comment) return toast.error('Comment cannot be empty');
 
     const updated = posts.map(p => 
       p.id === postId 
-        ? { ...p, comments: [...p.comments, { id: Date.now(), userId: currentUser.id, name: currentUser.name, content }] } 
+        ? { ...p, comments: [...p.comments, { user: currentUser.name, content: comment }] } 
         : p
     );
     setPosts(updated);
@@ -247,21 +175,11 @@ function Connect() {
     setCommentInputs(prev => ({ ...prev, [postId]: '' }));
     toast.success('Comment added');
 
+    // Add notification to post owner if not self
     const post = posts.find(p => p.id === postId);
     if (post.user.id !== currentUser.id) {
-      addNotification({ title: 'Comment', message: `${currentUser.name} commented on your post.`, to: post.user.id });
+      addNotification('Comment', `${currentUser.name} commented on your post.`);
     }
-  };
-
-  const handleDeleteComment = (postId, commentId) => {
-    const updated = posts.map(p => 
-      p.id === postId 
-        ? { ...p, comments: p.comments.filter(c => c.id !== commentId) } 
-        : p
-    );
-    setPosts(updated);
-    localStorage.setItem('connectPosts', JSON.stringify(updated));
-    toast.success('Comment deleted');
   };
 
   const handleMediaUpload = (e) => {
@@ -276,69 +194,16 @@ function Connect() {
     }
   };
 
-  const sendConnectionRequest = (userId) => {
+  const handleConnect = (userId) => {
     if (connections.includes(userId)) return toast.error('Already connected');
-    if (notifications.some(n => n.type === 'request_sent' && n.extra.to === userId)) return toast.error('Request pending');
+    
+    const updated = [...connections, userId];
+    setConnections(updated);
+    localStorage.setItem('connectConnections', JSON.stringify(updated));
+    toast.success('Connection added!');
 
-    addNotification({
-      title: 'Connection Request',
-      message: `${currentUser.name} wants to connect with you.`,
-      type: 'connection_request',
-      from: currentUser.id,
-      to: userId
-    });
-    addNotification({
-      title: 'Connection request sent',
-      message: `To ${users.find(u => u.id === userId).name}`,
-      type: 'request_sent',
-      extra: { to: userId }
-    });
-    toast.success('Request sent!');
-  };
-
-  const handleCancelRequest = (to, notifId) => {
-    removeNotification(notifId);
-    const recipNotifs = userData[to]?.notifications || [];
-    const reqNotif = recipNotifs.find(n => n.type === 'connection_request' && n.from === currentUser.id);
-    if (reqNotif) {
-      removeNotification(reqNotif.id, to);
-    }
-    toast.info('Request cancelled');
-  };
-
-  const handleAcceptConnection = (from, notifId) => {
-    if (connections.includes(from)) return;
-    updateUserConnections(currentUser.id, [...connections, from]);
-    updateUserConnections(from, [...(userData[from]?.connections || []), currentUser.id]);
-    addNotification({
-      title: 'Connection Accepted',
-      message: `${currentUser.name} accepted your connection request.`,
-      type: 'connection_accepted',
-      to: from
-    });
-    const senderNotifs = userData[from]?.notifications || [];
-    const sentNotif = senderNotifs.find(n => n.type === 'request_sent' && n.extra.to === currentUser.id);
-    if (sentNotif) {
-      removeNotification(sentNotif.id, from);
-    }
-    removeNotification(notifId);
-    toast.success('Connection accepted!');
-  };
-
-  const handleRejectConnection = (from, notifId) => {
-    addNotification({
-      title: 'Connection Rejected',
-      message: `${currentUser.name} rejected your connection request.`,
-      type: 'connection_rejected',
-      to: from
-    });
-    const senderNotifs = userData[from]?.notifications || [];
-    const sentNotif = senderNotifs.find(n => n.type === 'request_sent' && n.extra.to === currentUser.id);
-    if (sentNotif) {
-      removeNotification(sentNotif.id, from);
-    }
-    removeNotification(notifId);
-    toast.info('Connection rejected');
+    // Simulate mutual connection and notification
+    addNotification('New Connection', `You are now connected with ${users.find(u => u.id === userId).name}`);
   };
 
   const getChatId = (userId1, userId2) => {
@@ -366,15 +231,17 @@ function Connect() {
     localStorage.setItem('connectMessages', JSON.stringify(updatedMessages));
     setNewMessage('');
 
-    addNotification({ title: 'New Message', message: `${currentUser.name} sent you a message.`, to: selectedChat });
+    // Add notification to recipient
+    addNotification('New Message', `${currentUser.name} sent you a message.`);
   };
 
   const filteredUsers = users.filter(u => 
-    u.id !== currentUser?.id && 
-    u.name.toLowerCase().includes(networkSearch.toLowerCase())
+    u.id !== currentUser.id && 
+    u.name.toLowerCase().includes(networkSearch.toLowerCase()) &&
+    !connections.includes(u.id)
   );
 
-  if (isLoading || !currentUser) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950">
         <Loader2 className="w-10 h-10 text-indigo-600 dark:text-indigo-400 animate-spin" />
@@ -384,8 +251,9 @@ function Connect() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      <div className="w-full max-w-screen-xl mx-auto px-3 xs:px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
+      <div className="max-w-screen-2xl mx-auto px-3 xs:px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
 
+        {/* Header — Modern with profile icon */}
         <header className="flex items-center justify-between mb-5 sm:mb-6 lg:mb-8">
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">
             Connect
@@ -411,6 +279,7 @@ function Connect() {
           </div>
         </header>
 
+        {/* Tabs — Smooth scroll, trendy pill design */}
         <div className="flex overflow-x-auto pb-3 sm:pb-4 gap-1.5 sm:gap-2 lg:gap-3 border-b border-slate-200 dark:border-slate-700 mb-5 sm:mb-6 lg:mb-7 scrollbar-thin scrollbar-thumb-rounded-full scrollbar-track-rounded-full scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-slate-100 dark:scrollbar-track-slate-800">
           {['feed', 'network', 'messages', 'notifications'].map(tab => (
             <motion.button
@@ -428,7 +297,7 @@ function Connect() {
           ))}
         </div>
 
-        <AnimatePresence mode="sync">  {/* Changed from "wait" → safer on mobile */}
+        <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
             variants={tabVariants}
@@ -439,20 +308,29 @@ function Connect() {
           >
             {activeTab === 'feed' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
-                <div className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-slate-200/30 dark:border-slate-700/30">
+                {/* New Post — Glassmorphism effect for trendiness */}
+                <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-white/20 dark:border-slate-700/20">
                   <textarea
                     value={newPost}
                     onChange={(e) => setNewPost(e.target.value)}
                     placeholder={`What's on your mind, ${currentUser.name}?`}
-                    className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[70px] sm:min-h-[90px] lg:min-h-[110px] resize-none text-sm sm:text-base"
+                    className="w-full p-3 sm:p-4 bg-slate-50/50 dark:bg-slate-700/50 rounded-xl border border-slate-200/50 dark:border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[70px] sm:min-h-[90px] lg:min-h-[110px] resize-none text-sm sm:text-base backdrop-blur-sm"
                   />
 
                   {mediaPreview && (
-                    <div className="mt-3 rounded-xl overflow-hidden max-h-[220px] xs:max-h-[260px] sm:max-h-[340px] lg:max-h-[420px] relative max-w-full mx-auto bg-black/5">
+                    <div className="mt-3 rounded-xl overflow-hidden max-h-[220px] xs:max-h-[260px] sm:max-h-[340px] lg:max-h-[420px] relative">
                       {mediaType === 'video' ? (
-                        <video src={mediaPreview} controls className="w-full h-auto object-contain" />
+                        <video 
+                          src={mediaPreview} 
+                          controls 
+                          className="w-full h-auto max-h-inherit object-contain bg-black/10" 
+                        />
                       ) : (
-                        <img src={mediaPreview} alt="preview" className="w-full h-auto object-contain" />
+                        <img 
+                          src={mediaPreview} 
+                          alt="preview" 
+                          className="w-full h-auto max-h-inherit object-contain" 
+                        />
                       )}
                       <button
                         onClick={() => { setMediaPreview(null); setMediaType(null); }}
@@ -486,15 +364,16 @@ function Connect() {
                   </div>
                 </div>
 
+                {/* Posts or Empty State — Added subtle animation */}
                 {posts.length === 0 ? (
                   <motion.div 
                     variants={emptyStateVariants}
                     initial="initial"
                     animate={["animate", "float"]}
-                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-2xl shadow-lg"
                   >
-                    <MessageCircle className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
-                    <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                    <MessageCircle className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-300 dark:text-slate-600 mb-4 sm:mb-5 lg:mb-6" />
+                    <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-600 dark:text-slate-300 mb-2">
                       No posts yet
                     </h3>
                     <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
@@ -508,7 +387,7 @@ function Connect() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 space-y-3 sm:space-y-4 border border-slate-200/30 dark:border-slate-700/30"
+                      className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 space-y-3 sm:space-y-4 border border-white/20 dark:border-slate-700/20"
                     >
                       <div className="flex items-center gap-2.5 sm:gap-3 lg:gap-4">
                         <div className="w-9 h-9 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base sm:text-lg flex-shrink-0">
@@ -523,7 +402,7 @@ function Connect() {
                       <p className="text-sm sm:text-base lg:text-[17px] leading-relaxed whitespace-pre-wrap">{post.content}</p>
 
                       {post.media && (
-                        <div className="rounded-xl overflow-hidden max-h-[240px] xs:max-h-[280px] sm:max-h-[360px] lg:max-h-[480px] bg-black/5 max-w-full mx-auto">
+                        <div className="rounded-xl overflow-hidden max-h-[240px] xs:max-h-[280px] sm:max-h-[360px] lg:max-h-[480px] bg-black/10">
                           {post.mediaType === 'video' ? (
                             <video src={post.media} controls className="w-full h-auto object-contain" />
                           ) : (
@@ -535,35 +414,26 @@ function Connect() {
                       <div className="flex gap-5 sm:gap-7 lg:gap-8 text-slate-600 dark:text-slate-400 pt-1">
                         <button 
                           onClick={() => handleLike(post.id)}
-                          className="flex items-center gap-1.5 hover:text-red-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30"
+                          className="flex items-center gap-1.5 hover:text-red-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20"
                         >
                           <Heart 
                             size={20} 
-                            className={post.likes.includes(currentUser.id) ? "fill-red-500 text-red-500" : ""}
+                            className={post.likes > 0 ? "fill-red-500 text-red-500" : ""}
                           />
-                          <span className="text-sm">{post.likes.length}</span>
+                          <span className="text-sm">{post.likes}</span>
                         </button>
-                        <button className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/30">
+                        <button className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/20">
                           <MessageSquare size={20} />
                           <span className="text-sm">{post.comments?.length || 0}</span>
                         </button>
                       </div>
 
+                      {/* Comments Section — Expandable for better UX */}
                       {post.comments?.length > 0 && (
-                        <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                          {post.comments.map((comment) => (
-                            <div key={comment.id} className="text-sm text-slate-700 dark:text-slate-300 flex justify-between items-start">
-                              <div>
-                                <span className="font-semibold">{comment.name}:</span> {comment.content}
-                              </div>
-                              {comment.userId === currentUser.id && (
-                                <button
-                                  onClick={() => handleDeleteComment(post.id, comment.id)}
-                                  className="text-red-500 hover:text-red-700 p-1 -m-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
+                        <div className="space-y-2 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                          {post.comments.map((comment, idx) => (
+                            <div key={idx} className="text-sm text-slate-700 dark:text-slate-300">
+                              <span className="font-semibold">{comment.user}:</span> {comment.content}
                             </div>
                           ))}
                         </div>
@@ -574,7 +444,7 @@ function Connect() {
                           value={commentInputs[post.id] || ''}
                           onChange={e => setCommentInputs({...commentInputs, [post.id]: e.target.value})}
                           placeholder="Add a comment..."
-                          className="flex-1 p-2.5 sm:p-3 text-sm sm:text-base bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl xs:rounded-l-xl xs:rounded-r-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="flex-1 p-2.5 sm:p-3 text-sm sm:text-base bg-slate-50/50 dark:bg-slate-700/50 border border-slate-200/50 dark:border-slate-600/50 rounded-xl xs:rounded-l-xl xs:rounded-r-none focus:outline-none focus:ring-2 focus:ring-indigo-500 backdrop-blur-sm"
                         />
                         <button
                           onClick={() => handleComment(post.id)}
@@ -591,71 +461,56 @@ function Connect() {
 
             {activeTab === 'network' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                {/* Search Bar — Modern with icon */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                   <input
                     value={networkSearch}
                     onChange={e => setNetworkSearch(e.target.value)}
                     placeholder="Search for people to connect..."
-                    className="w-full pl-10 pr-4 py-3 sm:py-4 bg-white/85 dark:bg-slate-800/85 rounded-xl border border-slate-200/30 dark:border-slate-700/30 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base shadow-sm"
+                    className="w-full pl-10 pr-4 py-3 sm:py-4 bg-white/70 dark:bg-slate-800/70 rounded-xl border border-slate-200/50 dark:border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base backdrop-blur-sm shadow-sm"
                   />
                 </div>
 
+                {/* Connections List or Empty */}
                 {filteredUsers.length === 0 ? (
                   <motion.div 
                     variants={emptyStateVariants}
                     initial="initial"
                     animate={["animate", "float"]}
-                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-2xl shadow-lg"
                   >
-                    <Users className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                    <Users className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-300 dark:text-slate-600 mb-4 sm:mb-5 lg:mb-6" />
                     <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3">No suggestions</h3>
                     <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                       Try searching for names or expand your network!
                     </p>
                   </motion.div>
                 ) : (
-                  filteredUsers.map(user => {
-                    const isConnected = connections.includes(user.id);
-                    const pendingNotif = notifications.find(n => n.type === 'request_sent' && n.extra.to === user.id);
-                    const isPending = !!pendingNotif;
-                    return (
-                      <motion.div
-                        key={user.id}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-white/85 dark:bg-slate-800/85 rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between border border-slate-200/30 dark:border-slate-700/30"
-                      >
-                        <div className="flex items-center gap-3 sm:gap-4">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                            {user.name[0]}
-                          </div>
-                          <p className="font-semibold text-sm sm:text-base">{user.name}</p>
+                  filteredUsers.map(user => (
+                    <motion.div
+                      key={user.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                          {user.name[0]}
                         </div>
-                        {isConnected ? (
-                          <span className="px-4 py-2 bg-green-600 text-white rounded-full font-medium text-sm shadow-md">
-                            Connected
-                          </span>
-                        ) : isPending ? (
-                          <button
-                            onClick={() => handleCancelRequest(user.id, pendingNotif.id)}
-                            className="px-4 py-2 bg-gray-600 text-white rounded-full hover:bg-gray-700 flex items-center gap-2 text-sm shadow-md"
-                          >
-                            Cancel
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => sendConnectionRequest(user.id)}
-                            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 text-sm shadow-md"
-                          >
-                            <UserPlus size={16} /> Connect
-                          </button>
-                        )}
-                      </motion.div>
-                    );
-                  })
+                        <p className="font-semibold text-sm sm:text-base">{user.name}</p>
+                      </div>
+                      <button
+                        onClick={() => handleConnect(user.id)}
+                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 text-sm shadow-md"
+                      >
+                        <UserPlus size={16} /> Connect
+                      </button>
+                    </motion.div>
+                  ))
                 )}
 
+                {/* Your Connections Section */}
                 {connections.length > 0 && (
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold mb-3">Your Connections</h3>
@@ -663,17 +518,11 @@ function Connect() {
                       {connections.map(connId => {
                         const user = users.find(u => u.id === connId);
                         return (
-                          <div key={connId} className="flex items-center gap-3 sm:gap-4 bg-white/80 dark:bg-slate-800/80 rounded-xl p-3 shadow-sm border border-slate-200/20 dark:border-slate-700/20">
+                          <div key={connId} className="flex items-center gap-3 sm:gap-4 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-xl p-3 shadow-sm">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
                               {user?.name[0]}
                             </div>
-                            <p className="font-medium text-sm sm:text-base flex-1">{user?.name}</p>
-                            <button
-                              onClick={() => { setSelectedChat(connId); setActiveTab('messages'); }}
-                              className="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm"
-                            >
-                              Message
-                            </button>
+                            <p className="font-medium text-sm sm:text-base">{user?.name}</p>
                           </div>
                         );
                       })}
@@ -686,8 +535,9 @@ function Connect() {
             {activeTab === 'messages' && (
               <div className="space-y-4 sm:space-y-5 lg:space-y-6">
                 {selectedChat ? (
-                  <div className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-slate-200/30 dark:border-slate-700/30">
-                    <div className="flex items-center gap-3 mb-4 border-b border-slate-200/30 dark:border-slate-700/30 pb-3">
+                  <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6">
+                    {/* Chat Header */}
+                    <div className="flex items-center gap-3 mb-4 border-b border-slate-200/50 dark:border-slate-700/50 pb-3">
                       <button onClick={() => setSelectedChat(null)} className="text-slate-600 dark:text-slate-400">
                         <ChevronLeft size={24} />
                       </button>
@@ -699,6 +549,7 @@ function Connect() {
                       </p>
                     </div>
 
+                    {/* Messages */}
                     <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-rounded-full scrollbar-track-rounded-full scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-slate-100 dark:scrollbar-track-slate-800">
                       <AnimatePresence>
                         {(messages[getChatId(currentUser.id, selectedChat)] || []).map(msg => (
@@ -722,12 +573,13 @@ function Connect() {
                       </AnimatePresence>
                     </div>
 
+                    {/* Message Input */}
                     <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200/50 dark:border-slate-700/50">
                       <input
                         value={newMessage}
                         onChange={e => setNewMessage(e.target.value)}
                         placeholder="Type a message..."
-                        className="flex-1 p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base"
+                        className="flex-1 p-3 bg-slate-50/50 dark:bg-slate-700/50 rounded-xl border border-slate-200/50 dark:border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base backdrop-blur-sm"
                       />
                       <button
                         onClick={handleSendMessage}
@@ -739,14 +591,15 @@ function Connect() {
                   </div>
                 ) : (
                   <div>
+                    {/* Chat List or Empty */}
                     {connections.length === 0 ? (
                       <motion.div 
                         variants={emptyStateVariants}
                         initial="initial"
                         animate={["animate", "float"]}
-                        className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                        className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-2xl shadow-lg"
                       >
-                        <MessageCircle className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                        <MessageCircle className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-300 dark:text-slate-600 mb-4 sm:mb-5 lg:mb-6" />
                         <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3">No chats yet</h3>
                         <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                           Connect with people in the Network tab to start chatting!
@@ -762,7 +615,7 @@ function Connect() {
                             key={connId}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => setSelectedChat(connId)}
-                            className="bg-white/85 dark:bg-slate-800/85 rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:shadow-xl transition-shadow border border-slate-200/30 dark:border-slate-700/30"
+                            className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:shadow-xl transition-shadow"
                           >
                             <div className="flex items-center gap-3 sm:gap-4">
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
@@ -790,9 +643,9 @@ function Connect() {
                     variants={emptyStateVariants}
                     initial="initial"
                     animate={["animate", "float"]}
-                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-2xl shadow-lg"
                   >
-                    <Bell className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                    <Bell className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-300 dark:text-slate-600 mb-4 sm:mb-5 lg:mb-6" />
                     <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3">No notifications yet</h3>
                     <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                       Activity from your network will appear here.
@@ -804,40 +657,16 @@ function Connect() {
                       key={notif.id}
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-white/85 dark:bg-slate-800/85 rounded-2xl shadow-lg p-4 sm:p-5 flex items-start justify-between gap-4 border border-slate-200/30 dark:border-slate-700/30"
+                      className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-md rounded-2xl shadow-lg p-4 sm:p-5 flex items-start justify-between gap-4"
                     >
                       <div className="flex-1">
                         <p className="font-semibold text-sm sm:text-base">{notif.title}</p>
                         <p className="text-sm text-slate-600 dark:text-slate-300">{notif.message}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{notif.timestamp}</p>
-                        {notif.type === 'connection_request' && (
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              onClick={() => handleAcceptConnection(notif.from, notif.id)}
-                              className="px-3 py-1 bg-green-600 text-white rounded-full text-sm"
-                            >
-                              Accept
-                            </button>
-                            <button
-                              onClick={() => handleRejectConnection(notif.from, notif.id)}
-                              className="px-3 py-1 bg-red-600 text-white rounded-full text-sm"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        )}
-                        {notif.type === 'request_sent' && (
-                          <button
-                            onClick={() => handleCancelRequest(notif.extra.to, notif.id)}
-                            className="mt-2 px-3 py-1 bg-gray-600 text-white rounded-full text-sm"
-                          >
-                            Cancel Request
-                          </button>
-                        )}
                       </div>
                       <button
                         onClick={() => removeNotification(notif.id)}
-                        className="text-red-500 hover:text-red-700 p-1 -m-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition"
+                        className="text-red-500 hover:text-red-700 p-1 -m-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/20 transition"
                       >
                         <Trash2 size={18} />
                       </button>
