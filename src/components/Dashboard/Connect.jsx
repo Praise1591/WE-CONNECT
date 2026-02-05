@@ -1,612 +1,802 @@
-// ConnectV2-with-realtime-notifications.jsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+// Connect.jsx — Fixed mobile blank screen (removed backdrop-blur, fallback opacity, safer animations)
+
+import React, { useState, useEffect } from 'react';
 import { 
-  Search, Bell, MessageCircle, Heart, MessageSquare, Send,
-  Image as ImageIcon, Video as VideoIcon, X, Trash2, UserPlus,
-  Users, ChevronLeft, Loader2, Moon, Sun, Sparkles
+  Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
+  Image as ImageIcon, Video as VideoIcon, X, Trash2, UserPlus, 
+  Users, Bookmark, ChevronLeft, Loader2, Moon, Sun, UserCircle
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
-// ────────────────────────────────────────────────
-//   Tiny in-browser notification center (simulates real-time)
-const notificationCenter = {
-  listeners: new Set(),
-  subscribe(callback) {
-    this.listeners.add(callback);
-    return () => this.listeners.delete(callback);
+const tabVariants = {
+  initial: { opacity: 0, x: -15 },
+  animate: { opacity: 1, x: 0, transition: { duration: 0.3, ease: "easeOut" } },
+  exit: { opacity: 0, x: 15, transition: { duration: 0.2 } }
+};
+
+const emptyStateVariants = {
+  initial: { opacity: 0, scale: 0.94, y: 16 },
+  animate: { 
+    opacity: 1, 
+    scale: 1, 
+    y: 0,
+    transition: { duration: 0.5, ease: "easeOut" }
   },
-  publish(notification) {
-    this.listeners.forEach(cb => cb(notification));
+  float: {
+    y: [-5, 5, -5],
+    transition: { duration: 5, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }
   }
 };
 
-// ────────────────────────────────────────────────
-const spring = { type: 'spring', stiffness: 380, damping: 28 };
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 24, scale: 0.96 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { ...spring, duration: 0.55 } },
+const chatBubbleVariants = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.2 } }
 };
 
-function useNotifications() {
+function Connect() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [userData, setUserData] = useState({});
   const [notifications, setNotifications] = useState([]);
-
-  useEffect(() => {
-    const unsubscribe = notificationCenter.subscribe((notif) => {
-      setNotifications(prev => [{ ...notif, id: Date.now(), read: false, timestamp: Date.now() }, ...prev]);
-      if (notif.important) {
-        toast(notif.message, { type: notif.type || 'info' });
-      }
-    });
-    return unsubscribe;
-  }, []);
-
-  const markAsRead = useCallback((id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-  }, []);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  return { notifications, unreadCount, markAsRead };
-}
-
-// ────────────────────────────────────────────────
-function ConnectV2() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 
-    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-
-  const [currentUser] = useState(() => {
-    const saved = localStorage.getItem('userProfile');
-    if (saved) return JSON.parse(saved);
-    const user = { id: 'u_' + Date.now(), name: 'Praise', avatar: null };
-    localStorage.setItem('userProfile', JSON.stringify(user));
-    return user;
-  });
-
+  const [connections, setConnections] = useState([]);
+  const [messages, setMessages] = useState({});
   const [activeTab, setActiveTab] = useState('feed');
-  const [posts, setPosts] = useState(() => JSON.parse(localStorage.getItem('posts') || '[]'));
-  const [connections, setConnections] = useState(() => JSON.parse(localStorage.getItem('connections') || []));
-  const [messages, setMessages] = useState(() => JSON.parse(localStorage.getItem('messages') || '{}'));
-  const [selectedChat, setSelectedChat] = useState(null);
-
-  const { notifications, unreadCount, markAsRead } = useNotifications();
-
-  // UI states
+  const [networkSearch, setNetworkSearch] = useState('');
   const [newPost, setNewPost] = useState('');
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
-  const [networkSearch, setNetworkSearch] = useState('');
-  const [newMessage, setNewMessage] = useState('');
   const [commentInputs, setCommentInputs] = useState({});
-
-  const isDark = theme === 'dark';
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('theme') === 'dark' || 
+           (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-    localStorage.setItem('theme', theme);
-  }, [isDark, theme]);
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
 
-  // Persist important data
-  useEffect(() => { localStorage.setItem('posts', JSON.stringify(posts)); }, [posts]);
-  useEffect(() => { localStorage.setItem('connections', JSON.stringify(connections)); }, [connections]);
-  useEffect(() => { localStorage.setItem('messages', JSON.stringify(messages)); }, [messages]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      let profile = localStorage.getItem('userProfile');
+      if (!profile) {
+        const defaultUser = { id: Date.now(), name: 'Praise' };
+        localStorage.setItem('userProfile', JSON.stringify(defaultUser));
+        profile = JSON.stringify(defaultUser);
+      }
+      const parsedProfile = JSON.parse(profile);
+      setCurrentUser(parsedProfile);
 
-  const dummyUsers = useMemo(() => [
-    { id: 'u1', name: 'Aisha Bello' },
-    { id: 'u2', name: 'Tunde Ade' },
-    { id: 'u3', name: 'Ngozi Okeke' },
-    { id: 'u4', name: 'Emeka Nwosu' },
-  ], []);
+      let storedUsers = localStorage.getItem('connectUsers');
+      if (!storedUsers) {
+        const dummyUsers = [
+          { id: 1, name: 'Alice Johnson', profilePic: null },
+          { id: 2, name: 'Bob Smith', profilePic: null },
+          { id: 3, name: 'Charlie Davis', profilePic: null },
+          { id: 4, name: 'Dana Evans', profilePic: null },
+        ];
+        localStorage.setItem('connectUsers', JSON.stringify(dummyUsers));
+        storedUsers = JSON.stringify(dummyUsers);
+      }
+      const parsedUsers = JSON.parse(storedUsers);
+      setUsers(parsedUsers);
 
-  // ─── Notification helpers ───────────────────────────────────────
-  const notify = useCallback((data) => {
-    notificationCenter.publish({
-      ...data,
-      important: data.important !== false,
-      type: data.type || 'info'
-    });
+      let storedUserData = JSON.parse(localStorage.getItem('connectUserData') || '{}');
+      parsedUsers.forEach(u => {
+        if (!storedUserData[u.id]) {
+          storedUserData[u.id] = { connections: [], notifications: [] };
+        }
+      });
+      if (!storedUserData[parsedProfile.id]) {
+        storedUserData[parsedProfile.id] = { connections: [], notifications: [] };
+      }
+      setUserData(storedUserData);
+      localStorage.setItem('connectUserData', JSON.stringify(storedUserData));
+
+      setPosts(JSON.parse(localStorage.getItem('connectPosts') || '[]'));
+      setMessages(JSON.parse(localStorage.getItem('connectMessages') || '{}'));
+
+      setIsLoading(false);
+    }, 700);
+
+    return () => clearTimeout(timer);
   }, []);
 
-  const notifyNewPost = useCallback((post) => {
-    connections.forEach(connId => {
-      if (connId !== currentUser.id) {
-        notify({
-          message: `${currentUser.name} posted: "${post.content.slice(0, 40)}${post.content.length > 40 ? '...' : ''}"`,
-          from: currentUser.id,
-          important: true,
-          type: 'post'
+  useEffect(() => {
+    if (currentUser && userData[currentUser.id]) {
+      setConnections(userData[currentUser.id].connections || []);
+      setNotifications(userData[currentUser.id].notifications || []);
+    }
+  }, [userData, currentUser]);
+
+  useEffect(() => {
+    if (currentUser && notifications.length === 0) {
+      const alice = users.find(u => u.name === 'Alice Johnson');
+      if (alice && !connections.includes(alice.id)) {
+        addNotification({
+          title: 'Connection Request',
+          message: `${alice.name} wants to connect with you.`,
+          type: 'connection_request',
+          from: alice.id,
+          to: currentUser.id
+        });
+        addNotification({
+          title: 'Connection request sent',
+          message: `To ${currentUser.name}`,
+          type: 'request_sent',
+          to: alice.id,
+          extra: { to: currentUser.id }
         });
       }
-    });
-  }, [connections, currentUser, notify]);
-
-  const notifyLike = useCallback((post) => {
-    if (post.user.id !== currentUser.id) {
-      notify({
-        message: `${currentUser.name} liked your post`,
-        from: currentUser.id,
-        important: true,
-        type: 'like'
-      });
     }
-  }, [currentUser, notify]);
+  }, [notifications, connections, currentUser, users]);
 
-  const notifyComment = useCallback((post) => {
-    if (post.user.id !== currentUser.id) {
-      notify({
-        message: `${currentUser.name} commented on your post`,
-        from: currentUser.id,
-        important: true,
-        type: 'comment'
-      });
-    }
-  }, [currentUser, notify]);
+  useEffect(() => {
+    localStorage.setItem('connectUserData', JSON.stringify(userData));
+  }, [userData]);
 
-  const notifyNewMessage = useCallback((toUserId, content) => {
-    notify({
-      message: `New message from ${currentUser.name}: ${content.slice(0, 30)}${content.length > 30 ? '...' : ''}`,
-      from: currentUser.id,
-      to: toUserId,
-      important: true,
-      type: 'message'
+  const toggleDarkMode = () => setIsDarkMode(prev => !prev);
+
+  const addNotification = (options) => {
+    const { title, message, type = 'general', from = null, to = currentUser.id, extra = {} } = options;
+    const notif = { 
+      id: Date.now(), 
+      title, 
+      message, 
+      type, 
+      from, 
+      extra, 
+      timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+    };
+    setUserData(prev => {
+      const newData = { ...prev };
+      newData[to] = newData[to] || { connections: [], notifications: [] };
+      newData[to].notifications = [...(newData[to].notifications || []), notif];
+      return newData;
     });
-  }, [currentUser, notify]);
+    if (to === currentUser.id) {
+      toast.info(`${title}: ${message}`);
+    }
+  };
 
-  // ─── Actions ────────────────────────────────────────────────────
+  const removeNotification = (id, userId = currentUser.id) => {
+    setUserData(prev => {
+      const newData = { ...prev };
+      if (newData[userId]) {
+        newData[userId].notifications = newData[userId].notifications.filter(n => n.id !== id);
+      }
+      return newData;
+    });
+  };
+
+  const updateUserConnections = (userId, newConns) => {
+    setUserData(prev => {
+      const newData = { ...prev };
+      newData[userId] = newData[userId] || { connections: [], notifications: [] };
+      newData[userId].connections = newConns;
+      return newData;
+    });
+  };
+
   const handleNewPost = () => {
-    if (!newPost.trim() && !mediaPreview) return toast.error("Nothing to share");
-
+    if (!newPost.trim()) return toast.error('Post cannot be empty');
+    
     const post = {
-      id: 'p_' + Date.now(),
-      user: currentUser,
+      id: Date.now(),
+      user: { ...currentUser },
       content: newPost,
       media: mediaPreview,
       mediaType,
       likes: [],
       comments: [],
-      timestamp: new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }),
+      timestamp: new Date().toLocaleString(),
     };
 
-    setPosts(prev => [post, ...prev]);
+    const updated = [post, ...posts];
+    setPosts(updated);
+    localStorage.setItem('connectPosts', JSON.stringify(updated));
     setNewPost('');
     setMediaPreview(null);
     setMediaType(null);
+    toast.success('Posted!');
 
-    notifyNewPost(post);
-    toast.success('Posted ✨');
+    connections.forEach(conn => addNotification({ title: 'New Post', message: `${currentUser.name} shared a new post.`, to: conn }));
   };
 
-  const toggleLike = (postId) => {
-    setPosts(prev => prev.map(p => {
-      if (p.id !== postId) return p;
-      const liked = p.likes.includes(currentUser.id);
-      const newLikes = liked 
-        ? p.likes.filter(id => id !== currentUser.id)
-        : [...p.likes, currentUser.id];
-
-      if (!liked) notifyLike(p);
-
-      return { ...p, likes: newLikes };
-    }));
+  const handleLike = (postId) => {
+    const updated = posts.map(p => {
+      if (p.id === postId) {
+        let likes = [...p.likes];
+        if (likes.includes(currentUser.id)) {
+          likes = likes.filter(id => id !== currentUser.id);
+        } else {
+          likes.push(currentUser.id);
+          if (p.user.id !== currentUser.id) {
+            addNotification({ title: 'Like', message: `${currentUser.name} liked your post.`, to: p.user.id });
+          }
+        }
+        return { ...p, likes };
+      }
+      return p;
+    });
+    setPosts(updated);
+    localStorage.setItem('connectPosts', JSON.stringify(updated));
   };
 
-  const addComment = (postId) => {
-    const text = commentInputs[postId]?.trim();
-    if (!text) return;
+  const handleComment = (postId) => {
+    const content = commentInputs[postId]?.trim();
+    if (!content) return toast.error('Comment cannot be empty');
 
-    setPosts(prev => prev.map(p => 
+    const updated = posts.map(p => 
       p.id === postId 
-        ? { ...p, comments: [...p.comments, { 
-            id: 'c_' + Date.now(), 
-            user: currentUser, 
-            text, 
-            time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
-          }] }
+        ? { ...p, comments: [...p.comments, { id: Date.now(), userId: currentUser.id, name: currentUser.name, content }] } 
         : p
-    ));
-
+    );
+    setPosts(updated);
+    localStorage.setItem('connectPosts', JSON.stringify(updated));
     setCommentInputs(prev => ({ ...prev, [postId]: '' }));
+    toast.success('Comment added');
 
     const post = posts.find(p => p.id === postId);
-    if (post) notifyComment(post);
-
-    toast.success('Commented');
+    if (post.user.id !== currentUser.id) {
+      addNotification({ title: 'Comment', message: `${currentUser.name} commented on your post.`, to: post.user.id });
+    }
   };
 
-  const sendMessage = () => {
-    if (!newMessage.trim() || !selectedChat) return;
-
-    const chatId = [currentUser.id, selectedChat].sort().join('-');
-    const msg = {
-      id: 'm_' + Date.now(),
-      sender: currentUser.id,
-      text: newMessage,
-      time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-    };
-
-    setMessages(prev => ({
-      ...prev,
-      [chatId]: [...(prev[chatId] || []), msg]
-    }));
-
-    notifyNewMessage(selectedChat, newMessage);
-
-    setNewMessage('');
+  const handleDeleteComment = (postId, commentId) => {
+    const updated = posts.map(p => 
+      p.id === postId 
+        ? { ...p, comments: p.comments.filter(c => c.id !== commentId) } 
+        : p
+    );
+    setPosts(updated);
+    localStorage.setItem('connectPosts', JSON.stringify(updated));
+    toast.success('Comment deleted');
   };
 
-  const connectUser = (userId) => {
-    if (connections.includes(userId)) return;
-    setConnections(prev => [...prev, userId]);
+  const handleMediaUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setMediaPreview(reader.result);
+        setMediaType(file.type.startsWith('video') ? 'video' : 'image');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
-    notify({
-      message: `You are now connected with ${dummyUsers.find(u => u.id === userId)?.name}`,
-      type: 'connect',
-      important: true
+  const sendConnectionRequest = (userId) => {
+    if (connections.includes(userId)) return toast.error('Already connected');
+    if (notifications.some(n => n.type === 'request_sent' && n.extra.to === userId)) return toast.error('Request pending');
+
+    addNotification({
+      title: 'Connection Request',
+      message: `${currentUser.name} wants to connect with you.`,
+      type: 'connection_request',
+      from: currentUser.id,
+      to: userId
     });
-
-    toast.success('Connected!');
+    addNotification({
+      title: 'Connection request sent',
+      message: `To ${users.find(u => u.id === userId).name}`,
+      type: 'request_sent',
+      extra: { to: userId }
+    });
+    toast.success('Request sent!');
   };
 
-  const handleMedia = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaPreview(reader.result);
-      setMediaType(file.type.startsWith('video') ? 'video' : 'image');
+  const handleCancelRequest = (to, notifId) => {
+    removeNotification(notifId);
+    const recipNotifs = userData[to]?.notifications || [];
+    const reqNotif = recipNotifs.find(n => n.type === 'connection_request' && n.from === currentUser.id);
+    if (reqNotif) {
+      removeNotification(reqNotif.id, to);
+    }
+    toast.info('Request cancelled');
+  };
+
+  const handleAcceptConnection = (from, notifId) => {
+    if (connections.includes(from)) return;
+    updateUserConnections(currentUser.id, [...connections, from]);
+    updateUserConnections(from, [...(userData[from]?.connections || []), currentUser.id]);
+    addNotification({
+      title: 'Connection Accepted',
+      message: `${currentUser.name} accepted your connection request.`,
+      type: 'connection_accepted',
+      to: from
+    });
+    const senderNotifs = userData[from]?.notifications || [];
+    const sentNotif = senderNotifs.find(n => n.type === 'request_sent' && n.extra.to === currentUser.id);
+    if (sentNotif) {
+      removeNotification(sentNotif.id, from);
+    }
+    removeNotification(notifId);
+    toast.success('Connection accepted!');
+  };
+
+  const handleRejectConnection = (from, notifId) => {
+    addNotification({
+      title: 'Connection Rejected',
+      message: `${currentUser.name} rejected your connection request.`,
+      type: 'connection_rejected',
+      to: from
+    });
+    const senderNotifs = userData[from]?.notifications || [];
+    const sentNotif = senderNotifs.find(n => n.type === 'request_sent' && n.extra.to === currentUser.id);
+    if (sentNotif) {
+      removeNotification(sentNotif.id, from);
+    }
+    removeNotification(notifId);
+    toast.info('Connection rejected');
+  };
+
+  const getChatId = (userId1, userId2) => {
+    return [userId1, userId2].sort().join('-');
+  };
+
+  const handleSendMessage = () => {
+    if (!newMessage.trim()) return toast.error('Message cannot be empty');
+    if (!selectedChat) return;
+
+    const chatId = getChatId(currentUser.id, selectedChat);
+    const message = {
+      id: Date.now(),
+      sender: currentUser.id,
+      content: newMessage,
+      timestamp: new Date().toLocaleString(),
     };
-    reader.readAsDataURL(file);
+
+    const updatedMessages = {
+      ...messages,
+      [chatId]: [...(messages[chatId] || []), message],
+    };
+
+    setMessages(updatedMessages);
+    localStorage.setItem('connectMessages', JSON.stringify(updatedMessages));
+    setNewMessage('');
+
+    addNotification({ title: 'New Message', message: `${currentUser.name} sent you a message.`, to: selectedChat });
   };
 
-  const relativeTime = (timestamp) => {
-    const diff = Date.now() - timestamp;
-    if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
-    return new Date(timestamp).toLocaleDateString();
-  };
+  const filteredUsers = users.filter(u => 
+    u.id !== currentUser?.id && 
+    u.name.toLowerCase().includes(networkSearch.toLowerCase())
+  );
 
-  // ─── Render ─────────────────────────────────────────────────────
+  if (isLoading || !currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950">
+        <Loader2 className="w-10 h-10 text-indigo-600 dark:text-indigo-400 animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50 dark:from-gray-950 dark:via-indigo-950/30 dark:to-purple-950 text-slate-900 dark:text-slate-100`}>
-      {/* Header */}
-      <header className="sticky top-0 z-30 backdrop-blur-xl bg-white/70 dark:bg-gray-950/70 border-b border-slate-200/60 dark:border-slate-800/60">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Sparkles className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
-              Connect
-            </h1>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 dark:from-slate-950 dark:to-indigo-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+      <div className="w-full max-w-screen-xl mx-auto px-3 xs:px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-5 lg:py-6 xl:py-8">
 
-          <div className="flex items-center gap-5">
-            <button 
-              onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-              className="p-2 rounded-full hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition"
-              aria-label="Toggle theme"
+        <header className="flex items-center justify-between mb-5 sm:mb-6 lg:mb-8">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">
+            Connect
+          </h1>
+          
+          <div className="flex items-center gap-3 sm:gap-5 lg:gap-6">
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 -m-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              aria-label="Toggle dark mode"
             >
-              {isDark ? <Sun size={20} /> : <Moon size={20} />}
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-
-            <div className="relative cursor-pointer" onClick={() => setActiveTab('notifications')}>
-              <Bell size={22} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+            <div className="relative">
+              <Bell size={20} className="cursor-pointer" onClick={() => setActiveTab('notifications')} />
+              {notifications.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center">
+                  {notifications.length}
                 </span>
               )}
             </div>
+            <UserCircle size={20} className="cursor-pointer" />
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Tabs */}
-      <nav className="sticky top-[60px] z-20 backdrop-blur-lg bg-white/60 dark:bg-gray-950/60 border-b border-slate-200/50 dark:border-slate-800/50">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 flex gap-2 py-3 overflow-x-auto">
+        <div className="flex overflow-x-auto pb-3 sm:pb-4 gap-1.5 sm:gap-2 lg:gap-3 border-b border-slate-200 dark:border-slate-700 mb-5 sm:mb-6 lg:mb-7 scrollbar-thin scrollbar-thumb-rounded-full scrollbar-track-rounded-full scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-slate-100 dark:scrollbar-track-slate-800">
           {['feed', 'network', 'messages', 'notifications'].map(tab => (
             <motion.button
               key={tab}
-              whileTap={{ scale: 0.94 }}
+              whileTap={{ scale: 0.96 }}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`px-4 py-1.5 sm:px-5 sm:py-2 rounded-full font-medium text-sm sm:text-base whitespace-nowrap transition-all flex-shrink-0 shadow-sm ${
                 activeTab === tab
-                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
-                  : 'hover:bg-slate-200/70 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </motion.button>
           ))}
         </div>
-      </nav>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-24">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="sync">  {/* Changed from "wait" → safer on mobile */}
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3 }}
+            variants={tabVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="space-y-4 sm:space-y-5 lg:space-y-6"
           >
-            {/* ─── Feed ────────────────────────────────────────────── */}
             {activeTab === 'feed' && (
-              <LayoutGroup>
-                {/* Post composer */}
-                <motion.div layout variants={cardVariants} initial="hidden" animate="visible" className="mb-8">
-                  <div className="bg-white/75 dark:bg-gray-900/75 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-700/40 p-5">
-                    <textarea
-                      value={newPost}
-                      onChange={e => setNewPost(e.target.value)}
-                      placeholder={`What's on your mind, ${currentUser.name}?`}
-                      className="w-full bg-transparent focus:outline-none text-lg placeholder-slate-400 dark:placeholder-slate-500 resize-none min-h-[88px]"
-                    />
+              <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                <div className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-slate-200/30 dark:border-slate-700/30">
+                  <textarea
+                    value={newPost}
+                    onChange={(e) => setNewPost(e.target.value)}
+                    placeholder={`What's on your mind, ${currentUser.name}?`}
+                    className="w-full p-3 sm:p-4 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[70px] sm:min-h-[90px] lg:min-h-[110px] resize-none text-sm sm:text-base"
+                  />
 
-                    {mediaPreview && (
-                      <div className="mt-4 rounded-xl overflow-hidden border border-slate-200/60 dark:border-slate-700/50 relative">
-                        {mediaType === 'video' ? (
-                          <video src={mediaPreview} controls className="w-full max-h-80 object-contain" />
-                        ) : (
-                          <img src={mediaPreview} alt="preview" className="w-full max-h-80 object-contain" />
-                        )}
-                        <button
-                          onClick={() => { setMediaPreview(null); setMediaType(null); }}
-                          className="absolute top-3 right-3 bg-black/65 text-white p-2 rounded-full hover:bg-black/80 transition"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between items-center mt-5 pt-4 border-t border-slate-200/50 dark:border-slate-700/50">
-                      <div className="flex gap-7">
-                        <label className="cursor-pointer hover:text-indigo-600 transition-colors">
-                          <ImageIcon size={24} />
-                          <input type="file" accept="image/*" onChange={handleMedia} className="hidden" />
-                        </label>
-                        <label className="cursor-pointer hover:text-purple-600 transition-colors">
-                          <VideoIcon size={24} />
-                          <input type="file" accept="video/*" onChange={handleMedia} className="hidden" />
-                        </label>
-                      </div>
-
-                      <motion.button
-                        whileHover={{ scale: 1.04 }}
-                        whileTap={{ scale: 0.96 }}
-                        onClick={handleNewPost}
-                        disabled={!newPost.trim() && !mediaPreview}
-                        className="px-7 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:brightness-110 text-white rounded-full font-medium shadow-lg disabled:opacity-50 transition-all"
+                  {mediaPreview && (
+                    <div className="mt-3 rounded-xl overflow-hidden max-h-[220px] xs:max-h-[260px] sm:max-h-[340px] lg:max-h-[420px] relative max-w-full mx-auto bg-black/5">
+                      {mediaType === 'video' ? (
+                        <video src={mediaPreview} controls className="w-full h-auto object-contain" />
+                      ) : (
+                        <img src={mediaPreview} alt="preview" className="w-full h-auto object-contain" />
+                      )}
+                      <button
+                        onClick={() => { setMediaPreview(null); setMediaType(null); }}
+                        className="absolute top-2 right-2 bg-black/60 p-1.5 rounded-full text-white hover:bg-black/80 transition"
                       >
-                        Post
-                      </motion.button>
+                        <X size={16} />
+                      </button>
                     </div>
-                  </div>
-                </motion.div>
+                  )}
 
-                {/* Posts list */}
+                  <div className="flex flex-col xs:flex-row justify-between items-start xs:items-center mt-3 sm:mt-4 gap-3 sm:gap-4">
+                    <div className="flex gap-5 sm:gap-6">
+                      <label className="cursor-pointer hover:opacity-80 transition p-1 -m-1">
+                        <ImageIcon size={22} className="text-indigo-600" />
+                        <input type="file" accept="image/*" onChange={handleMediaUpload} className="hidden" />
+                      </label>
+                      <label className="cursor-pointer hover:opacity-80 transition p-1 -m-1">
+                        <VideoIcon size={22} className="text-indigo-600" />
+                        <input type="file" accept="video/*" onChange={handleMediaUpload} className="hidden" />
+                      </label>
+                    </div>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleNewPost}
+                      className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-full font-medium shadow-md transition-colors w-full xs:w-auto min-h-[44px] text-sm sm:text-base"
+                    >
+                      Post
+                    </motion.button>
+                  </div>
+                </div>
+
                 {posts.length === 0 ? (
-                  <motion.div variants={cardVariants} initial="hidden" animate="visible" className="text-center py-20 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl rounded-3xl border border-slate-200/40 dark:border-slate-700/40">
-                    <MessageCircle className="w-16 h-16 mx-auto text-slate-400 mb-5 opacity-80" />
-                    <h3 className="text-xl font-semibold mb-2">Your feed is empty</h3>
-                    <p className="text-slate-500 dark:text-slate-400">Share something to get started</p>
+                  <motion.div 
+                    variants={emptyStateVariants}
+                    initial="initial"
+                    animate={["animate", "float"]}
+                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                  >
+                    <MessageCircle className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                    <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                      No posts yet
+                    </h3>
+                    <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                      Be the first to share something with your network! Start by posting above.
+                    </p>
                   </motion.div>
                 ) : (
                   posts.map(post => (
                     <motion.div
-                      layout
                       key={post.id}
-                      variants={cardVariants}
-                      initial="hidden"
-                      animate="visible"
-                      className="mb-7 bg-white/75 dark:bg-gray-900/75 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-700/40 overflow-hidden"
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 space-y-3 sm:space-y-4 border border-slate-200/30 dark:border-slate-700/30"
                     >
-                      <div className="flex items-center gap-3.5 p-5 pb-3">
-                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xl flex items-center justify-center shrink-0">
-                          {post.user.name[0]}
+                      <div className="flex items-center gap-2.5 sm:gap-3 lg:gap-4">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base sm:text-lg flex-shrink-0">
+                          {post.user?.name?.[0] || '?'}
                         </div>
-                        <div>
-                          <p className="font-semibold">{post.user.name}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{post.timestamp}</p>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm sm:text-base lg:text-lg truncate">{post.user?.name || 'Anonymous'}</p>
+                          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 truncate">{post.timestamp}</p>
                         </div>
                       </div>
 
-                      <p className="px-5 pb-4 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                      <p className="text-sm sm:text-base lg:text-[17px] leading-relaxed whitespace-pre-wrap">{post.content}</p>
 
                       {post.media && (
-                        <div className="px-5 pb-5">
+                        <div className="rounded-xl overflow-hidden max-h-[240px] xs:max-h-[280px] sm:max-h-[360px] lg:max-h-[480px] bg-black/5 max-w-full mx-auto">
                           {post.mediaType === 'video' ? (
-                            <video src={post.media} controls className="w-full rounded-xl" />
+                            <video src={post.media} controls className="w-full h-auto object-contain" />
                           ) : (
-                            <img src={post.media} alt="" className="w-full rounded-xl" />
+                            <img src={post.media} alt="Post media" className="w-full h-auto object-contain" />
                           )}
                         </div>
                       )}
 
-                      <div className="flex justify-around py-3.5 border-t border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-300">
+                      <div className="flex gap-5 sm:gap-7 lg:gap-8 text-slate-600 dark:text-slate-400 pt-1">
                         <button 
-                          onClick={() => toggleLike(post.id)}
-                          className="flex items-center gap-2 hover:text-red-500 transition-colors"
+                          onClick={() => handleLike(post.id)}
+                          className="flex items-center gap-1.5 hover:text-red-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30"
                         >
                           <Heart 
-                            size={22} 
-                            className={post.likes.includes(currentUser.id) ? "fill-red-500 text-red-500" : ""} 
+                            size={20} 
+                            className={post.likes.includes(currentUser.id) ? "fill-red-500 text-red-500" : ""}
                           />
-                          <span>{post.likes.length}</span>
+                          <span className="text-sm">{post.likes.length}</span>
                         </button>
-
-                        <div className="flex items-center gap-2">
-                          <MessageSquare size={22} />
-                          <span>{post.comments.length}</span>
-                        </div>
+                        <button className="flex items-center gap-1.5 hover:text-indigo-500 transition-colors min-w-[44px] min-h-[44px] justify-center -m-1.5 p-1.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/30">
+                          <MessageSquare size={20} />
+                          <span className="text-sm">{post.comments?.length || 0}</span>
+                        </button>
                       </div>
 
-                      {post.comments.length > 0 && (
-                        <div className="px-5 pt-2 pb-4 space-y-3.5 border-t border-slate-200/50 dark:border-slate-700/50">
-                          {post.comments.map(c => (
-                            <div key={c.id} className="flex gap-3 text-[15px]">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                                {c.user.name[0]}
+                      {post.comments?.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                          {post.comments.map((comment) => (
+                            <div key={comment.id} className="text-sm text-slate-700 dark:text-slate-300 flex justify-between items-start">
+                              <div>
+                                <span className="font-semibold">{comment.name}:</span> {comment.content}
                               </div>
-                              <div className="flex-1">
-                                <span className="font-medium">{c.user.name}</span> {c.text}
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{c.time}</p>
-                              </div>
+                              {comment.userId === currentUser.id && (
+                                <button
+                                  onClick={() => handleDeleteComment(post.id, comment.id)}
+                                  className="text-red-500 hover:text-red-700 p-1 -m-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
                       )}
 
-                      <div className="flex gap-3 p-5 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
+                      <div className="flex flex-col xs:flex-row gap-2 sm:gap-0 mt-1 sm:mt-2">
                         <input
                           value={commentInputs[post.id] || ''}
-                          onChange={e => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
-                          placeholder="Add comment..."
-                          className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full px-5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), addComment(post.id))}
+                          onChange={e => setCommentInputs({...commentInputs, [post.id]: e.target.value})}
+                          placeholder="Add a comment..."
+                          className="flex-1 p-2.5 sm:p-3 text-sm sm:text-base bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl xs:rounded-l-xl xs:rounded-r-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                         <button
-                          onClick={() => addComment(post.id)}
-                          disabled={!commentInputs[post.id]?.trim()}
-                          className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm"
+                          onClick={() => handleComment(post.id)}
+                          className="px-5 sm:px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl xs:rounded-l-none xs:rounded-r-xl hover:from-indigo-700 hover:to-purple-700 text-sm sm:text-base min-h-[44px] xs:min-h-auto shadow-md"
                         >
-                          <Send size={18} />
+                          Send
                         </button>
                       </div>
                     </motion.div>
                   ))
                 )}
-              </LayoutGroup>
+              </div>
             )}
 
-            {/* ─── Network ─────────────────────────────────────────── */}
             {activeTab === 'network' && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-5 lg:space-y-6">
                 <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                   <input
                     value={networkSearch}
                     onChange={e => setNetworkSearch(e.target.value)}
-                    placeholder="Find people..."
-                    className="w-full pl-11 pr-5 py-3.5 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                    placeholder="Search for people to connect..."
+                    className="w-full pl-10 pr-4 py-3 sm:py-4 bg-white/85 dark:bg-slate-800/85 rounded-xl border border-slate-200/30 dark:border-slate-700/30 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base shadow-sm"
                   />
                 </div>
 
-                {dummyUsers
-                  .filter(u => u.id !== currentUser.id && u.name.toLowerCase().includes(networkSearch.toLowerCase()))
-                  .map(user => {
+                {filteredUsers.length === 0 ? (
+                  <motion.div 
+                    variants={emptyStateVariants}
+                    initial="initial"
+                    animate={["animate", "float"]}
+                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                  >
+                    <Users className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                    <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3">No suggestions</h3>
+                    <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                      Try searching for names or expand your network!
+                    </p>
+                  </motion.div>
+                ) : (
+                  filteredUsers.map(user => {
                     const isConnected = connections.includes(user.id);
+                    const pendingNotif = notifications.find(n => n.type === 'request_sent' && n.extra.to === user.id);
+                    const isPending = !!pendingNotif;
                     return (
                       <motion.div
                         key={user.id}
-                        variants={cardVariants}
-                        initial="hidden"
-                        animate="visible"
-                        className="flex items-center justify-between bg-white/75 dark:bg-gray-900/75 backdrop-blur-xl p-5 rounded-2xl border border-slate-200/50 dark:border-slate-700/40"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white/85 dark:bg-slate-800/85 rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between border border-slate-200/30 dark:border-slate-700/30"
                       >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xl font-bold flex items-center justify-center">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
                             {user.name[0]}
                           </div>
-                          <p className="font-semibold text-lg">{user.name}</p>
+                          <p className="font-semibold text-sm sm:text-base">{user.name}</p>
                         </div>
-
                         {isConnected ? (
-                          <span className="px-5 py-2 bg-green-600/90 text-white rounded-full text-sm font-medium">
+                          <span className="px-4 py-2 bg-green-600 text-white rounded-full font-medium text-sm shadow-md">
                             Connected
                           </span>
+                        ) : isPending ? (
+                          <button
+                            onClick={() => handleCancelRequest(user.id, pendingNotif.id)}
+                            className="px-4 py-2 bg-gray-600 text-white rounded-full hover:bg-gray-700 flex items-center gap-2 text-sm shadow-md"
+                          >
+                            Cancel
+                          </button>
                         ) : (
                           <button
-                            onClick={() => connectUser(user.id)}
-                            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:brightness-110 text-white rounded-full font-medium shadow-md transition-all"
+                            onClick={() => sendConnectionRequest(user.id)}
+                            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 text-sm shadow-md"
                           >
-                            Connect
+                            <UserPlus size={16} /> Connect
                           </button>
                         )}
                       </motion.div>
                     );
-                  })}
-              </div>
-            )}
+                  })
+                )}
 
-            {/* ─── Messages ────────────────────────────────────────── */}
-            {activeTab === 'messages' && (
-              <div className="space-y-6">
-                {selectedChat ? (
-                  <div className="bg-white/75 dark:bg-gray-900/75 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/50 dark:border-slate-700/40 flex flex-col h-[68vh]">
-                    <div className="flex items-center gap-4 p-5 border-b border-slate-200/50 dark:border-slate-700/50">
-                      <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-slate-200/60 dark:hover:bg-slate-800/50 rounded-full">
-                        <ChevronLeft size={24} />
-                      </button>
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold flex items-center justify-center">
-                        {dummyUsers.find(u => u.id === selectedChat)?.name[0]}
-                      </div>
-                      <h3 className="font-semibold text-lg">
-                        {dummyUsers.find(u => u.id === selectedChat)?.name}
-                      </h3>
-                    </div>
-
-                    <div className="flex-1 p-5 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
-                      <AnimatePresence>
-                        {(messages[[currentUser.id, selectedChat].sort().join('-')] || []).map(msg => {
-                          const isOwn = msg.sender === currentUser.id;
-                          return (
-                            <motion.div
-                              key={msg.id}
-                              initial={{ opacity: 0, y: 12, scale: 0.96 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
+                {connections.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-lg font-semibold mb-3">Your Connections</h3>
+                    <div className="space-y-3">
+                      {connections.map(connId => {
+                        const user = users.find(u => u.id === connId);
+                        return (
+                          <div key={connId} className="flex items-center gap-3 sm:gap-4 bg-white/80 dark:bg-slate-800/80 rounded-xl p-3 shadow-sm border border-slate-200/20 dark:border-slate-700/20">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                              {user?.name[0]}
+                            </div>
+                            <p className="font-medium text-sm sm:text-base flex-1">{user?.name}</p>
+                            <button
+                              onClick={() => { setSelectedChat(connId); setActiveTab('messages'); }}
+                              className="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm"
                             >
-                              <div className={`max-w-[78%] p-3.5 rounded-2xl shadow-sm ${
-                                isOwn 
-                                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-br-none' 
-                                  : 'bg-slate-200/90 dark:bg-slate-800/80 rounded-bl-none'
-                              }`}>
-                                {msg.text}
-                                <p className="text-xs opacity-75 mt-1.5 text-right">{msg.time}</p>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
-                    </div>
-
-                    <div className="p-5 border-t border-slate-200/50 dark:border-slate-700/50 flex gap-3">
-                      <input
-                        value={newMessage}
-                        onChange={e => setNewMessage(e.target.value)}
-                        placeholder="Type a message..."
-                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
-                        className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full px-6 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                      />
-                      <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        onClick={sendMessage}
-                        disabled={!newMessage.trim()}
-                        className="p-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full hover:brightness-110 disabled:opacity-50 shadow-md transition-all"
-                      >
-                        <Send size={20} />
-                      </motion.button>
+                              Message
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                ) : (
-                  <motion.div variants={cardVariants} initial="hidden" animate="visible" className="text-center py-20 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl rounded-3xl border border-slate-200/40 dark:border-slate-700/40">
-                    <MessageCircle className="w-16 h-16 mx-auto text-slate-400 mb-5 opacity-80" />
-                    <h3 className="text-xl font-semibold mb-3">No chat selected</h3>
-                    <p className="text-slate-500 dark:text-slate-400">Choose someone from your connections</p>
-                  </motion.div>
                 )}
               </div>
             )}
 
-            {/* ─── Notifications ───────────────────────────────────── */}
+            {activeTab === 'messages' && (
+              <div className="space-y-4 sm:space-y-5 lg:space-y-6">
+                {selectedChat ? (
+                  <div className="bg-white/85 dark:bg-slate-800/85 rounded-2xl sm:rounded-3xl shadow-lg p-4 sm:p-5 lg:p-6 border border-slate-200/30 dark:border-slate-700/30">
+                    <div className="flex items-center gap-3 mb-4 border-b border-slate-200/30 dark:border-slate-700/30 pb-3">
+                      <button onClick={() => setSelectedChat(null)} className="text-slate-600 dark:text-slate-400">
+                        <ChevronLeft size={24} />
+                      </button>
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                        {users.find(u => u.id === selectedChat)?.name[0]}
+                      </div>
+                      <p className="font-semibold text-base sm:text-lg">
+                        {users.find(u => u.id === selectedChat)?.name}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-rounded-full scrollbar-track-rounded-full scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-slate-100 dark:scrollbar-track-slate-800">
+                      <AnimatePresence>
+                        {(messages[getChatId(currentUser.id, selectedChat)] || []).map(msg => (
+                          <motion.div
+                            key={msg.id}
+                            variants={chatBubbleVariants}
+                            initial="initial"
+                            animate="animate"
+                            className={`flex ${msg.sender === currentUser.id ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div className={`max-w-[80%] p-3 rounded-2xl text-sm sm:text-base ${
+                              msg.sender === currentUser.id 
+                                ? 'bg-indigo-600 text-white rounded-br-none' 
+                                : 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-bl-none'
+                            }`}>
+                              {msg.content}
+                              <p className="text-xs opacity-70 mt-1 text-right">{msg.timestamp}</p>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
+
+                    <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200/50 dark:border-slate-700/50">
+                      <input
+                        value={newMessage}
+                        onChange={e => setNewMessage(e.target.value)}
+                        placeholder="Type a message..."
+                        className="flex-1 p-3 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base"
+                      />
+                      <button
+                        onClick={handleSendMessage}
+                        className="px-5 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 flex items-center gap-2 shadow-md"
+                      >
+                        <Send size={18} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    {connections.length === 0 ? (
+                      <motion.div 
+                        variants={emptyStateVariants}
+                        initial="initial"
+                        animate={["animate", "float"]}
+                        className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                      >
+                        <MessageCircle className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                        <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3">No chats yet</h3>
+                        <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                          Connect with people in the Network tab to start chatting!
+                        </p>
+                      </motion.div>
+                    ) : (
+                      connections.map(connId => {
+                        const user = users.find(u => u.id === connId);
+                        const chatId = getChatId(currentUser.id, connId);
+                        const lastMessage = messages[chatId]?.[messages[chatId]?.length - 1]?.content || 'Start a conversation...';
+                        return (
+                          <motion.div
+                            key={connId}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setSelectedChat(connId)}
+                            className="bg-white/85 dark:bg-slate-800/85 rounded-2xl shadow-lg p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:shadow-xl transition-shadow border border-slate-200/30 dark:border-slate-700/30"
+                          >
+                            <div className="flex items-center gap-3 sm:gap-4">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                                {user?.name[0]}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-sm sm:text-base">{user?.name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[200px] sm:max-w-[300px]">{lastMessage}</p>
+                              </div>
+                            </div>
+                            <ChevronLeft className="rotate-180 text-slate-400" size={20} />
+                          </motion.div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'notifications' && (
-              <div className="space-y-4">
+              <div className="space-y-4 sm:space-y-5 lg:space-y-6">
                 {notifications.length === 0 ? (
-                  <motion.div variants={cardVariants} initial="hidden" animate="visible" className="text-center py-20 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl rounded-3xl border border-slate-200/40 dark:border-slate-700/40">
-                    <Bell className="w-16 h-16 mx-auto text-slate-400 mb-5 opacity-80" />
-                    <h3 className="text-xl font-semibold mb-3">No notifications yet</h3>
-                    <p className="text-slate-500 dark:text-slate-400">Stay tuned for activity</p>
+                  <motion.div 
+                    variants={emptyStateVariants}
+                    initial="initial"
+                    animate={["animate", "float"]}
+                    className="text-center py-16 sm:py-20 lg:py-24 px-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl shadow-lg"
+                  >
+                    <Bell className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 mx-auto text-slate-400 dark:text-slate-500 mb-4 sm:mb-5 lg:mb-6" />
+                    <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold mb-2 sm:mb-3">No notifications yet</h3>
+                    <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                      Activity from your network will appear here.
+                    </p>
                   </motion.div>
                 ) : (
                   notifications.map(notif => (
@@ -614,24 +804,43 @@ function ConnectV2() {
                       key={notif.id}
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={`p-5 rounded-2xl border ${
-                        notif.read 
-                          ? 'bg-white/60 dark:bg-gray-900/60 border-slate-200/40 dark:border-slate-700/40' 
-                          : 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-200/60 dark:border-indigo-800/50'
-                      } backdrop-blur-xl shadow-sm flex justify-between items-start gap-4`}
-                      onClick={() => !notif.read && markAsRead(notif.id)}
+                      className="bg-white/85 dark:bg-slate-800/85 rounded-2xl shadow-lg p-4 sm:p-5 flex items-start justify-between gap-4 border border-slate-200/30 dark:border-slate-700/30"
                     >
                       <div className="flex-1">
-                        <p className={`font-medium ${!notif.read ? 'text-indigo-700 dark:text-indigo-300' : ''}`}>
-                          {notif.message}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                          {relativeTime(notif.timestamp)}
-                        </p>
+                        <p className="font-semibold text-sm sm:text-base">{notif.title}</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">{notif.message}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{notif.timestamp}</p>
+                        {notif.type === 'connection_request' && (
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => handleAcceptConnection(notif.from, notif.id)}
+                              className="px-3 py-1 bg-green-600 text-white rounded-full text-sm"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleRejectConnection(notif.from, notif.id)}
+                              className="px-3 py-1 bg-red-600 text-white rounded-full text-sm"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {notif.type === 'request_sent' && (
+                          <button
+                            onClick={() => handleCancelRequest(notif.extra.to, notif.id)}
+                            className="mt-2 px-3 py-1 bg-gray-600 text-white rounded-full text-sm"
+                          >
+                            Cancel Request
+                          </button>
+                        )}
                       </div>
-                      {!notif.read && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 mt-2"></div>
-                      )}
+                      <button
+                        onClick={() => removeNotification(notif.id)}
+                        className="text-red-500 hover:text-red-700 p-1 -m-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 transition"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </motion.div>
                   ))
                 )}
@@ -639,9 +848,9 @@ function ConnectV2() {
             )}
           </motion.div>
         </AnimatePresence>
-      </main>
+      </div>
     </div>
   );
 }
 
-export default ConnectV2;
+export default Connect;
