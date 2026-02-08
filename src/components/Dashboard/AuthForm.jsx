@@ -1,4 +1,4 @@
-// AuthForm.jsx — with more vibrant inputs (gradient bg + vivid focus states)
+// AuthForm.jsx — Firebase version (design & UI unchanged)
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -9,7 +9,17 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
-import { supabase } from '../../lib/supabaseClient';
+// Firebase imports
+import { 
+  auth, 
+  db, 
+  GoogleAuthProvider,
+  signInWithPopup,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  doc,
+  setDoc
+} from '../../firebase';  // ← adjust path if needed
 
 function AuthForm({ initialMode = 'login', onClose }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
@@ -24,6 +34,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const googleProvider = new GoogleAuthProvider();
 
   const genderOptions = [
     { value: 'male', label: 'Male' },
@@ -39,15 +50,33 @@ function AuthForm({ initialMode = 'login', onClose }) {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/dashboard` },
-      });
-      if (error) throw error;
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      // Create or update basic profile in Firestore
+      const profileRef = doc(db, 'profiles', user.uid);
+      await setDoc(profileRef, {
+        name: user.displayName || 'User',
+        email: user.email,
+        role: 'student', // default — can be updated later
+        photoURL: user.photoURL || null,
+        createdAt: new Date().toISOString(),
+        coins: 0,
+        diamonds: 0,
+      }, { merge: true });
+
+      toast.success('Welcome! Signed in with Google');
+      navigate('/dashboard', { replace: true });
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      onClose?.();
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
-      if (error.message?.includes('popup')) message = 'Sign-in cancelled.';
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        message = 'Sign-in cancelled.';
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        message = 'An account with this email already exists.';
+      }
       toast.error(message);
     } finally {
       setLoading(false);
@@ -59,69 +88,79 @@ function AuthForm({ initialMode = 'login', onClose }) {
     setLoading(true);
 
     try {
-      let profile = null;
+      const email = formData.email.trim();
+      const password = formData.password.trim();
+
+      if (!email) throw new Error("Please enter your email address");
+      if (!password) throw new Error("Password is required");
+
+      let userCredential;
 
       if (!isLogin) {
+        // SIGN UP
         if (formData.password !== formData.confirmPassword) {
           throw new Error("Passwords do not match");
         }
-
-        const email = formData.email.trim();
-        const password = formData.password.trim();
-
-        if (!email) throw new Error("Please enter your email address");
-        if (!password) throw new Error("Password is required");
-        if (password.length < 6) throw new Error("Password must be at least 6 characters long");
-
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name: formData.name.trim(),
-              role: role,
-            }
-          }
-        });
-
-        if (signUpError) throw signUpError;
-        if (!signUpData.user?.id || signUpData.user.identities?.length === 0) {
-          throw new Error("This email is already registered. Please sign in instead.");
+        if (password.length < 6) {
+          throw new Error("Password must be at least 6 characters long");
         }
 
-        toast.success('Account created! Check your email to confirm your account. Your profile will be set up automatically after confirmation.');
-      } 
-      else {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: formData.email.trim(),
-          password: formData.password,
-        });
+        userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
 
-        if (signInError) throw signInError;
-        if (!signInData.user) throw new Error("Login failed");
-
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', signInData.user.id)
-          .maybeSingle();
-
-        profile = profileData || {
-          id: signInData.user.id,
-          email: signInData.user.email,
-          name: 'User',
-          role: 'unknown',
+        // Build profile data
+        const profileData = {
+          id: user.uid,
+          email: user.email,
+          name: formData.name.trim() || 'User',
+          role: role,
+          gender: gender?.value || null,
+          phone: formData.phone.trim() || null,
+          address: formData.address.trim() || null,
+          createdAt: new Date().toISOString(),
           coins: 0,
           diamonds: 0,
         };
 
+        // Role-specific fields
+        if (role === 'student') {
+          profileData.matricNumber = formData.matricNumber.trim() || null;
+          profileData.school = formData.school.trim() || null;
+          profileData.faculty = formData.faculty.trim() || null;
+          profileData.department = formData.department.trim() || null;
+        } else if (role === 'tutor') {
+          profileData.specialization = formData.specialization.trim() || null;
+          profileData.yearsExperience = Number(formData.yearsExperience) || 0;
+        } else if (role === 'lecturer') {
+          profileData.title = formData.title.trim() || null;
+          profileData.school = formData.school.trim() || null;
+          profileData.department = formData.department.trim() || null;
+          profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
+        }
+
+        // Save to Firestore
+        await setDoc(doc(db, 'profiles', user.uid), profileData);
+
+        toast.success('Account created successfully! Welcome to WE CONNECT.');
+        navigate('/dashboard', { replace: true });
+      } else {
+        // SIGN IN
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
         toast.success('Welcome back!');
         navigate('/dashboard', { replace: true });
       }
 
-      if (profile) {
-        localStorage.setItem('userProfile', JSON.stringify(profile));
-      }
+      // Optional: store minimal profile in localStorage
+      const basicProfile = {
+        id: userCredential.user.uid,
+        email: userCredential.user.email,
+        name: formData.name.trim() || userCredential.user.displayName || 'User',
+        role,
+        coins: 0,
+        diamonds: 0,
+      };
+      localStorage.setItem('userProfile', JSON.stringify(basicProfile));
+
       window.dispatchEvent(new CustomEvent('userLoggedIn'));
       onClose?.();
 
@@ -130,25 +169,31 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
       let message = 'An error occurred. Please try again.';
 
-      if (error.message?.includes('Signup requires a valid password') || 
-          error.message?.toLowerCase().includes('password')) {
-        message = 'Password is required and must be at least 6 characters.';
-      } else if (
-        error.message?.includes('User already registered') ||
-        error.message?.includes('already registered') ||
-        error.message?.includes('This email is already registered')
-      ) {
-        message = 'This email is already in use. Please sign in or use a different email.';
-      } else if (error.message?.includes('invalid') && error.message?.includes('email')) {
-        message = 'Please enter a valid email address.';
-      } else if (error.message?.includes('Invalid login credentials')) {
-        message = 'Incorrect email or password.';
-      } else if (error.message?.includes('too many requests')) {
-        message = 'Too many attempts. Please try again later.';
-      } else if (error.message?.includes('security policy') || error.code === '42501') {
-        message = 'Permission issue during signup — profile setup is handled automatically. Try confirming your email and logging in.';
-      } else {
-        message = error.message || 'Network/server issue – check your inputs.';
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          message = 'This email is already in use. Please sign in or use a different email.';
+          break;
+        case 'auth/invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'auth/weak-password':
+          message = 'Password should be at least 6 characters.';
+          break;
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+          message = 'Incorrect email or password.';
+          break;
+        case 'auth/too-many-requests':
+          message = 'Too many attempts. Please try again later.';
+          break;
+        case 'auth/operation-not-allowed':
+          message = 'This operation is not allowed at the moment.';
+          break;
+        case 'auth/popup-closed-by-user':
+          message = 'Sign-in cancelled.';
+          break;
+        default:
+          message = error.message || 'Network or server issue – please check your connection.';
       }
 
       toast.error(message);
@@ -189,7 +234,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
 
         <form onSubmit={handleSubmit} className="space-y-9">
 
-          {/* Role selection – unchanged logic, slightly more vivid active state */}
           {!isLogin && (
             <div className="space-y-6">
               <h3 className="text-2xl font-bold text-center text-slate-800 dark:text-slate-100">
@@ -223,7 +267,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
             </div>
           )}
 
-          {/* All inputs – more vibrant version */}
           <div className="grid gap-6 md:grid-cols-2">
 
             {!isLogin && (
@@ -377,7 +420,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
             )}
           </div>
 
-          {/* Submit button – keeping previous vivid style */}
           <motion.button
             whileHover={{ scale: 1.025, y: -1 }}
             whileTap={{ scale: 0.985 }}
@@ -393,7 +435,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
           </motion.button>
         </form>
 
-        {/* Divider & social buttons – unchanged */}
         <div className="relative py-3">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-slate-300/60 dark:border-slate-600/50" />

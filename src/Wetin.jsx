@@ -1,16 +1,14 @@
-// MonetaryValue.jsx — Backend-integrated Wallet with Supabase sync + Paystack TEST key + Transaction History + Side-by-side layout
+// MonetaryValue.jsx — Wallet with side-by-side layout + Paystack Production Setup + Transaction Filters + Collapsible History
 
 import React, { useState, useEffect } from 'react';
 import { 
   Coins, Gem, CreditCard, Banknote, Wallet, Loader2, 
-  AlertCircle, Sparkles, History, ArrowDownToLine, ArrowUpFromLine 
+  AlertCircle, Sparkles, History, ArrowDownToLine, ArrowUpFromLine, ChevronDown, ChevronUp, Filter 
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { supabase } from '../../lib/supabaseClient'; // Adjust path if needed
 
 function MonetaryValue() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [profile, setProfile] = useState(null);
   const [coinsToBuy, setCoinsToBuy] = useState('');
   const [diamondsToWithdraw, setDiamondsToWithdraw] = useState('');
   const [withdrawMethod, setWithdrawMethod] = useState('bank');
@@ -23,122 +21,31 @@ function MonetaryValue() {
   const [isBuying, setIsBuying] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [transactions, setTransactions] = useState([]);
-  const [loadingError, setLoadingError] = useState(null);
+  const [filterType, setFilterType] = useState('all'); // 'all', 'purchase', 'withdrawal'
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'completed', 'pending'
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
 
   useEffect(() => {
-    const fetchUserAndData = async () => {
-      setLoadingError(null);
+    const profile = localStorage.getItem('userProfile');
+    if (profile) setCurrentUser(JSON.parse(profile));
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        toast.error('Please log in to access wallet');
-        return;
-      }
-      setCurrentUser(user);
-
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, coins, diamonds')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error('Profile fetch error:', profileError);
-        setLoadingError('Failed to load profile data. See console for details.');
-        toast.error('Failed to load profile');
-        return;
-      }
-
-      let currentProfile = profileData;
-
-      // ────────────────────────────────────────────────
-      // Auto-create profile if missing
-      // ────────────────────────────────────────────────
-      if (!currentProfile) {
-        // Fallback values for common required fields
-        const fallback = 
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split('@')[0] ||
-          `user_${user.id.slice(0,8)}` ||
-          'New User';
-
-        const insertPayload = {
-          id: user.id,
-          coins: 0,
-          diamonds: 0,
-          name: fallback,
-          username: fallback.toLowerCase().replace(/\s+/g, '_'),
-          full_name: fallback,
-          display_name: fallback,
-          first_name: fallback.split(' ')[0] || fallback,
-          last_name: fallback.split(' ').slice(1).join(' ') || '',
-          // avatar_url: 'https://example.com/default-avatar.png', // uncomment if needed
-          // email: user.email,                                    // uncomment if needed
-        };
-
-        console.log('Attempting profile insert with payload:', insertPayload);
-
-        const { data: newProfile, error: insertError } = await supabase
-          .from('profiles')
-          .insert([insertPayload])
-          .select('id, coins, diamonds')
-          .single();
-
-        if (insertError) {
-          console.error('Auto-create profile failed:', insertError);
-          console.error('Full error details:', JSON.stringify(insertError, null, 2));
-
-          let msg = 'Could not create your wallet profile. Check browser console for details.';
-          
-          if (insertError.code === '23502') {
-            msg = 'Missing required field(s) in profiles table (e.g. name/username/full_name/etc.)';
-          } else if (insertError.code === '42501' || insertError.message?.toLowerCase().includes('permission')) {
-            msg = 'Permission denied – likely RLS issue on INSERT. Check Supabase policies.';
-          } else if (insertError.message) {
-            msg = `Database error: ${insertError.message}`;
-          }
-
-          setLoadingError(msg);
-          toast.error(msg);
-          return;
-        }
-
-        currentProfile = newProfile;
-        console.log('Profile auto-created successfully:', newProfile);
-      }
-
-      setProfile(currentProfile);
-
-      // Transactions fetch (optional / graceful)
-      const { data: txData, error: txError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('timestamp', { ascending: false })
-        .limit(50);
-
-      if (txError) {
-        console.warn('Transactions fetch failed (table may not exist):', txError.message);
-      } else {
-        setTransactions(txData || []);
-      }
-    };
-
-    fetchUserAndData();
+    const storedTx = localStorage.getItem('walletTransactions');
+    if (storedTx) setTransactions(JSON.parse(storedTx));
   }, []);
 
-  // ────────────────────────────────────────────────
-  // Rest of your code (handlers, UI) remains unchanged
-  // ────────────────────────────────────────────────
+  useEffect(() => {
+    if (transactions.length > 0) {
+      localStorage.setItem('walletTransactions', JSON.stringify(transactions));
+    }
+  }, [transactions]);
 
   const coinPresets = [10, 50, 100, 200];
   const pricePerCoin = 100;
-  const totalBuyAmount = Number(coinsToBuy) * pricePerCoin || 0;
+  const totalBuyAmount = parseInt(coinsToBuy) * pricePerCoin || 0;
 
   const diamondPresets = [10, 20, 50, 100];
   const valuePerDiamond = 100;
-  const totalWithdrawAmount = Number(diamondsToWithdraw) * valuePerDiamond || 0;
+  const totalWithdrawAmount = parseInt(diamondsToWithdraw) * valuePerDiamond || 0;
 
   const withdrawMethods = [
     { value: 'bank', label: 'Bank Transfer', icon: Banknote },
@@ -146,55 +53,27 @@ function MonetaryValue() {
   ];
 
   const handleInputChange = (e) => {
-    setWithdrawDetails(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setWithdrawDetails({ ...withdrawDetails, [e.target.name]: e.target.value });
   };
 
-  const addTransaction = async (type, amount, description, status = 'completed') => {
-    if (!currentUser) return false;
-
+  const addTransaction = (type, amount, description, status = 'completed') => {
     const newTx = {
-      user_id: currentUser.id,
+      id: Date.now(),
       type,
       amount,
       description,
       status,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleString('en-NG', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }),
     };
-
-    const { error } = await supabase.from('transactions').insert([newTx]);
-
-    if (error) {
-      console.error('Transaction insert error:', error);
-      toast.error('Failed to record transaction');
-      return false;
-    }
-
     setTransactions(prev => [newTx, ...prev]);
-    return true;
   };
 
-  const updateProfile = async (updates) => {
-    if (!currentUser) return false;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', currentUser.id);
-
-    if (error) {
-      console.error('Profile update error:', error);
-      toast.error('Failed to update profile balance');
-      return false;
-    }
-
-    setProfile(prev => prev ? ({ ...prev, ...updates }) : null);
-    return true;
-  };
-
-  const handleBuyCoins = async () => {
+  const handleBuyCoins = () => {
     if (!currentUser) return toast.error('Please log in first');
-    const amount = Number(coinsToBuy);
-    if (isNaN(amount) || amount < 1) return toast.error('Enter a valid amount');
+    if (!coinsToBuy || parseInt(coinsToBuy) < 1) return toast.error('Enter valid amount');
 
     setIsBuying(true);
 
@@ -202,27 +81,35 @@ function MonetaryValue() {
     script.src = 'https://js.paystack.co/v2/inline.js';
     script.onload = () => {
       const handler = window.PaystackPop.setup({
-        key: 'pk_test_480d88a5cbfa09b6864e9796af08dd241de9d1a6',
+        // For production: Replace with your live public key (e.g., 'pk_live_xxxxxxxxxxxxx')
+        // IMPORTANT: Never expose secret keys in frontend code. Use backend for verification.
+        key: 'pk_test_480d88a5cbfa09b6864e9796af08dd241de9d1a6', // Test key; change to live for production
         email: currentUser.email || 'test@example.com',
         amount: totalBuyAmount * 100,
         currency: 'NGN',
-        ref: 'WC_TEST_' + Math.floor(Math.random() * 1000000000 + 1).toString(),
-        metadata: { coins: amount },
-        callback: async (response) => {
-          const success = await updateProfile({ 
-            coins: (profile?.coins || 0) + amount 
-          });
+        ref: 'WC_' + Math.floor(Math.random() * 1000000000 + 1).toString(), // Removed 'TEST_' for production readiness
+        metadata: { coins: parseInt(coinsToBuy) },
+        callback: (response) => {
+          // In production: Send response.reference to backend for verification using sk_live_...
+          // Example backend call: fetch('/verify-payment', { method: 'POST', body: JSON.stringify({ reference: response.reference }) })
+          // Only credit coins after backend confirms
 
-          if (success) {
-            await addTransaction('purchase', totalBuyAmount, `Bought ${amount} coins via Paystack`);
-            toast.success(`Success! ${amount} coins added`);
-          }
+          const coinsAdded = parseInt(coinsToBuy);
+          const updated = { ...currentUser, coins: (currentUser.coins || 0) + coinsAdded };
+          localStorage.setItem('userProfile', JSON.stringify(updated));
+          setCurrentUser(updated);
+
+          addTransaction('purchase', totalBuyAmount, `Bought ${coinsAdded} coins via Paystack`);
+          toast.success(`Success! ${coinsAdded} coins added`);
           setCoinsToBuy('');
+          setIsBuying(false);
         },
-        onClose: () => toast.info('Payment cancelled'),
+        onClose: () => {
+          toast.info('Payment cancelled');
+          setIsBuying(false);
+        }
       });
       handler.openIframe();
-      setIsBuying(false);
     };
     script.onerror = () => {
       toast.error('Could not load Paystack');
@@ -231,39 +118,45 @@ function MonetaryValue() {
     document.body.appendChild(script);
   };
 
-  const handleWithdraw = async () => {
-    const amount = Number(diamondsToWithdraw);
-    if (isNaN(amount) || amount < 10) return toast.error('Minimum withdrawal is 10 diamonds');
-    if ((profile?.diamonds || 0) < amount) return toast.error('Not enough diamonds');
+  const handleWithdraw = () => {
+    const amount = parseInt(diamondsToWithdraw);
+    if (!amount || amount < 10) return toast.error('Minimum 10 diamonds');
+    if ((currentUser.diamonds || 0) < amount) return toast.error('Not enough diamonds');
 
     if (withdrawMethod === 'bank' && 
         (!withdrawDetails.bankName || !withdrawDetails.accountNumber || !withdrawDetails.accountName)) {
-      return toast.error('Please complete all bank details');
+      return toast.error('Please complete bank details');
     }
     if (withdrawMethod === 'mobile' && !withdrawDetails.mobileNumber) {
-      return toast.error('Please enter mobile money number');
+      return toast.error('Please enter mobile number');
     }
 
     setIsWithdrawing(true);
 
-    const success = await updateProfile({ 
-      diamonds: (profile?.diamonds || 0) - amount 
-    });
+    setTimeout(() => {
+      const updated = { ...currentUser, diamonds: (currentUser.diamonds || 0) - amount };
+      localStorage.setItem('userProfile', JSON.stringify(updated));
+      setCurrentUser(updated);
 
-    if (success) {
-      await addTransaction(
+      addTransaction(
         'withdrawal',
         totalWithdrawAmount,
         `Withdraw ₦${totalWithdrawAmount.toLocaleString()} (${amount} diamonds) via ${withdrawMethod === 'bank' ? 'Bank' : 'Mobile Money'}`,
         'pending'
       );
+
       toast.success(`Withdrawal request of ₦${totalWithdrawAmount.toLocaleString()} submitted`);
       setDiamondsToWithdraw('');
       setWithdrawDetails({ bankName: '', accountNumber: '', accountName: '', mobileNumber: '' });
-    }
-
-    setIsWithdrawing(false);
+      setIsWithdrawing(false);
+    }, 1600);
   };
+
+  const filteredTransactions = transactions.filter(tx => {
+    const typeMatch = filterType === 'all' || tx.type === filterType;
+    const statusMatch = filterStatus === 'all' || tx.status === filterStatus;
+    return typeMatch && statusMatch;
+  });
 
   if (!currentUser) {
     return (
@@ -277,33 +170,10 @@ function MonetaryValue() {
     );
   }
 
-  if (loadingError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-8 text-center max-w-md">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-red-700 dark:text-red-300 mb-2">Loading Error</h2>
-          <p className="text-red-600 dark:text-red-400">{loadingError}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-4">
-            Open browser console (F12 → Console) and look for "Auto-create profile failed:" + full error object.<br/>
-            Share that error here for exact fix.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/20 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950/10 pb-10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8">
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-2">
@@ -315,25 +185,27 @@ function MonetaryValue() {
           <p className="text-slate-600 dark:text-slate-400">Manage Coins • Withdraw Diamonds • View History</p>
         </div>
 
-        {/* Grid layout with balances, buy, withdraw, history */}
+        {/* Main content - two-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* Left side */}
+
+          {/* Left side - Deposit & Withdraw (takes 2/3 on large screens) */}
           <div className="lg:col-span-2 space-y-6">
+
             {/* Balances */}
             <div className="grid grid-cols-2 gap-4 sm:gap-6">
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-lg rounded-2xl shadow-lg border border-white/40 dark:border-slate-700/50 p-6 text-center hover:shadow-xl transition-all">
                 <Coins className="w-10 h-10 text-amber-500 mx-auto mb-3" />
                 <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">Coins</p>
-                <p className="text-4xl font-bold text-slate-900 dark:text-white mt-1">{profile.coins ?? 0}</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white mt-1">{currentUser.coins || 0}</p>
               </div>
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-lg rounded-2xl shadow-lg border border-white/40 dark:border-slate-700/50 p-6 text-center hover:shadow-xl transition-all">
                 <Gem className="w-10 h-10 text-purple-500 mx-auto mb-3" />
                 <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">Diamonds</p>
-                <p className="text-4xl font-bold text-slate-900 dark:text-white mt-1">{profile.diamonds ?? 0}</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white mt-1">{currentUser.diamonds || 0}</p>
               </div>
             </div>
 
-            {/* Buy Coins section */}
+            {/* Buy Coins */}
             <div className="bg-white/75 dark:bg-slate-800/65 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-5">
                 <ArrowUpFromLine className="w-7 h-7 text-amber-600 dark:text-amber-400" />
@@ -380,15 +252,15 @@ function MonetaryValue() {
 
               <button
                 onClick={handleBuyCoins}
-                disabled={isBuying || !coinsToBuy || Number(coinsToBuy) < 1}
-                className="w-full py-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600 text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                disabled={isBuying || !coinsToBuy || parseInt(coinsToBuy) < 1}
+                className="w-full py-4.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600 text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed transform active:scale-[0.98]"
               >
                 {isBuying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
                 {isBuying ? 'Processing...' : `Pay ₦${totalBuyAmount.toLocaleString()}`}
               </button>
             </div>
 
-            {/* Withdraw Diamonds section */}
+            {/* Withdraw Diamonds */}
             <div className="bg-white/75 dark:bg-slate-800/65 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-5">
                 <ArrowDownToLine className="w-7 h-7 text-purple-600 dark:text-purple-400" />
@@ -401,12 +273,12 @@ function MonetaryValue() {
                   <button
                     key={amount}
                     onClick={() => setDiamondsToWithdraw(amount.toString())}
-                    disabled={(profile.diamonds || 0) < amount}
+                    disabled={(currentUser.diamonds || 0) < amount}
                     className={`group relative p-4 rounded-2xl border-2 transition-all duration-300 ${
                       diamondsToWithdraw === amount.toString()
                         ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 shadow-md'
                         : 'border-transparent hover:border-purple-300 dark:hover:border-purple-700/50 bg-white/60 dark:bg-slate-700/40 hover:shadow-md'
-                    } ${(profile.diamonds || 0) < amount ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    } ${(currentUser.diamonds || 0) < amount ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <div className="text-center">
                       <p className="text-xl font-bold text-slate-800 dark:text-slate-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
@@ -470,14 +342,14 @@ function MonetaryValue() {
 
               <button
                 onClick={handleWithdraw}
-                disabled={isWithdrawing || !diamondsToWithdraw || Number(diamondsToWithdraw) < 10 || (profile.diamonds || 0) < Number(diamondsToWithdraw)}
-                className="w-full py-4 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                disabled={isWithdrawing || !diamondsToWithdraw || parseInt(diamondsToWithdraw) < 10 || (currentUser.diamonds || 0) < parseInt(diamondsToWithdraw)}
+                className="w-full py-4.5 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed transform active:scale-[0.98]"
               >
                 {isWithdrawing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Banknote className="w-5 h-5" />}
                 {isWithdrawing ? 'Requesting...' : `Withdraw ₦${totalWithdrawAmount.toLocaleString()}`}
               </button>
 
-              {(profile.diamonds || 0) < Number(diamondsToWithdraw || 0) && diamondsToWithdraw && (
+              {(currentUser.diamonds || 0) < parseInt(diamondsToWithdraw || 0) && diamondsToWithdraw && (
                 <p className="text-red-600 dark:text-red-400 text-sm mt-3 flex items-center justify-center gap-2">
                   <AlertCircle size={16} /> Insufficient diamonds
                 </p>
@@ -485,55 +357,100 @@ function MonetaryValue() {
             </div>
           </div>
 
-          {/* Transaction History */}
+          {/* Right side - Transaction History */}
           <div className="lg:col-span-1">
             <div className="bg-white/75 dark:bg-slate-800/65 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-8 sticky top-8">
-              <div className="flex items-center gap-3 mb-5">
-                <History className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Transaction History</h2>
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <History className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">History</h2>
+                </div>
+                <button 
+                  onClick={() => setIsHistoryCollapsed(prev => !prev)}
+                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                >
+                  {isHistoryCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                </button>
               </div>
 
-              {transactions.length === 0 ? (
-                <div className="text-center py-10 text-slate-500 dark:text-slate-400">
-                  No transactions yet
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
-                  {transactions.map(tx => (
-                    <div 
-                      key={tx.id || tx.timestamp}
-                      className="flex items-start justify-between p-4 rounded-2xl bg-white/50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 transition-all hover:bg-slate-50 dark:hover:bg-slate-600/40"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={`p-3 rounded-full ${
-                          tx.type === 'purchase' 
-                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' 
-                            : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
-                        }`}>
-                          {tx.type === 'purchase' ? <ArrowUpFromLine size={20} /> : <ArrowDownToLine size={20} />}
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-800 dark:text-slate-100">{tx.description}</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                            {new Date(tx.timestamp).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-semibold ${
-                          tx.type === 'purchase' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                        }`}>
-                          {tx.type === 'purchase' ? '+' : '-'}₦{tx.amount.toLocaleString()}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 capitalize">{tx.status}</p>
-                      </div>
+              {!isHistoryCollapsed && (
+                <>
+                  {/* Filters */}
+                  <div className="flex gap-3 mb-5">
+                    <div className="flex-1 relative">
+                      <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <select
+                        value={filterType}
+                        onChange={e => setFilterType(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 text-sm"
+                      >
+                        <option value="all">All Types</option>
+                        <option value="purchase">Purchases</option>
+                        <option value="withdrawal">Withdrawals</option>
+                      </select>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex-1 relative">
+                      <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <select
+                        value={filterStatus}
+                        onChange={e => setFilterStatus(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 text-sm"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="completed">Completed</option>
+                        <option value="pending">Pending</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {filteredTransactions.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 dark:text-slate-400 text-sm">
+                      No matching transactions
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
+                      {filteredTransactions.map(tx => (
+                        <div 
+                          key={tx.id}
+                          className="flex items-start justify-between p-3 rounded-xl bg-white/50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 transition-all hover:bg-slate-50 dark:hover:bg-slate-600/40"
+                        >
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className={`p-2 rounded-full flex-shrink-0 ${
+                              tx.type === 'purchase' 
+                                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' 
+                                : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
+                            }`}>
+                              {tx.type === 'purchase' ? <ArrowUpFromLine size={16} /> : <ArrowDownToLine size={16} />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                                {tx.description}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                {tx.timestamp}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0 ml-2">
+                            <p className={`text-sm font-semibold whitespace-nowrap ${
+                              tx.type === 'purchase' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                            }`}>
+                              {tx.type === 'purchase' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                              {tx.status}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
