@@ -1,89 +1,50 @@
-// src/contexts/AuthContext.jsx
-import { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+// AuthContext.jsx
+import { createContext, useContext, useEffect, useState } from 'react';
+import { auth, db } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
-const AuthContext = createContext(null);
+const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
 
       if (currentUser) {
-        const saved = localStorage.getItem('userProfile');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (parsed?.id === currentUser.id) {
-              setProfile(parsed);
-            } else {
-              setProfile(null);
-              localStorage.removeItem('userProfile');
-            }
-          } catch (e) {
-            console.error('Invalid profile in localStorage', e);
-            localStorage.removeItem('userProfile');
-            setProfile(null);
+        // Fetch user profile from Firestore
+        try {
+          const profileRef = doc(db, 'profiles', currentUser.uid);
+          const profileSnap = await getDoc(profileRef);
+
+          if (profileSnap.exists()) {
+            setUserProfile(profileSnap.data());
+          } else {
+            setUserProfile(null);
           }
+        } catch (err) {
+          console.error('Error fetching user profile:', err);
+          setUserProfile(null);
         }
       } else {
-        setProfile(null);
-        localStorage.removeItem('userProfile');
+        setUserProfile(null);
       }
 
       setLoading(false);
     });
 
-    // 2. Subscribe to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        const saved = localStorage.getItem('userProfile');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (parsed?.id === currentUser.id) {
-              setProfile(parsed);
-            }
-          } catch {}
-        }
-      } else {
-        setProfile(null);
-        localStorage.removeItem('userProfile');
-      }
-
-      setLoading(false);
-    });
-
-    return () => subscription?.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
-  const value = {
-    user,
-    profile,
-    isAuthenticated: !!user,
-    loading,
-  };
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, userProfile, loading }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+export const useAuth = () => useContext(AuthContext);

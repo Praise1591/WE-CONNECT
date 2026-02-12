@@ -1,4 +1,5 @@
 // AuthForm.jsx — Firebase version (design & UI unchanged)
+// Navigation removed — relies on top-level auth listener + protected route
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -6,8 +7,8 @@ import {
 } from 'lucide-react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 // Firebase imports
 import { 
@@ -32,8 +33,8 @@ function AuthForm({ initialMode = 'login', onClose }) {
     email: '', password: '', confirmPassword: '', phone: '', address: '',
   });
   const [loading, setLoading] = useState(false);
-
   const navigate = useNavigate();
+
   const googleProvider = new GoogleAuthProvider();
 
   const genderOptions = [
@@ -66,9 +67,15 @@ function AuthForm({ initialMode = 'login', onClose }) {
       }, { merge: true });
 
       toast.success('Welcome! Signed in with Google');
-      navigate('/dashboard', { replace: true });
-      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+
+      // ───────────────────────────────────────
+      // NO navigate() here anymore
+      // Protected route + auth context should handle redirection
+      // ───────────────────────────────────────
+
       onClose?.();
+      navigate('/dashboard');
+
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
@@ -142,12 +149,10 @@ function AuthForm({ initialMode = 'login', onClose }) {
         await setDoc(doc(db, 'profiles', user.uid), profileData);
 
         toast.success('Account created successfully! Welcome to WE CONNECT.');
-        navigate('/dashboard', { replace: true });
       } else {
         // SIGN IN
         userCredential = await signInWithEmailAndPassword(auth, email, password);
         toast.success('Welcome back!');
-        navigate('/dashboard', { replace: true });
       }
 
       // Optional: store minimal profile in localStorage
@@ -161,8 +166,13 @@ function AuthForm({ initialMode = 'login', onClose }) {
       };
       localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
-      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      // ───────────────────────────────────────
+      // NO setTimeout + navigate() here anymore
+      // Let the global auth listener + auth context redirect
+      // ───────────────────────────────────────
+
       onClose?.();
+      navigate('/dashboard');
 
     } catch (error) {
       console.error("[AUTH ERROR]", error);
@@ -188,9 +198,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
           break;
         case 'auth/operation-not-allowed':
           message = 'This operation is not allowed at the moment.';
-          break;
-        case 'auth/popup-closed-by-user':
-          message = 'Sign-in cancelled.';
           break;
         default:
           message = error.message || 'Network or server issue – please check your connection.';
@@ -258,85 +265,155 @@ function AuthForm({ initialMode = 'login', onClose }) {
                     }`}
                   >
                     <r.icon className={`w-9 h-9 transition-colors ${
-                      role === r.value ? 'text-white' : 'text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
-                    }`} strokeWidth={2.25} />
-                    <span className="font-semibold text-base">{r.label}</span>
+                      role === r.value 
+                        ? 'text-white' 
+                        : 'text-indigo-500 dark:text-indigo-300 group-hover:text-purple-500 dark:group-hover:text-purple-400'
+                    }`} />
+                    <span className="text-lg font-bold">
+                      {r.label}
+                    </span>
                   </motion.button>
                 ))}
               </div>
-            </div>
-          )}
 
-          <div className="grid gap-6 md:grid-cols-2">
-
-            {!isLogin && (
-              <div className="relative md:col-span-2">
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="Full Name"
-                  required
-                  className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white text-base transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
-                />
-              </div>
-            )}
-
-            {!isLogin && role === 'student' && (
-              <>
-                <input type="text" name="matricNumber" value={formData.matricNumber} onChange={handleInputChange} placeholder="Matric Number" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="text" name="faculty" value={formData.faculty} onChange={handleInputChange} placeholder="Faculty" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-              </>
-            )}
-
-            {!isLogin && role === 'tutor' && (
-              <>
-                <input type="text" name="specialization" value={formData.specialization} onChange={handleInputChange} placeholder="Specialization" required className="md:col-span-2 w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="number" name="yearsExperience" value={formData.yearsExperience} onChange={handleInputChange} placeholder="Years of Experience" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-              </>
-            )}
-
-            {!isLogin && role === 'lecturer' && (
-              <>
-                <input type="text" name="title" value={formData.title} onChange={handleInputChange} placeholder="Academic Title (e.g. Dr., Prof.)" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="text" name="school" value={formData.school} onChange={handleInputChange} placeholder="University" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="text" name="department" value={formData.department} onChange={handleInputChange} placeholder="Department" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-                <input type="number" name="yearsTeaching" value={formData.yearsTeaching} onChange={handleInputChange} placeholder="Years of Teaching" required className="w-full px-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20" />
-              </>
-            )}
-
-            {!isLogin && (
-              <>
-                <div className="md:col-span-2">
-                  <Select
-                    options={genderOptions}
-                    value={gender}
-                    onChange={setGender}
-                    placeholder="Select Gender"
-                    classNamePrefix="react-select"
-                    isClearable={false}
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        background: 'linear-gradient(to bottom right, rgba(99,102,241,0.08), rgba(168,85,247,0.07), rgba(244,63,94,0.06))',
-                        borderColor: 'rgba(99,102,241,0.4)',
-                        borderRadius: '0.75rem',
-                        padding: '0.25rem',
-                        boxShadow: '0 1px 3px rgba(99,102,241,0.1)',
-                        ':hover': { borderColor: 'rgb(168,85,247)' },
-                      }),
-                      menu: (base) => ({ ...base, borderRadius: '0.75rem', backgroundColor: 'white', boxShadow: '0 10px 25px -5px rgba(99,102,241,0.2)' }),
-                      option: (base, state) => ({
-                        ...base,
-                        backgroundColor: state.isSelected ? 'rgb(99,102,241)' : state.isFocused ? 'rgba(168,85,247,0.1)' : 'transparent',
-                        color: state.isSelected ? 'white' : 'inherit',
-                      }),
-                    }}
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="Full Name"
+                    required
+                    className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
                   />
                 </div>
+
+                <Select
+                  value={gender}
+                  onChange={setGender}
+                  options={genderOptions}
+                  placeholder="Gender (optional)"
+                  classNamePrefix="select"
+                  className="text-left"
+                  theme={(theme) => ({
+                    ...theme,
+                    borderRadius: 12,
+                    colors: {
+                      ...theme.colors,
+                      primary: 'rgba(139,92,246,0.8)',
+                      primary25: 'rgba(236,72,153,0.15)',
+                      neutral0: 'rgba(248,250,252,0.8)',
+                      neutral80: '#0f172a',
+                      neutral20: 'rgba(165,180,252,0.3)',
+                    },
+                  })}
+                />
+
+                {role === 'student' && (
+                  <>
+                    <input
+                      type="text"
+                      name="matricNumber"
+                      value={formData.matricNumber}
+                      onChange={handleInputChange}
+                      placeholder="Matric Number"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="text"
+                      name="school"
+                      value={formData.school}
+                      onChange={handleInputChange}
+                      placeholder="School"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="text"
+                      name="faculty"
+                      value={formData.faculty}
+                      onChange={handleInputChange}
+                      placeholder="Faculty"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="text"
+                      name="department"
+                      value={formData.department}
+                      onChange={handleInputChange}
+                      placeholder="Department"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                  </>
+                )}
+
+                {role === 'tutor' && (
+                  <>
+                    <input
+                      type="text"
+                      name="specialization"
+                      value={formData.specialization}
+                      onChange={handleInputChange}
+                      placeholder="Specialization"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="number"
+                      name="yearsExperience"
+                      value={formData.yearsExperience}
+                      onChange={handleInputChange}
+                      placeholder="Years of Experience"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                  </>
+                )}
+
+                {role === 'lecturer' && (
+                  <>
+                    <input
+                      type="text"
+                      name="title"
+                      value={formData.title}
+                      onChange={handleInputChange}
+                      placeholder="Title (e.g., Dr., Prof.)"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="text"
+                      name="school"
+                      value={formData.school}
+                      onChange={handleInputChange}
+                      placeholder="School"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="text"
+                      name="department"
+                      value={formData.department}
+                      onChange={handleInputChange}
+                      placeholder="Department"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                    <input
+                      type="number"
+                      name="yearsTeaching"
+                      value={formData.yearsTeaching}
+                      onChange={handleInputChange}
+                      placeholder="Years of Teaching"
+                      required
+                      className="group w-full pl-5 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20"
+                    />
+                  </>
+                )}
 
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
@@ -361,9 +438,11 @@ function AuthForm({ initialMode = 'login', onClose }) {
                     className="group w-full pl-12 pr-5 py-4 bg-gradient-to-br from-indigo-50/80 via-purple-50/70 to-pink-50/60 dark:from-indigo-950/50 dark:via-purple-950/45 dark:to-pink-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl shadow-sm text-slate-900 dark:text-white transition-all duration-300 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-400/40 dark:focus:border-purple-400 dark:focus:ring-purple-500/35 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md hover:shadow-purple-200/30 dark:hover:shadow-purple-900/20 resize-none"
                   />
                 </div>
-              </>
-            )}
+              </div>
+            </div>
+          )}
 
+          <div className="grid md:grid-cols-2 gap-6">
             <div className="relative md:col-span-2">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-5 h-5 transition-colors duration-300 group-focus-within:text-purple-500 dark:group-focus-within:text-purple-400" />
               <input

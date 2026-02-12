@@ -1,15 +1,16 @@
-// src/firebase.js — Modern modular Firebase v9+ syntax
-
+// firebase.js (or firebaseConfig.js) — corrected imports
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// Import the provider classes you need
+// ── Fix: Import getAuth here ────────────────────────────────────────────────
+import { getAuth } from "firebase/auth";           // ← this was missing
+
 import { 
   GoogleAuthProvider, 
-  signInWithPopup,           // if using popup
-  signInWithRedirect,        // optional, if you prefer redirect
+  signInWithPopup,
+  signInWithRedirect,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut 
@@ -21,22 +22,22 @@ import {
   getDoc 
 } from "firebase/firestore";
 
-// Your config
 const firebaseConfig = {
-  apiKey: "AIzaSyBGnjkrRtYA6bsGrmN9zYrhsmlEdd2X8d8",
-  authDomain: "we-connect-a473e.firebaseapp.com",
-  projectId: "we-connect-a473e",
-  storageBucket: "we-connect-a473e.firebasestorage.app",
-  messagingSenderId: "165842033302",
-  appId: "1:165842033302:web:abd3319b6778a4f3af80b7",
-  measurementId: "G-4JEWS0BJRZ"
+  apiKey: "AIzaSyBQlvzRyGTUS_2rh3dNbZ8BGy7E0tfODdI",
+  authDomain: "we-connect-auth.firebaseapp.com",
+  projectId: "we-connect-auth",
+  storageBucket: "we-connect-auth.firebasestorage.app",
+  messagingSenderId: "359777144912",
+  appId: "1:359777144912:web:85d804319c0a0a2707c155",
+  measurementId: "G-WYCZ28ZRMB"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 // Export services
-export const auth = getAuth(app);
+export const auth = getAuth(app);           // ← now works
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
@@ -44,7 +45,7 @@ export const storage = getStorage(app);
 export {
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,           // optional
+  signInWithRedirect,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,

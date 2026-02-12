@@ -1,5 +1,6 @@
 // App.jsx — FINAL WORKING VERSION with Landing page + Protected Routes
 // Supabase Auth integrated | Fixed sidebar (no scroll with content) + responsive collapse
+// Added dev-mode suppression for common React Router / fetch AbortError noise
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -31,6 +32,22 @@ import AnalyticsDashboard from './components/Dashboard/AnalyticsDashboard';
 import Landing from './pages/Landing';
 
 import { supabase } from '@/lib/supabaseClient';
+
+// ── Suppress noisy AbortError in development ────────────────────────────────
+if (import.meta.env.DEV) {
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    // Filter out the very common "signal is aborted without reason" noise
+    if (
+      typeof args[0] === 'string' &&
+      args[0].includes('AbortError') &&
+      args[0].includes('signal is aborted without reason')
+    ) {
+      return;
+    }
+    originalConsoleError(...args);
+  };
+}
 
 // ── Error Boundary Component ─────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -78,14 +95,14 @@ class ErrorBoundary extends React.Component {
 
 // ── Protected Layout ─────────────────────────────────────────────────────────
 function ProtectedLayout() {
-  const { isAuthenticated, loading } = useAuth();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isAuthenticated && window.location.pathname !== '/') {
+    if (!loading && !user && window.location.pathname !== '/') {
       navigate('/', { replace: true });
     }
-  }, [loading, isAuthenticated, navigate]);
+  }, [loading, user, navigate]);
 
   if (loading) {
     return (
@@ -97,7 +114,7 @@ function ProtectedLayout() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!user) {
     return null;
   }
 
@@ -144,7 +161,7 @@ function App() {
 
 // ── Dashboard Layout ──────────────────────────────────────────────────────────
 function DashboardLayout({ children }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // collapsed by default
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // collapsed by default on desktop
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const toggleSidebar = () => setSidebarCollapsed(prev => !prev);
