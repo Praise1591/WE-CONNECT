@@ -31,7 +31,6 @@ import UploadsData from './components/Dashboard/UploadsData';
 import AnalyticsDashboard from './components/Dashboard/AnalyticsDashboard';
 import Landing from './pages/Landing';
 
-import { supabase } from '@/lib/supabaseClient';
 
 // ── Suppress noisy AbortError in development ────────────────────────────────
 if (import.meta.env.DEV) {
