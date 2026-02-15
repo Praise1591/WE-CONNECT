@@ -1,5 +1,4 @@
 // AuthForm.jsx — Firebase version (design & UI unchanged)
-// Navigation removed — relies on top-level auth listener + protected route
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -20,7 +19,7 @@ import {
   signInWithEmailAndPassword,
   doc,
   setDoc
-} from '../../firebase';  // ← adjust path if needed
+} from '../../firebase';
 
 function AuthForm({ initialMode = 'login', onClose }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
@@ -54,28 +53,32 @@ function AuthForm({ initialMode = 'login', onClose }) {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
-      // Create or update basic profile in Firestore
       const profileRef = doc(db, 'profiles', user.uid);
       await setDoc(profileRef, {
         name: user.displayName || 'User',
         email: user.email,
-        role: 'student', // default — can be updated later
+        role: 'student',
         photoURL: user.photoURL || null,
         createdAt: new Date().toISOString(),
         coins: 0,
         diamonds: 0,
       }, { merge: true });
 
+      const basicProfile = {
+        id: user.uid,
+        email: user.email,
+        name: user.displayName || 'User',
+        role: 'student',
+        photoURL: user.photoURL || null,
+        coins: 0,
+        diamonds: 0,
+      };
+      localStorage.setItem('userProfile', JSON.stringify(basicProfile));
+
       toast.success('Welcome! Signed in with Google');
-
-      // ───────────────────────────────────────
-      // NO navigate() here anymore
-      // Protected route + auth context should handle redirection
-      // ───────────────────────────────────────
-
       onClose?.();
       navigate('/dashboard');
-
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
@@ -104,7 +107,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
       let userCredential;
 
       if (!isLogin) {
-        // SIGN UP
         if (formData.password !== formData.confirmPassword) {
           throw new Error("Passwords do not match");
         }
@@ -115,7 +117,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // Build profile data
         const profileData = {
           id: user.uid,
           email: user.email,
@@ -127,9 +128,9 @@ function AuthForm({ initialMode = 'login', onClose }) {
           createdAt: new Date().toISOString(),
           coins: 0,
           diamonds: 0,
+          photoURL: user.photoURL || null,
         };
 
-        // Role-specific fields
         if (role === 'student') {
           profileData.matricNumber = formData.matricNumber.trim() || null;
           profileData.school = formData.school.trim() || null;
@@ -145,40 +146,31 @@ function AuthForm({ initialMode = 'login', onClose }) {
           profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
         }
 
-        // Save to Firestore
         await setDoc(doc(db, 'profiles', user.uid), profileData);
 
         toast.success('Account created successfully! Welcome to WE CONNECT.');
       } else {
-        // SIGN IN
         userCredential = await signInWithEmailAndPassword(auth, email, password);
         toast.success('Welcome back!');
       }
 
-      // Optional: store minimal profile in localStorage
       const basicProfile = {
         id: userCredential.user.uid,
         email: userCredential.user.email,
         name: formData.name.trim() || userCredential.user.displayName || 'User',
         role,
+        photoURL: userCredential.user.photoURL || null,
         coins: 0,
         diamonds: 0,
       };
       localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
-      // ───────────────────────────────────────
-      // NO setTimeout + navigate() here anymore
-      // Let the global auth listener + auth context redirect
-      // ───────────────────────────────────────
-
       onClose?.();
       navigate('/dashboard');
-
+      window.dispatchEvent(new CustomEvent('userLoggedIn'));
     } catch (error) {
       console.error("[AUTH ERROR]", error);
-
       let message = 'An error occurred. Please try again.';
-
       switch (error.code) {
         case 'auth/email-already-in-use':
           message = 'This email is already in use. Please sign in or use a different email.';
@@ -202,7 +194,6 @@ function AuthForm({ initialMode = 'login', onClose }) {
         default:
           message = error.message || 'Network or server issue – please check your connection.';
       }
-
       toast.error(message);
     } finally {
       setLoading(false);

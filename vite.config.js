@@ -1,4 +1,3 @@
-
 // vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -7,11 +6,22 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),         // ← @/ points to src/
-      // You can add more if needed
-      // '@/components': path.resolve(__dirname, './src/components'),
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+
+  server: {
+    proxy: {
+      // Proxy all /api requests to your backend server
+      '/api': {
+        target: 'http://localhost:3000',          // ← IMPORTANT: change this to match your actual backend port
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        secure: false,
+      },
     },
   },
 })

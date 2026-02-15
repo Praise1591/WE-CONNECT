@@ -1,4 +1,5 @@
 // MonetaryValue.jsx — Fully Firebase version (Firestore + Auth) + Paystack
+// Updated: Enhanced withdrawal request with metadata for backend processing
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -51,7 +52,6 @@ function MonetaryValue() {
         let userData = null;
 
         if (!userSnap.exists()) {
-          // Auto-create profile
           const fallback = 
             user.displayName ||
             user.email?.split('@')[0] ||
@@ -76,10 +76,9 @@ function MonetaryValue() {
 
         setProfile({
           ...userData,
-          id: user.uid, // for consistency with old code
+          id: user.uid,
         });
 
-        // Fetch recent transactions
         const txRef = collection(db, 'users', user.uid, 'transactions');
         const txQuery = query(txRef, orderBy('timestamp', 'desc'), limit(50));
         const txSnap = await getDocs(txQuery);
@@ -93,7 +92,9 @@ function MonetaryValue() {
         setTransactions(txList);
       } catch (err) {
         console.error('Firebase data load error:', err);
-        setLoadingError('Failed to load wallet data. Check console.');
+        console.error('Error code:', err.code);
+        console.error('Error message:', err.message);
+        setLoadingError(`Failed to load wallet: ${err.message || 'Unknown error'}`);
         toast.error('Failed to load wallet');
       } finally {
         setLoading(false);
@@ -120,7 +121,7 @@ function MonetaryValue() {
     setWithdrawDetails(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const addTransaction = async (type, amount, description, status = 'completed') => {
+  const addTransaction = async (type, amount, description, status = 'completed', extraData = {}) => {
     if (!currentUser) return false;
     try {
       const txRef = collection(db, 'users', currentUser.uid, 'transactions');
@@ -130,6 +131,8 @@ function MonetaryValue() {
         description,
         status,
         timestamp: serverTimestamp(),
+        ...extraData,
+        processedAt: null,
       });
       return true;
     } catch (err) {
@@ -145,33 +148,28 @@ function MonetaryValue() {
 
     setIsBuying(true);
 
-    // Dynamically load Paystack script
     const script = document.createElement('script');
     script.src = 'https://js.paystack.co/v2/inline.js';
     script.onload = () => {
       const handler = window.PaystackPop.setup({
         key: 'pk_test_480d88a5cbfa09b6864e9796af08dd241de9d1a6',
         email: currentUser.email || 'test@example.com',
-        amount: totalBuyAmount * 100, // kobo
+        amount: totalBuyAmount * 100,
         currency: 'NGN',
         ref: 'WC_TEST_' + Math.floor(Math.random() * 1000000000 + 1).toString(),
         metadata: { coins: amount },
         callback: async (response) => {
           try {
-            // Atomic update using transaction
             const userRef = doc(db, 'users', currentUser.uid);
             await runTransaction(db, async (transaction) => {
               const userDoc = await transaction.get(userRef);
               if (!userDoc.exists()) throw new Error("User profile not found");
-
               const newCoins = (userDoc.data().coins || 0) + amount;
               transaction.update(userRef, { coins: newCoins });
             });
 
             await addTransaction('purchase', totalBuyAmount, `Bought ${amount} coins via Paystack`);
             toast.success(`Success! ${amount} coins added`);
-
-            // Refresh local profile
             setProfile(prev => ({ ...prev, coins: (prev?.coins || 0) + amount }));
           } catch (err) {
             console.error('Coin update failed:', err);
@@ -194,15 +192,19 @@ function MonetaryValue() {
   const handleWithdraw = async () => {
     if (!currentUser) return toast.error('Please log in first');
     const amount = Number(diamondsToWithdraw);
-    if (isNaN(amount) || amount < 10) return toast.error('Minimum withdrawal is 10 diamonds');
+    if (isNaN(amount) || amount < 10) return toast.error('Minimum withdrawal is 10 diamonds (₦1,000)');
     if ((profile?.diamonds || 0) < amount) return toast.error('Not enough diamonds');
 
-    if (withdrawMethod === 'bank' && 
-        (!withdrawDetails.bankName || !withdrawDetails.accountNumber || !withdrawDetails.accountName)) {
-      return toast.error('Please complete all bank details');
+    if (withdrawMethod === 'bank') {
+      if (!withdrawDetails.bankName || !withdrawDetails.accountNumber || !withdrawDetails.accountName) {
+        return toast.error('Please complete all bank transfer details');
+      }
+      if (withdrawDetails.accountNumber.length < 10) {
+        return toast.error('Account number should be at least 10 digits');
+      }
     }
     if (withdrawMethod === 'mobile' && !withdrawDetails.mobileNumber) {
-      return toast.error('Please enter mobile money number');
+      return toast.error('Please enter your mobile money number');
     }
 
     setIsWithdrawing(true);
@@ -218,19 +220,34 @@ function MonetaryValue() {
         transaction.update(userRef, { diamonds: currentDiamonds - amount });
       });
 
-      await addTransaction(
+      const success = await addTransaction(
         'withdrawal',
         totalWithdrawAmount,
-        `Withdraw ₦${totalWithdrawAmount.toLocaleString()} (${amount} diamonds) via ${withdrawMethod === 'bank' ? 'Bank' : 'Mobile Money'}`,
-        'pending'
+        `Withdraw ₦${totalWithdrawAmount.toLocaleString()} (${amount} diamonds) via ${withdrawMethod === 'bank' ? 'Bank Transfer' : 'Mobile Money'}`,
+        'pending',
+        {
+          diamondsUsed: amount,
+          method: withdrawMethod,
+          bankDetails: withdrawMethod === 'bank' ? {
+            bankName: withdrawDetails.bankName.trim(),
+            accountNumber: withdrawDetails.accountNumber.trim(),
+            accountName: withdrawDetails.accountName.trim(),
+          } : null,
+          mobileNumber: withdrawMethod === 'mobile' ? withdrawDetails.mobileNumber.trim() : null,
+          userEmail: currentUser.email || null,
+        }
       );
 
-      toast.success(`Withdrawal request of ₦${totalWithdrawAmount.toLocaleString()} submitted`);
-      setDiamondsToWithdraw('');
-      setWithdrawDetails({ bankName: '', accountNumber: '', accountName: '', mobileNumber: '' });
+      if (success) {
+        toast.success(`Withdrawal request of ₦${totalWithdrawAmount.toLocaleString()} submitted! Processing usually takes 5–60 minutes.`);
+        setDiamondsToWithdraw('');
+        setWithdrawDetails({ bankName: '', accountNumber: '', accountName: '', mobileNumber: '' });
+      } else {
+        throw new Error("Failed to save withdrawal request");
+      }
     } catch (err) {
       console.error('Withdraw failed:', err);
-      toast.error('Failed to process withdrawal');
+      toast.error('Failed to process withdrawal request. Please try again.');
     } finally {
       setIsWithdrawing(false);
     }
@@ -279,15 +296,9 @@ function MonetaryValue() {
     );
   }
 
-  // ────────────────────────────────────────────────
-  // The rest of your UI remains the same (balances, buy, withdraw, history)
-  // Just using {profile.coins} and {profile.diamonds} now
-  // ────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/20 dark:from-slate-950 dark:via-indigo-950/20 dark:to-purple-950/10 pb-10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-2">
             <Wallet className="w-9 h-9 text-indigo-600 dark:text-indigo-400" />
@@ -298,11 +309,8 @@ function MonetaryValue() {
           <p className="text-slate-600 dark:text-slate-400">Manage Coins • Withdraw Diamonds • View History</p>
         </div>
 
-        {/* Grid layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* Left side */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Balances */}
             <div className="grid grid-cols-2 gap-4 sm:gap-6">
               <div className="bg-white/70 dark:bg-slate-800/60 backdrop-blur-lg rounded-2xl shadow-lg border border-white/40 dark:border-slate-700/50 p-6 text-center hover:shadow-xl transition-all">
                 <Coins className="w-10 h-10 text-amber-500 mx-auto mb-3" />
@@ -316,7 +324,7 @@ function MonetaryValue() {
               </div>
             </div>
 
-            {/* Buy Coins section – same as before */}
+            {/* Buy Coins Section */}
             <div className="bg-white/75 dark:bg-slate-800/65 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-8">
               <div className="flex items-center gap-3 mb-5">
                 <ArrowUpFromLine className="w-7 h-7 text-amber-600 dark:text-amber-400" />
@@ -371,11 +379,124 @@ function MonetaryValue() {
               </button>
             </div>
 
-            {/* Withdraw Diamonds section – same as before */}
+            {/* Withdraw Diamonds Section – now fully initialized */}
             <div className="bg-white/75 dark:bg-slate-800/65 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-8">
-              {/* ... same withdraw UI code as in your original ... */}
-              {/* Just make sure onClick={handleWithdraw} and disabled logic uses profile.diamonds */}
-              {/* (already using profile.diamonds in the code above) */}
+              <div className="flex items-center gap-3 mb-5">
+                <ArrowDownToLine className="w-7 h-7 text-purple-600 dark:text-purple-400" />
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Withdraw Diamonds</h2>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-5">
+                ₦1,000 = 10 Diamonds • Min. 10 diamonds • Processing: 5–60 mins
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {diamondPresets.map(amount => (
+                  <button
+                    key={amount}
+                    onClick={() => setDiamondsToWithdraw(amount.toString())}
+                    className={`group relative p-4 rounded-2xl border-2 transition-all duration-300 ${
+                      diamondsToWithdraw === amount.toString()
+                        ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 shadow-md'
+                        : 'border-transparent hover:border-purple-300 dark:hover:border-purple-700/50 bg-white/60 dark:bg-slate-700/40 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-slate-800 dark:text-slate-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                        {amount}
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                        ₦{(amount * valuePerDiamond).toLocaleString()}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative mb-6">
+                <input
+                  type="number"
+                  min="10"
+                  value={diamondsToWithdraw}
+                  onChange={e => setDiamondsToWithdraw(e.target.value)}
+                  placeholder=" "
+                  className="peer w-full p-4 pt-6 pb-2 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition"
+                />
+                <label className="absolute left-4 top-1.5 text-sm text-slate-500 dark:text-slate-400 pointer-events-none transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-focus:top-1.5 peer-focus:text-xs peer-focus:text-purple-600 dark:peer-focus:text-purple-400">
+                  Amount to withdraw (diamonds)
+                </label>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Withdrawal Method
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {withdrawMethods.map(method => (
+                    <button
+                      key={method.value}
+                      onClick={() => setWithdrawMethod(method.value)}
+                      className={`p-4 rounded-xl border-2 flex items-center justify-center gap-3 transition-all ${
+                        withdrawMethod === method.value
+                          ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 shadow-md'
+                          : 'border-slate-200 dark:border-slate-600 hover:border-purple-300 dark:hover:border-purple-700/50 bg-white/60 dark:bg-slate-700/40'
+                      }`}
+                    >
+                      <method.icon className="w-5 h-5" />
+                      <span className="font-medium">{method.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {withdrawMethod === 'bank' && (
+                <div className="space-y-4 mb-6">
+                  <input
+                    name="bankName"
+                    value={withdrawDetails.bankName}
+                    onChange={handleInputChange}
+                    placeholder="Bank Name (e.g. GTBank, Access Bank)"
+                    className="w-full p-4 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl"
+                  />
+                  <input
+                    name="accountNumber"
+                    value={withdrawDetails.accountNumber}
+                    onChange={handleInputChange}
+                    placeholder="Account Number"
+                    type="tel"
+                    maxLength={10}
+                    className="w-full p-4 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl"
+                  />
+                  <input
+                    name="accountName"
+                    value={withdrawDetails.accountName}
+                    onChange={handleInputChange}
+                    placeholder="Account Name (as registered)"
+                    className="w-full p-4 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl"
+                  />
+                </div>
+              )}
+
+              {withdrawMethod === 'mobile' && (
+                <div className="mb-6">
+                  <input
+                    name="mobileNumber"
+                    value={withdrawDetails.mobileNumber}
+                    onChange={handleInputChange}
+                    placeholder="Mobile Money Number (e.g. 08012345678)"
+                    type="tel"
+                    className="w-full p-4 bg-white/60 dark:bg-slate-700/40 border border-slate-300 dark:border-slate-600 rounded-xl"
+                  />
+                </div>
+              )}
+
+              <button
+                onClick={handleWithdraw}
+                disabled={isWithdrawing || !diamondsToWithdraw || Number(diamondsToWithdraw) < 10}
+                className="w-full py-4 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+              >
+                {isWithdrawing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowDownToLine className="w-5 h-5" />}
+                {isWithdrawing ? 'Submitting...' : `Withdraw ₦${totalWithdrawAmount.toLocaleString()}`}
+              </button>
             </div>
           </div>
 

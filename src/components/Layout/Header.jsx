@@ -1,5 +1,4 @@
 // Header.jsx — Compact mobile design + best practices for simplicity/clarity
-
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -17,7 +16,7 @@ import {
   Zap
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabaseClient';
+import { auth, signOut } from '../../firebase';
 import AuthForm from '../Dashboard/AuthForm';
 
 function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
@@ -27,17 +26,17 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login');
-  const [showSearchInput, setShowSearchInput] = useState(false); // New: toggle search on mobile
+  const [showSearchInput, setShowSearchInput] = useState(false);
 
   const [user, setUser] = useState({
     name: 'Guest',
     displayText: 'Sign in to continue',
-    isLoggedIn: false,
+    photoURL: null,
     coins: 0,
     diamonds: 0,
+    isLoggedIn: false,
   });
 
-  // ── User profile loading & sync logic ───────────────────────────────────────
   useEffect(() => {
     const loadUser = () => {
       const savedProfile = localStorage.getItem('userProfile');
@@ -45,9 +44,10 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
         setUser({
           name: 'Guest',
           displayText: 'Sign in to continue',
-          isLoggedIn: false,
+          photoURL: null,
           coins: 0,
           diamonds: 0,
+          isLoggedIn: false,
         });
         return;
       }
@@ -74,9 +74,10 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
         setUser({
           name: (profile.name || 'User').trim(),
           displayText: displayText || 'Your profile',
-          isLoggedIn: true,
+          photoURL: profile.photoURL || null,
           coins: Number(profile.coins ?? 0),
           diamonds: Number(profile.diamonds ?? 0),
+          isLoggedIn: true,
         });
       } catch (err) {
         console.error('Failed to parse userProfile:', err);
@@ -84,9 +85,10 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
         setUser({
           name: 'Guest',
           displayText: 'Sign in to continue',
-          isLoggedIn: false,
+          photoURL: null,
           coins: 0,
           diamonds: 0,
+          isLoggedIn: false,
         });
       }
     };
@@ -107,7 +109,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
     };
   }, []);
 
-  // ── Dark mode ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -123,7 +124,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
     localStorage.setItem('theme', newDark ? 'dark' : 'light');
   };
 
-  // ── Auth modal: Escape key + body scroll lock ───────────────────────────────
   useEffect(() => {
     if (!showAuthModal) return;
 
@@ -149,19 +149,16 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
 
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-
+      await signOut(auth);
       localStorage.removeItem('userProfile');
-      
       setUser({
         name: 'Guest',
         displayText: 'Sign in to continue',
-        isLoggedIn: false,
+        photoURL: null,
         coins: 0,
         diamonds: 0,
+        isLoggedIn: false,
       });
-
       setIsProfileOpen(false);
       window.dispatchEvent(new CustomEvent('userLoggedIn'));
       navigate('/', { replace: true });
@@ -245,8 +242,14 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-1 sm:gap-1.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              <div className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-sm">
-                {(user.name || '?')[0].toUpperCase()}
+              <div className="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 shadow-sm flex-shrink-0">
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                ) : (
+                  <span className="font-bold text-xs sm:text-sm flex items-center justify-center h-full text-white">
+                    {(user.name || '?')[0].toUpperCase()}
+                  </span>
+                )}
               </div>
               <div className="hidden md:block text-left">
                 <p className="text-xs lg:text-sm font-semibold text-slate-800 dark:text-white truncate max-w-[140px] lg:max-w-[180px]">
@@ -292,12 +295,12 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
               {user.isLoggedIn ? (
                 <>
                   <button
-                  onClick={() => navigate('/profile')}
-                  className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 sm:gap-3 text-sm"
-                >
-                  <User size={16} />
-                  <span>Profile</span>
-                </button>
+                    onClick={() => navigate('/profile')}
+                    className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 sm:gap-3 text-sm"
+                  >
+                    <User size={16} />
+                    <span>Profile</span>
+                  </button>
                   <button className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 sm:gap-3 text-sm">
                     <Settings size={16} />
                     <span>Settings</span>

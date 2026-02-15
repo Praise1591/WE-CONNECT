@@ -1,4 +1,4 @@
-// DownloadsPage.jsx — Redesigned with Professional & Soothing Touch
+// DownloadsPage.jsx
 import React, { useState, useEffect } from 'react';
 import {
   Download as DownloadIcon,
@@ -10,40 +10,114 @@ import {
   Trash2,
   Calendar,
   University,
-  FileDown,
+  Eye,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'react-toastify';
+
+// ── Firebase ────────────────────────────────────────────────────────────────
+import { db, auth } from '@/firebase';
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  doc,
+  deleteDoc,
+} from 'firebase/firestore';
 
 function DownloadsPage() {
   const [downloads, setDownloads] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [viewingIds, setViewingIds] = useState(new Set());
+
+  const user = auth.currentUser;
 
   useEffect(() => {
-    const loadDownloads = () => {
-      const saved = localStorage.getItem('downloadedMaterials');
-      if (saved) {
-        try {
-          setDownloads(JSON.parse(saved));
-        } catch (e) {
-          console.error('Invalid downloads data');
-        }
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, `users/${user.uid}/downloads`),
+      orderBy('downloadedAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }));
+      setDownloads(items);
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      toast.error('Failed to load downloads');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const removeDownload = async (materialId) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, `users/${user.uid}/downloads`, materialId));
+      toast.info('Removed from downloads');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to remove');
+    }
+    setOpenMenuId(null);
+  };
+
+  const viewMaterial = async (item) => {
+    if (!user) {
+      toast.info("Please sign in to view");
+      return;
+    }
+
+    const materialId = item.id;
+    setViewingIds((prev) => new Set([...prev, materialId]));
+
+    try {
+      const idToken = await user.getIdToken();
+
+      const res = await fetch('/api/generate-storj-download-url', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileKey: item.file_path, // Make sure this field exists in your downloads data
+          bucket: 'weconnect',
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '(no details)');
+        throw new Error(`Failed to get view URL: ${res.status} - ${errText}`);
       }
-    };
 
-    loadDownloads();
+      const { url: signedUrl } = await res.json();
 
-    window.addEventListener('downloadsUpdated', loadDownloads);
+      // Open in new browser tab
+      window.open(signedUrl, '_blank');
 
-    return () => {
-      window.removeEventListener('downloadsUpdated', loadDownloads);
-    };
-  }, []);
-
-  const removeDownload = (id) => {
-    const newDownloads = downloads.filter(item => item.id !== id);
-    setDownloads(newDownloads);
-    localStorage.setItem('downloadedMaterials', JSON.stringify(newDownloads));
-    window.dispatchEvent(new Event('downloadsUpdated'));
-    setOpenMenuId(null); // Close menu after delete
+      toast.success('Opening material...');
+    } catch (err) {
+      console.error('View failed:', err);
+      toast.error('Could not open material – the file may no longer exist or there was a server issue');
+    } finally {
+      setViewingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(materialId);
+        return next;
+      });
+    }
   };
 
   const toggleMenu = (id, e) => {
@@ -53,20 +127,36 @@ function DownloadsPage() {
 
   const getCategoryInfo = (category) => {
     switch (category) {
-      case 'Past Questions': return { icon: ScrollText, color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' };
-      case 'PDF Notes': return { icon: FileText, color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' };
-      case 'Video Tutorials': return { icon: Video, color: 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400' };
-      case 'Technical Reviews': return { icon: BookOpen, color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' };
-      default: return { icon: FileText, color: 'bg-gray-50 text-gray-700 dark:bg-gray-800/40 dark:text-gray-400' };
+      case 'Past Questions':
+        return { icon: ScrollText, color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' };
+      case 'PDF Notes':
+        return { icon: FileText, color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' };
+      case 'Video Tutorials':
+        return { icon: Video, color: 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400' };
+      case 'Technical Reviews':
+        return { icon: BookOpen, color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' };
+      default:
+        return { icon: FileText, color: 'bg-gray-50 text-gray-700 dark:bg-gray-800/40 dark:text-gray-400' };
     }
   };
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = () => setOpenMenuId(null);
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  if (!user) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center">
+        <h2>Please sign in to view your downloads</h2>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="min-h-[60vh] flex items-center justify-center">Loading...</div>;
+  }
 
   if (downloads.length === 0) {
     return (
@@ -93,15 +183,20 @@ function DownloadsPage() {
             <DownloadIcon className="text-blue-600 dark:text-blue-400" size={32} />
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mt-2">
-            {downloads.length} {downloads.length === 1 ? 'item' : 'items'} downloaded
+            {downloads.length} {downloads.length === 1 ? 'item' : 'items'}
           </p>
         </div>
       </div>
 
       <div className="grid gap-5">
         {downloads.map((item) => {
-          const { icon: CategoryIcon, color: badgeColor } = getCategoryInfo(item.category);
+          const { icon: CategoryIcon, color: badgeColor } = getCategoryInfo(item.category || 'PDF Notes');
           const isMenuOpen = openMenuId === item.id;
+          const isViewing = viewingIds.has(item.id);
+
+          const downloadedDate = item.downloadedAt
+            ? new Date(item.downloadedAt.toDate()).toLocaleDateString()
+            : 'recent';
 
           return (
             <div
@@ -110,62 +205,72 @@ function DownloadsPage() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6 flex-1 min-w-0">
-                  {/* Category Icon */}
                   <div className={`w-16 h-16 rounded-2xl ${badgeColor} flex items-center justify-center shadow-md`}>
                     <CategoryIcon size={32} />
                   </div>
 
-                  {/* Details */}
                   <div className="flex-1 min-w-0">
                     <h3 className="text-xl font-semibold text-slate-800 dark:text-white truncate">
-                      {item.name}
+                      {item.title || item.name || 'Untitled'}
                     </h3>
                     <p className="text-slate-600 dark:text-slate-300 mt-1 text-base">
-                      {item.course}
+                      {item.course || '—'}
                     </p>
 
                     <div className="flex flex-wrap items-center gap-6 mt-4 text-sm text-slate-500 dark:text-slate-400">
                       <div className="flex items-center gap-2">
                         <University size={18} />
-                        <span>{item.school}</span>
+                        <span>{item.school || '—'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar size={18} />
-                        <span>Downloaded {new Date(item.downloadDate || Date.now()).toLocaleDateString()}</span>
+                        <span>Downloaded {downloadedDate}</span>
                       </div>
                       <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full font-medium ${badgeColor}`}>
                         <CategoryIcon size={16} />
-                        <span>{item.category}</span>
+                        <span>{item.category || 'Material'}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Action Menu */}
-                <div className="relative ml-4">
+                <div className="flex items-center gap-2 ml-4">
+                  <button
+                    onClick={() => viewMaterial(item)}
+                    disabled={isViewing}
+                    className="p-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                    title="View material"
+                  >
+                    {isViewing ? (
+                      <Loader2 size={22} className="animate-spin" />
+                    ) : (
+                      <Eye size={22} />
+                    )}
+                  </button>
+
                   <button
                     onClick={(e) => toggleMenu(item.id, e)}
                     className="p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/70 transition-colors"
                   >
                     <MoreVertical size={22} className="text-slate-500 dark:text-slate-400" />
                   </button>
-
-                  {isMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200/70 dark:border-slate-700/70 overflow-hidden z-10">
-                      <button
-                        onClick={() => removeDownload(item.id)}
-                        className="w-full px-5 py-4 flex items-center gap-4 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={20} />
-                        <div className="text-left">
-                          <p className="font-medium">Remove from Downloads</p>
-                          <p className="text-xs opacity-80 mt-0.5">This item will no longer appear here</p>
-                        </div>
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
+
+              {isMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200/70 dark:border-slate-700/70 overflow-hidden z-10">
+                  <button
+                    onClick={() => removeDownload(item.id)}
+                    className="w-full px-5 py-4 flex items-center gap-4 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={20} />
+                    <div className="text-left">
+                      <p className="font-medium">Remove from Downloads</p>
+                      <p className="text-xs opacity-80 mt-0.5">This item will no longer appear here</p>
+                    </div>
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

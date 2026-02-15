@@ -1,11 +1,10 @@
-// firebase.js (or firebaseConfig.js) — corrected imports
+// firebase.js (or firebaseConfig.js) — Emulator connections commented out to avoid assertion failures
+
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-
-// ── Fix: Import getAuth here ────────────────────────────────────────────────
-import { getAuth } from "firebase/auth";           // ← this was missing
+import { getAuth } from "firebase/auth";
 
 import { 
   GoogleAuthProvider, 
@@ -19,9 +18,20 @@ import {
 import { 
   doc, 
   setDoc, 
-  getDoc 
+  getDoc,
+  // serverTimestamp,   // ← uncomment if you use it in many places
+  // increment,
+  // updateDoc,
+  // deleteDoc,
+  // collection,
+  // query,
+  // orderBy,
+  // onSnapshot
 } from "firebase/firestore";
 
+// ────────────────────────────────────────────────────────────────
+// Firebase Configuration
+// ────────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyBQlvzRyGTUS_2rh3dNbZ8BGy7E0tfODdI",
   authDomain: "we-connect-auth.firebaseapp.com",
@@ -36,12 +46,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 
-// Export services
-export const auth = getAuth(app);           // ← now works
-export const db = getFirestore(app);
+// ────────────────────────────────────────────────────────────────
+// Export core services
+// ────────────────────────────────────────────────────────────────
+export const auth = getAuth(app);
+export const db   = getFirestore(app);
 export const storage = getStorage(app);
 
-// Export auth functions & providers
+// ────────────────────────────────────────────────────────────────
+// Auth methods & providers
+// ────────────────────────────────────────────────────────────────
 export {
   GoogleAuthProvider,
   signInWithPopup,
@@ -51,9 +65,39 @@ export {
   signOut,
 };
 
-// Export Firestore helpers
+// ────────────────────────────────────────────────────────────────
+// Firestore helpers (most commonly used)
+// ────────────────────────────────────────────────────────────────
 export {
   doc,
   setDoc,
   getDoc,
+  // Add more as needed – avoid importing everything to keep bundle smaller
+  // serverTimestamp,
+  // increment,
+  // updateDoc,
+  // deleteDoc,
+  // collection,
+  // query,
+  // orderBy,
+  // onSnapshot,
 };
+
+// ────────────────────────────────────────────────────────────────
+// IMPORTANT: Emulator connections are COMMENTED OUT
+// This is the recommended workaround for the "Unexpected state (ID: ca9)" / "ve:-1" assertion failure
+// that occurs very frequently with connectFirestoreEmulator + onSnapshot + rapid writes/deletes
+// ────────────────────────────────────────────────────────────────
+//
+// If you need to use the emulator later (e.g. for security rules testing), uncomment temporarily:
+// 
+// import { connectFirestoreEmulator } from "firebase/firestore";
+// import { connectAuthEmulator } from "firebase/auth";
+// import { connectStorageEmulator } from "firebase/storage";
+//
+// if (import.meta.env.DEV || import.meta.env.MODE === "development") {
+//   connectFirestoreEmulator(db, '127.0.0.1', 8080);
+//   connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+//   connectStorageEmulator(storage, '127.0.0.1', 9199);
+//   console.log("Firebase emulators connected");
+// }

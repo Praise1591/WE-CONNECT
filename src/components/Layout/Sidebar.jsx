@@ -38,6 +38,7 @@ const menuItems = [
 function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
   const [userName, setUserName] = useState('Guest');
   const [userDisplayText, setUserDisplayText] = useState('Sign in to continue');
+  const [photoURL, setPhotoURL] = useState(null);
   const location = useLocation();
 
   const loadUser = () => {
@@ -48,12 +49,14 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
         let displayText = parsed.school || parsed.specialization || 'Your University / Field';
         setUserName(parsed.name || 'User');
         setUserDisplayText(displayText);
+        setPhotoURL(parsed.photoURL || null);
       } catch (e) {
         // Silent fail
       }
     } else {
       setUserName('Guest');
       setUserDisplayText('Sign in to continue');
+      setPhotoURL(null);
     }
   };
 
@@ -63,7 +66,6 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
     return () => window.removeEventListener('userLoggedIn', loadUser);
   }, []);
 
-  // Better active route detection (handles /dashboard and subroutes)
   const isRouteActive = (path) => {
     if (path === '/dashboard') {
       return location.pathname === '/dashboard' || location.pathname === '/dashboard/';
@@ -129,8 +131,14 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
           {/* User Profile Section */}
           <div className="p-4 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold shadow-sm flex-shrink-0">
-                {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0 shadow-sm">
+                {photoURL ? (
+                  <img src={photoURL} alt={userName} className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white font-semibold text-sm">
+                    {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                )}
               </div>
               {!collapsed && (
                 <div className="min-w-0">
@@ -212,8 +220,14 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
               {/* Mobile User Profile */}
               <div className="p-4 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold shadow-sm">
-                    {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 shadow-sm">
+                    {photoURL ? (
+                      <img src={photoURL} alt={userName} className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white font-semibold text-base">
+                        {userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </div>
+                    )}
                   </div>
                   <div className="min-w-0">
                     <p className="text-base font-medium text-slate-800 dark:text-white truncate">

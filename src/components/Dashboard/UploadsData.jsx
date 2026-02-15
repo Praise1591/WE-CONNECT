@@ -1,6 +1,6 @@
 // UploadsData.jsx
 // Features: multi-step upload form, direct Storj S3 multipart upload, progress bar, pause/resume/cancel
-// Authentication: Supabase | Storage: Storj (S3 gateway)
+// Authentication: Firebase | Metadata: Firestore | Storage: Storj (S3 gateway)
 
 import React, { useState, useRef } from 'react';
 import { 
@@ -8,7 +8,12 @@ import {
   ArrowRight, Check, Loader2, ArrowLeft 
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { supabase } from '@/supabase';
+
+// ── Firebase imports ────────────────────────────────────────────────────────
+import { db, auth } from '@/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
+// ── AWS SDK for Storj S3 compatibility ──────────────────────────────────────
 import {
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -122,32 +127,24 @@ function UploadsData() {
 
       const publicUrl = `https://link.storjshare.io/s/${BUCKET_NAME}/${filePath}`;
 
-      // ────────────────────────────────────────────────
-      // TEMPORARY FIX: removed 'description' to bypass PGRST204
-      // Add the column in Supabase then re-add this field
-      // ────────────────────────────────────────────────
-      const { error: dbError } = await supabase
-        .from('materials')
-        .insert({
-          name: formData.title.trim(),
-          title: formData.title.trim(),
-          course: formData.course.trim(),
-          school: formData.school.trim(),
-          department: formData.department?.trim() || null,
-          // description: formData.description?.trim() || null,  ← commented out for now
-          category: selectedCategory.value,
-          file_name: file.name,
-          file_path: filePath,
-          file_size: file.size,
-          mime_type: file.type,
-          public_url: publicUrl,
-        });
-
-      if (dbError) {
-        console.error("Supabase insert error:", dbError);
-        await parallelUploads3.abort().catch(() => {});
-        throw dbError;
-      }
+      // ── Save to Firestore instead of Supabase ───────────────────────────────
+      await addDoc(collection(db, 'materials'), {
+        name: formData.title.trim(),
+        title: formData.title.trim(),
+        course: formData.course.trim(),
+        school: formData.school.trim(),
+        department: formData.department?.trim() || null,
+        description: formData.description?.trim() || null,
+        category: selectedCategory.value,
+        file_name: file.name,
+        file_path: filePath,
+        file_size: file.size,
+        mime_type: file.type,
+        public_url: publicUrl,
+        uid: auth.currentUser?.uid || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
       toast.success("Material uploaded successfully!");
       setStep(4);
@@ -206,7 +203,7 @@ function UploadsData() {
   };
 
   // ────────────────────────────────────────────────
-  //  RENDER (unchanged from previous working version)
+  //  RENDER (unchanged)
   // ────────────────────────────────────────────────
 
   return (
