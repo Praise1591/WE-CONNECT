@@ -2,9 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  GraduationCap, BookOpen, Video, FileText, ScrollText, ArrowRight,
-  CheckCircle2, Users, ShieldCheck, X, Zap, UploadCloud, DollarSign,
-  MessageCircle, Search, Star
+  GraduationCap, BookOpen, Video, FileText, UploadCloud, DollarSign,
+  Users, ShieldCheck, Search, MessageCircle, ArrowRight, X
 } from 'lucide-react';
 import AuthForm from '../components/Dashboard/AuthForm';
 
@@ -15,17 +14,14 @@ export default function Landing() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const statsRef = useRef(null);
 
-  // Mouse position for parallax (values from -1 to 1)
+  // Mouse position for subtle background tilt only (not affecting logo orbit)
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
 
   const handleMouseMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;     // 0 to 1
-    const y = (e.clientY - rect.top) / rect.height;     // 0 to 1
-    setMouse({
-      x: (x - 0.5) * 2,   // -1 to 1
-      y: (y - 0.5) * 2
-    });
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    setMouse({ x: x * 2, y: y * 2 });
   };
 
   const openAuth = (mode) => {
@@ -42,25 +38,22 @@ export default function Landing() {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          const counters = document.querySelectorAll('.counter');
-          counters.forEach(counter => {
-            const updateCount = () => {
-              const target = +counter.getAttribute('data-target');
-              const count = +counter.innerText;
-              const increment = target / 100;
-              if (count < target) {
-                counter.innerText = Math.ceil(count + increment);
-                setTimeout(updateCount, 20);
-              } else {
-                counter.innerText = target;
-              }
+          document.querySelectorAll('.counter').forEach(counter => {
+            const target = +counter.getAttribute('data-target');
+            let count = +counter.innerText;
+            const increment = target / 100;
+            const update = () => {
+              count += increment;
+              counter.innerText = Math.ceil(count);
+              if (count < target) setTimeout(update, 20);
+              else counter.innerText = target.toLocaleString();
             };
-            updateCount();
+            update();
           });
           observer.disconnect();
         }
       },
-      { threshold: 0.5 }
+      { threshold: 0.4 }
     );
 
     if (statsRef.current) observer.observe(statsRef.current);
@@ -69,393 +62,282 @@ export default function Landing() {
 
   return (
     <div 
-      className="min-h-screen relative overflow-hidden bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950"
+      className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950"
       onMouseMove={handleMouseMove}
     >
-      {/* ────────────────────────────────────────────── */}
-      {/*   Professional 3D Parallax Background – Premium & Modern   */}
-      {/* ────────────────────────────────────────────── */}
+      {/* Subtle background layers */}
       <div className="absolute inset-0 pointer-events-none">
-        <div 
+        <motion.div
           className="absolute inset-0"
-          style={{
-            perspective: '1800px',
-            perspectiveOrigin: '50% 50%',
+          style={{ perspective: '1600px', perspectiveOrigin: '50% 40%' }}
+          animate={{
+            rotateX: mouse.y * 3,
+            rotateY: mouse.x * -5,
           }}
+          transition={{ type: 'spring', stiffness: 90, damping: 40 }}
         >
-          <motion.div
-            className="absolute inset-0"
-            style={{
-              transformStyle: 'preserve-3d',
+          <div 
+            className="absolute inset-0 opacity-5"
+            style={{ 
+              backgroundImage: "url('/weconnect-logo.png')",
+              backgroundSize: "500px",
+              backgroundRepeat: "repeat",
+              filter: "blur(4px) brightness(1.5)",
+              transform: 'translateZ(-900px) scale(1.25)',
             }}
-            animate={{
-              rotateX: mouse.y * 8,     // gentler tilt
-              rotateY: -mouse.x * 12,
-            }}
-            transition={{
-              type: 'spring',
-              stiffness: 80,
-              damping: 30,
-              mass: 1.2
-            }}
-          >
+          />
 
-            {/* Layer 0 – Very subtle repeating logo / watermark */}
-            <div 
-              className="absolute inset-0 opacity-10"
-              style={{ 
-                backgroundImage: "url('/weconnect-logo.png')",
-                backgroundSize: "400px",
-                backgroundRepeat: "repeat",
-                filter: "blur(2px) brightness(1.3) contrast(0.9)",
-                transform: 'translateZ(-900px) scale(1.15)',
-              }}
-            />
-
-            {/* Layer 1 – Large, soft, slow-breathing gradient orbs */}
-            {Array.from({ length: 5 }).map((_, i) => (
-              <motion.div
-                key={`orb-${i}`}
-                className="absolute w-[60vw] h-[60vw] rounded-full blur-3xl"
-                style={{
-                  background: 'radial-gradient(circle at 35% 35%, #6366f1, #a855f7, #ec4899, transparent 70%)',
-                  left: `${-10 + i * 28}%`,
-                  top: `${-20 + i * 32}%`,
-                  transform: `translateZ(${-600 - i * 140}px)`,
-                  opacity: 0.18 + i * 0.06,
-                }}
-                animate={{
-                  scale: [1, 1.18, 1],
-                  opacity: [0.18, 0.38, 0.18],
-                }}
-                transition={{
-                  duration: 18 + i * 4,
-                  repeat: Infinity,
-                  repeatType: 'mirror',
-                  ease: 'easeInOut'
-                }}
-              />
-            ))}
-
-            {/* Layer 2 – Subtle tech mesh / connection lines */}
-            <div className="absolute inset-0" style={{ transform: 'translateZ(-200px)' }}>
-              <svg className="w-full h-full opacity-20" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="50%" stopColor="#a855f7" />
-                    <stop offset="100%" stopColor="#ec4899" />
-                  </linearGradient>
-                </defs>
-                {[
-                  [10,15, 40,35], [40,35, 65,25], [65,25, 90,45],
-                  [15,60, 45,80], [45,80, 75,55], [20,85, 55,70]
-                ].map(([x1,y1,x2,y2], i) => (
-                  <line 
-                    key={i}
-                    x1={`${x1}%`} y1={`${y1}%`} 
-                    x2={`${x2}%`} y2={`${y2}%`} 
-                    stroke="url(#lineGrad)" 
-                    strokeWidth="0.6" 
-                    strokeDasharray="1.5 4"
-                  >
-                    <animate 
-                      attributeName="strokeDashoffset" 
-                      from="0" to="-12" 
-                      dur={`${7 + i * 1.4}s`} 
-                      repeatCount="indefinite" 
-                    />
-                  </line>
-                ))}
-              </svg>
-            </div>
-
-            {/* Layer 3 – Gentle floating glowing dots (wave motion) */}
-            <div className="absolute inset-0" style={{ transform: 'translateZ(120px)' }}>
-              {Array.from({ length: 18 }).map((_, i) => {
-                const delay = i * 0.4;
-                const duration = 12 + Math.random() * 6;
-                return (
-                  <motion.div
-                    key={`dot-${i}`}
-                    className="absolute w-1.5 h-1.5 rounded-full bg-white/60 shadow-[0_0_12px_rgba(255,255,255,0.7)]"
-                    style={{
-                      left: `${Math.random() * 100}%`,
-                      top: `${Math.random() * 100}%`,
-                    }}
-                    animate={{
-                      y: [0, -40, 0],
-                      opacity: [0.3, 0.9, 0.3],
-                      scale: [0.7, 1.3, 0.7],
-                    }}
-                    transition={{
-                      duration,
-                      repeat: Infinity,
-                      delay,
-                      ease: 'easeInOut'
-                    }}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Layer 4 – Soft moving spotlight / glow (premium feel) */}
+          {Array.from({ length: 3 }).map((_, i) => (
             <motion.div
-              className="absolute left-1/2 top-1/2 w-[90vmin] h-[90vmin] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-              style={{ 
-                background: 'radial-gradient(circle at 40% 40%, rgba(99,102,241,0.22), rgba(236,72,153,0.18), transparent 65%)',
-                transform: 'translateZ(280px)'
+              key={i}
+              className="absolute w-[50vw] h-[50vw] rounded-full blur-3xl opacity-15"
+              style={{
+                background: 'radial-gradient(circle at 40% 40%, #6366f1, #a855f7, transparent 70%)',
+                left: `${10 + i * 30}%`,
+                top: `${-10 + i * 35}%`,
+                transform: `translateZ(${-550 - i * 200}px)`,
               }}
-              animate={{
-                scale: [1, 1.15, 1],
-                opacity: [0.4, 0.65, 0.4],
-                // backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'] // optional subtle shift
-              }}
-              transition={{
-                duration: 24,
-                repeat: Infinity,
-                repeatType: 'reverse',
-                ease: 'easeInOut'
-              }}
+              animate={{ scale: [1, 1.1, 1], opacity: [0.15, 0.3, 0.15] }}
+              transition={{ duration: 26 + i * 6, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut' }}
             />
-
-          </motion.div>
-        </div>
+          ))}
+        </motion.div>
       </div>
 
-      {/* ────────────────────────────────────────────── */}
-      {/*                   MAIN CONTENT                   */}
-      {/* ────────────────────────────────────────────── */}
-
-      <header className="relative pt-40 pb-56 px-6 md:px-16 lg:px-32 text-center z-10">
-        <div className="max-w-7xl mx-auto relative z-10">
+      {/* HERO SECTION */}
+      <header className="relative pt-32 pb-40 px-6 md:px-12 lg:px-24 text-center z-10">
+        <div className="max-w-7xl mx-auto">
           <motion.div 
-            className="inline-flex items-center gap-3 mb-10 px-8 py-4 bg-slate-900/40 backdrop-blur-xl rounded-full border border-indigo-500/30 shadow-2xl"
-            initial={{ opacity: 0, y: 40 }}
+            className="inline-flex items-center gap-3 mb-10 px-6 py-3 bg-slate-800/40 backdrop-blur-lg rounded-full border border-indigo-500/20 shadow-lg"
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9 }}
+            transition={{ duration: 0.8 }}
           >
-            <ShieldCheck className="text-indigo-400" size={24} />
-            <span className="font-bold text-lg text-indigo-200">
-              Trusted Learning & Earning Hub for Nigerian Students & Lecturers 🚀
+            <ShieldCheck className="text-indigo-400" size={22} />
+            <span className="font-semibold text-indigo-200">
+              Secure platform for Nigerian students & educators
             </span>
           </motion.div>
 
-          <motion.div 
-            className="mb-20 flex flex-col md:flex-row items-center justify-center gap-10 lg:gap-20"
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.2 }}
-          >
-            <motion.div 
-              className="relative w-44 h-44 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(99,102,241,0.5)] border-8 border-white/30"
-              whileHover={{ scale: 1.08, rotate: 6 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-700 via-purple-700 to-pink-700" />
-              <img 
-                src="/weconnect-logo.png" 
-                alt="WE CONNECT" 
-                className="w-full h-full object-contain p-6 drop-shadow-2xl"
-              />
-            </motion.div>
+          <div className="flex flex-col lg:flex-row items-center justify-center gap-12 lg:gap-20 mb-16">
+            {/* Revolving logo – circular orbit around fixed center point */}
+            <div className="relative w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 mx-auto lg:mx-0">
+              {/* Orbit container */}
+              <motion.div
+                className="absolute inset-0"
+                animate={{ rotate: 360 }}
+                transition={{
+                  duration: 24,
+                  ease: "linear",
+                  repeat: Infinity,
+                }}
+              >
+                {/* Logo positioned offset from center */}
+                <motion.div
+                  className="absolute left-1/2 top-1/2 w-48 h-48 md:w-64 md:h-64 -translate-x-1/2 -translate-y-1/2 rounded-3xl overflow-hidden shadow-2xl border-4 border-white/10 bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-800"
+                  style={{ transformOrigin: 'center' }}
+                  animate={{
+                    rotate: -360, // counter-rotate so logo stays upright
+                  }}
+                  transition={{
+                    duration: 24,
+                    ease: "linear",
+                    repeat: Infinity,
+                  }}
+                  whileHover={{ scale: 1.05, boxShadow: '0 0 60px rgba(99,102,241,0.5)' }}
+                >
+                  <img
+                    src="/weconnect-logo.png"
+                    alt="WE CONNECT Logo"
+                    className="w-full h-full object-contain p-8 drop-shadow-2xl"
+                  />
+                </motion.div>
+              </motion.div>
 
-            <div className="text-center md:text-left">
-              <h1 className="text-7xl md:text-8xl lg:text-9xl font-black tracking-tighter bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent leading-none drop-shadow-2xl">
+              {/* Very subtle orbital path ring */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-8">
+                <div className="w-full h-full rounded-full border border-indigo-400/20" />
+              </div>
+            </div>
+
+            <div className="text-center lg:text-left">
+              <h1 className="text-6xl md:text-7xl lg:text-8xl font-black tracking-tight bg-gradient-to-r from-indigo-200 via-purple-200 to-indigo-200 bg-clip-text text-transparent leading-none">
                 WE CONNECT
               </h1>
-              <p className="mt-4 text-4xl md:text-5xl lg:text-6xl font-extrabold bg-gradient-to-r from-emerald-400 via-yellow-400 to-amber-400 bg-clip-text text-transparent">
-                Learn Smarter • Earn Real Money 💰
+              <p className="mt-6 text-3xl md:text-4xl font-semibold text-slate-200">
+                Share Knowledge. Earn Income. Build Community.
               </p>
             </div>
-          </motion.div>
+          </div>
 
           <motion.p 
-            className="text-2xl md:text-3xl lg:text-4xl text-slate-200 max-w-5xl mx-auto mb-16 leading-tight font-medium drop-shadow-lg"
-            initial={{ opacity: 0, y: 40 }}
+            className="text-xl md:text-2xl text-slate-300 max-w-4xl mx-auto mb-12 leading-relaxed"
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.5 }}
+            transition={{ duration: 0.9, delay: 0.3 }}
           >
-            Upload past questions, PDF notes, video tutorials & technical reviews. 📤<br className="hidden sm:block" />
-            Earn when others download • Connect with students & lecturers across Nigeria. 🤝🔥
+            Upload past questions, lecture notes, video explanations and technical summaries.<br className="hidden sm:block" />
+            Monetize your contributions when others access them — securely connect with students and lecturers nationwide.
           </motion.p>
 
           <motion.div 
-            className="flex flex-col sm:flex-row gap-8 justify-center"
-            initial={{ opacity: 0, y: 40 }}
+            className="flex flex-col sm:flex-row gap-6 justify-center"
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.7 }}
+            transition={{ duration: 0.9, delay: 0.5 }}
           >
             <motion.button
-              whileHover={{ scale: 1.07, boxShadow: '0 0 50px rgba(99,102,241,0.6)' }}
-              whileTap={{ scale: 0.96 }}
+              whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(99,102,241,0.4)' }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => openAuth('signup')}
-              className="relative px-14 py-7 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold text-2xl rounded-full shadow-2xl overflow-hidden group"
+              className="px-12 py-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-xl rounded-xl shadow-xl hover:shadow-2xl transition-all"
             >
-              <span className="relative z-10 flex items-center gap-4">
-                Start Earning Today 🚀
-                <ArrowRight className="group-hover:translate-x-3 transition-transform" size={28} />
-              </span>
-              <motion.div 
-                className="absolute inset-0 bg-white/20"
-                initial={{ scaleX: 0 }}
-                whileHover={{ scaleX: 1 }}
-                transition={{ duration: 0.6 }}
-              />
+              Get Started — Free
             </motion.button>
 
             <motion.button
-              whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(255,255,255,0.4)' }}
+              whileHover={{ scale: 1.04 }}
               onClick={() => openAuth('login')}
-              className="px-14 py-7 bg-white/10 backdrop-blur-2xl border-4 border-white/30 text-white font-extrabold text-2xl rounded-full hover:bg-white/20 transition-all shadow-xl"
+              className="px-12 py-6 bg-white/10 backdrop-blur-lg border border-white/20 text-white font-bold text-xl rounded-xl hover:bg-white/15 transition-all"
             >
-              Already Connected? Log In 😎
+              Log In
             </motion.button>
           </motion.div>
         </div>
       </header>
 
-      {/* Features section remains unchanged */}
-      <section className="py-32 px-6 md:px-16 lg:px-32 bg-slate-900/30 backdrop-blur-xl relative z-10">
+      {/* Features section – unchanged */}
+      <section className="py-24 px-6 md:px-12 lg:px-24 bg-slate-900/30 relative z-10">
         <div className="max-w-7xl mx-auto">
           <motion.h2 
-            className="text-6xl md:text-7xl lg:text-8xl font-black text-center mb-24 bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent"
-            initial={{ opacity: 0, y: 80 }}
+            className="text-5xl md:text-6xl font-black text-center mb-16 bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent"
+            initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            Power-Packed Features 🔥
+            Core Features
           </motion.h2>
 
-          <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-10">
+          <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-8">
             {[
-              { icon: ScrollText, color: 'amber', title: 'Past Questions 📝', desc: 'Authentic Nigerian uni exams - level up your prep game' },
-              { icon: FileText, color: 'blue', title: 'PDF Notes 📓', desc: 'Organized summaries for quick vibes & cramming' },
-              { icon: Video, color: 'purple', title: 'Video Tutorials 🎥', desc: 'Bite-sized explainer vids that slap' },
-              { icon: BookOpen, color: 'emerald', title: 'Technical Reviews 🔍', desc: 'Deep dives & breakdowns for real understanding' },
-              { icon: UploadCloud, color: 'orange', title: 'Upload & Monetize 💸', desc: 'Share your stuff & get paid - creator mode on' },
-              { icon: DollarSign, color: 'green', title: 'Secure Earnings 🤑', desc: 'Cash out per download - no cap' },
-              { icon: MessageCircle, color: 'pink', title: 'Social Network 💬', desc: 'Vibe check with peeps nationwide' },
-              { icon: Users, color: 'indigo', title: 'Study Groups 👥', desc: 'Squad up for group grinds & collabs' },
-              { icon: Search, color: 'red', title: 'Smart Search 🔎', desc: 'Find resources faster than TikTok scrolls' },
+              { icon: FileText, title: "Past Questions & Notes", desc: "Upload and access authentic university exam materials and summaries." },
+              { icon: Video, title: "Video Tutorials", desc: "Share and discover concise explanatory videos." },
+              { icon: UploadCloud, title: "Monetize Content", desc: "Earn revenue each time your materials are downloaded." },
+              { icon: DollarSign, title: "Secure Payouts", desc: "Reliable earnings with transparent tracking." },
+              { icon: Users, title: "Academic Network", desc: "Connect with students and lecturers across institutions." },
+              { icon: MessageCircle, title: "Study Communities", desc: "Join focused groups for collaboration and discussion." },
+              { icon: Search, title: "Advanced Search", desc: "Quickly locate relevant academic resources." },
+              { icon: ShieldCheck, title: "Protected Platform", desc: "Secure uploads, verified content, and privacy-first design." },
             ].map((item, i) => (
               <motion.div 
                 key={i}
-                className="group relative bg-slate-800/60 backdrop-blur-2xl rounded-3xl p-10 border border-white/30 shadow-xl hover:shadow-2xl hover:shadow-purple-500/40 transition-all duration-500 hover:-translate-y-5 hover:border-purple-400/60"
-                initial={{ opacity: 0, y: 70 }}
+                className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 border border-slate-700 hover:border-indigo-500/50 hover:shadow-xl transition-all duration-300"
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.8, delay: i * 0.1 }}
+                transition={{ duration: 0.7, delay: i * 0.08 }}
               >
-                <div className={`w-24 h-24 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-${item.color}-500 to-${item.color}-700 flex items-center justify-center text-white group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg group-hover:shadow-${item.color}-500/50`}>
-                  <item.icon size={44} />
+                <div className="w-16 h-16 mx-auto mb-6 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white">
+                  <item.icon size={32} />
                 </div>
-                <h3 className="text-3xl font-extrabold text-center text-white mb-5 group-hover:text-purple-400 transition-colors">
-                  {item.title}
-                </h3>
-                <p className="text-center text-slate-300 text-lg leading-relaxed">
-                  {item.desc}
-                </p>
+                <h3 className="text-2xl font-bold text-center text-white mb-4">{item.title}</h3>
+                <p className="text-slate-300 text-center">{item.desc}</p>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Stats section remains unchanged */}
-      <section ref={statsRef} className="py-32 px-6 md:px-16 lg:px-32 bg-gradient-to-r from-purple-950/50 to-pink-950/50 relative z-10">
+      {/* Stats section – unchanged */}
+      <section ref={statsRef} className="py-24 px-6 md:px-12 lg:px-24 bg-gradient-to-r from-indigo-950/40 to-purple-950/40 relative z-10">
         <div className="max-w-6xl mx-auto text-center">
           <motion.h2 
-            className="text-6xl md:text-7xl lg:text-8xl font-black mb-24 bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent"
-            initial={{ opacity: 0, y: 80 }}
+            className="text-5xl md:text-6xl font-black mb-16 bg-gradient-to-r from-purple-300 to-indigo-300 bg-clip-text text-transparent"
+            initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            Community at a Glance 📊
+            Platform Impact
           </motion.h2>
 
-          <div className="grid md:grid-cols-4 gap-12">
+          <div className="grid md:grid-cols-4 gap-10">
             {[
-              { value: "25000", label: "Materials Shared 📤", color: "indigo" },
-              { value: "120", label: "Institutions 🏫", color: "purple" },
-              { value: "5000", label: "Active Creators 👩‍💻", color: "pink" },
-              { value: "4.9/5", label: "Community Rating ⭐", color: "amber", special: true },
+              { value: "25000", label: "Resources Shared", color: "indigo" },
+              { value: "120", label: "Institutions", color: "purple" },
+              { value: "5000", label: "Active Contributors", color: "pink" },
+              { value: "4.9/5", label: "User Rating", color: "amber", special: true },
             ].map((stat, i) => (
               <motion.div 
                 key={i}
-                className={`group bg-slate-800/60 backdrop-blur-2xl p-12 rounded-3xl border border-slate-700/50 shadow-xl hover:shadow-2xl hover:shadow-${stat.color}-500/40 transition-all hover:-translate-y-4`}
-                initial={{ opacity: 0, scale: 0.92 }}
+                className="bg-slate-800/50 backdrop-blur-lg p-10 rounded-2xl border border-slate-700 hover:shadow-xl transition-all"
+                initial={{ opacity: 0, scale: 0.95 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.8, delay: i*0.15 }}
+                transition={{ duration: 0.7, delay: i * 0.12 }}
               >
-                <div className={`text-7xl lg:text-8xl font-black text-${stat.color}-400 mb-6 ${stat.special ? '' : 'counter'}`} data-target={stat.special ? undefined : stat.value}>
+                <div className={`text-6xl lg:text-7xl font-black text-${stat.color}-400 mb-4 ${stat.special ? '' : 'counter'}`} data-target={stat.special ? undefined : stat.value}>
                   {stat.value}
                 </div>
-                <p className="text-3xl font-bold text-white">{stat.label}</p>
+                <p className="text-2xl font-semibold text-slate-200">{stat.label}</p>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA section remains unchanged */}
-      <section className="py-40 px-6 text-center bg-gradient-to-br from-indigo-700 via-purple-700 to-pink-700 text-white relative overflow-hidden z-10">
-        <motion.div 
-          className="absolute inset-0 bg-[url('/weconnect-logo.png')] bg-[length:500px] opacity-10 animate-pulse-slow"
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ duration: 20, repeat: Infinity }}
-        />
-        <div className="max-w-5xl mx-auto relative z-10">
+      {/* CTA section – unchanged */}
+      <section className="py-32 px-6 text-center bg-gradient-to-br from-indigo-800 via-purple-800 to-indigo-900 text-white relative z-10">
+        <div className="max-w-5xl mx-auto">
           <motion.h2 
-            className="text-6xl md:text-7xl lg:text-8xl font-black mb-12 drop-shadow-2xl"
-            initial={{ opacity: 0, y: 80 }}
+            className="text-5xl md:text-6xl font-black mb-10"
+            initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            Ready to Level Up, Share & Stack Cash? 💰🔥
+            Start Sharing & Earning Today
           </motion.h2>
           <motion.p 
-            className="text-3xl md:text-4xl mb-16 max-w-4xl mx-auto opacity-90"
-            initial={{ opacity: 0, y: 80 }}
+            className="text-2xl mb-12 max-w-3xl mx-auto opacity-90"
+            initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.2 }}
           >
-            Join the squad building lit futures together. No cap, just vibes & wins. 😎
+            Join thousands of Nigerian students and educators building a sustainable knowledge-sharing ecosystem.
           </motion.p>
           <motion.button
-            whileHover={{ scale: 1.08, boxShadow: '0 0 60px rgba(255,255,255,0.5)' }}
-            whileTap={{ scale: 0.96 }}
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => openAuth('signup')}
-            className="px-20 py-10 bg-white text-indigo-700 font-black text-3xl rounded-full shadow-2xl hover:shadow-white/60 transition-all"
-            initial={{ opacity: 0, y: 80 }}
+            className="px-16 py-8 bg-white text-indigo-900 font-bold text-2xl rounded-xl shadow-2xl hover:shadow-white/30 transition-all"
+            initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.4 }}
           >
-            Join the Wave Now 🌊
+            Create Your Account
           </motion.button>
         </div>
       </section>
 
-      {/* Footer remains unchanged */}
-      <footer className="py-20 px-6 text-center bg-slate-950/50 backdrop-blur-xl border-t border-slate-700/50 relative z-10">
-        <div className="flex flex-col md:flex-row items-center justify-center gap-8 mb-10">
-          <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-xl">
-            <img src="/weconnect-logo.png" alt="WE CONNECT" className="w-full h-full object-contain bg-gradient-to-br from-indigo-600 to-purple-700 p-4" />
-          </div>
-          <p className="text-2xl font-bold text-slate-200">
-            © {new Date().getFullYear()} WE CONNECT • Built with passion in Port Harcourt, Nigeria 🌍💥
+      {/* Footer */}
+      <footer className="py-16 px-6 text-center bg-slate-950/70 border-t border-slate-800 relative z-10">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-8">
+          <img src="/weconnect-logo.png" alt="WE CONNECT" className="w-16 h-16 object-contain" />
+          <p className="text-xl font-semibold text-slate-300">
+            © {new Date().getFullYear()} WE CONNECT • Port Harcourt, Nigeria
           </p>
         </div>
-        <div className="flex flex-wrap justify-center gap-10 text-lg">
-          <button onClick={() => setShowPrivacyModal(true)} className="hover:text-indigo-400 font-medium transition-colors">Privacy Policy 🔒</button>
-          <button onClick={() => setShowTermsModal(true)} className="hover:text-indigo-400 font-medium transition-colors">Terms of Service 📜</button>
-          <a href="#" className="hover:text-indigo-400 font-medium transition-colors">Contact Us 📩</a>
+        <div className="flex justify-center gap-10 text-lg">
+          <button onClick={() => setShowPrivacyModal(true)} className="hover:text-indigo-400 transition-colors">Privacy Policy</button>
+          <button onClick={() => setShowTermsModal(true)} className="hover:text-indigo-400 transition-colors">Terms of Service</button>
+          <a href="mailto:support@weconnect.ng" className="hover:text-indigo-400 transition-colors">Contact</a>
         </div>
       </footer>
 
-      {/* Modals remain unchanged */}
+      {/* ────────────────────────────────────────────── */}
+      {/*          FUNCTIONAL PRIVACY & TERMS MODALS       */}
+      {/* ────────────────────────────────────────────── */}
       <AnimatePresence>
         {showPrivacyModal && (
           <motion.div
@@ -535,25 +417,25 @@ export default function Landing() {
         )}
       </AnimatePresence>
 
-      {/* Auth Modal */}
+      {/* Auth Modal – unchanged */}
       <AnimatePresence>
         {showAuthModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-50 flex items-start justify-center pt-16 md:pt-24 overflow-y-auto"
+            className="fixed inset-0 bg-black/70 backdrop-blur-xl z-50 flex items-center justify-center p-4"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 30 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 30 }}
-              className="relative w-full max-w-md md:max-w-xl lg:max-w-2xl mx-6 my-8 rounded-3xl bg-slate-900/95 backdrop-blur-3xl shadow-3xl border border-slate-700/60"
+              initial={{ scale: 0.92, y: 40 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.92, y: 40 }}
+              className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-2xl rounded-3xl border border-slate-700 shadow-2xl overflow-hidden"
             >
-              <button onClick={closeAuth} className="absolute top-6 right-6 p-3 rounded-2xl bg-slate-800/90 hover:bg-slate-700">
+              <button onClick={closeAuth} className="absolute top-5 right-5 p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700">
                 <X size={24} />
               </button>
-              <div className="p-8 md:p-10">
+              <div className="p-10">
                 <AuthForm initialMode={authMode} onClose={closeAuth} />
               </div>
             </motion.div>

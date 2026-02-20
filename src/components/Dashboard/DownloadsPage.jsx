@@ -53,7 +53,7 @@ function DownloadsPage() {
       setDownloads(items);
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.error('Downloads snapshot error:', err);
       toast.error('Failed to load downloads');
       setLoading(false);
     });
@@ -67,7 +67,7 @@ function DownloadsPage() {
       await deleteDoc(doc(db, `users/${user.uid}/downloads`, materialId));
       toast.info('Removed from downloads');
     } catch (err) {
-      console.error(err);
+      console.error('Remove download failed:', err);
       toast.error('Failed to remove');
     }
     setOpenMenuId(null);
@@ -79,10 +79,21 @@ function DownloadsPage() {
       return;
     }
 
+    if (!item?.file_path) {
+      toast.error("This item is missing file information – contact support");
+      return;
+    }
+
     const materialId = item.id;
     setViewingIds((prev) => new Set([...prev, materialId]));
 
     try {
+      console.log('[View Attempt] Item details:', {
+        title: item.title,
+        file_path: item.file_path,
+        bucket: 'weconnect',
+      });
+
       const idToken = await user.getIdToken();
 
       const res = await fetch('/api/generate-storj-download-url', {
@@ -92,25 +103,73 @@ function DownloadsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fileKey: item.file_path, // Make sure this field exists in your downloads data
+          fileKey: item.file_path,
           bucket: 'weconnect',
         }),
       });
 
+      console.log('[View Response] Status:', res.status);
+      console.log('[View Response] OK:', res.ok);
+
       if (!res.ok) {
-        const errText = await res.text().catch(() => '(no details)');
-        throw new Error(`Failed to get view URL: ${res.status} - ${errText}`);
+        // Clone the response so we can safely try .json() and still fall back to .text()
+        const cloned = res.clone();
+
+        let errorDetail = `(status ${res.status})`;
+        let errorBody = '';
+
+        try {
+          const errorData = await cloned.json();
+          errorBody = errorData.error || errorData.message || JSON.stringify(errorData) || errorDetail;
+          errorDetail = errorBody;
+        } catch (jsonErr) {
+          // If JSON parsing fails, read as text from the ORIGINAL response
+          try {
+            errorBody = await res.text();
+            errorDetail = errorBody.trim() || errorDetail;
+          } catch (textErr) {
+            errorDetail += ' (could not read response body)';
+          }
+        }
+
+        console.error('[View Error Full Details]', {
+          status: res.status,
+          body: errorDetail,
+          headers: Object.fromEntries(res.headers.entries()),
+          requestedFile: item.file_path,
+        });
+
+        throw new Error(`API error ${res.status}: ${errorDetail}`);
       }
 
       const { url: signedUrl } = await res.json();
 
-      // Open in new browser tab
-      window.open(signedUrl, '_blank');
+      if (!signedUrl || typeof signedUrl !== 'string') {
+        throw new Error('Invalid or missing signed URL from server');
+      }
 
+      console.log('[View Success] Signed URL received (first 100 chars):', signedUrl.substring(0, 100) + '...');
+
+      window.open(signedUrl, '_blank');
       toast.success('Opening material...');
     } catch (err) {
-      console.error('View failed:', err);
-      toast.error('Could not open material – the file may no longer exist or there was a server issue');
+      console.error('View material failed:', err);
+
+      let userMessage = 'Could not open material – please try again later or contact support';
+
+      const errStr = (err.message || '').toLowerCase();
+
+      if (errStr.includes('403') || errStr.includes('forbidden') || errStr.includes('access denied')) {
+        userMessage = 'Access denied (403). Likely Storj credentials, file permissions, or object not found issue. Check server logs for exact error.';
+      } else if (errStr.includes('404') || errStr.includes('nosuchkey') || errStr.includes('not found')) {
+        userMessage = 'This file no longer exists in storage';
+      } else if (errStr.includes('401') || errStr.includes('unauthorized')) {
+        userMessage = 'Authentication problem – try signing out and back in';
+      } else if (errStr.includes('signature') || errStr.includes('doesnotmatch') || errStr.includes('credential') || errStr.includes('invalid')) {
+        userMessage = 'Storage configuration issue (signature/credentials mismatch). This is a server-side problem – please check backend logs and Storj setup.';
+      }
+
+      toast.error(userMessage, { autoClose: 10000 });
     } finally {
       setViewingIds((prev) => {
         const next = new Set(prev);

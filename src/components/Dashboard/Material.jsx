@@ -17,6 +17,7 @@ import {
   deleteDoc,
   serverTimestamp,
   getDoc,
+  runTransaction,
 } from 'firebase/firestore';
 
 const BUCKET_NAME = 'weconnect';
@@ -33,15 +34,26 @@ function Material() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [favoritedIds, setFavoritedIds] = useState(new Set());
 
-  const user = auth.currentUser;
+  // ── Wallet + Auth integration ─────────────────────────────────────────────
+  const [currentUser, setCurrentUser] = useState(null);
+  const [profile, setProfile] = useState(null); // realtime coins balance
 
+  // Auth listener
   useEffect(() => {
-    if (!user) {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Favorites listener
+  useEffect(() => {
+    if (!currentUser) {
       setFavoritedIds(new Set());
       return;
     }
 
-    const q = collection(db, `users/${user.uid}/favorites`);
+    const q = collection(db, `users/${currentUser.uid}/favorites`);
 
     const unsubscribe = onSnapshot(q, (snap) => {
       const ids = new Set(snap.docs.map(d => d.id));
@@ -49,8 +61,35 @@ function Material() {
     }, console.error);
 
     return () => unsubscribe();
-  }, [user]);
+  }, [currentUser]);
 
+  // Realtime user profile (coins + diamonds)
+  useEffect(() => {
+    if (!currentUser) {
+      setProfile(null);
+      return;
+    }
+
+    const userRef = doc(db, 'users', currentUser.uid);
+    const unsubscribe = onSnapshot(
+      userRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setProfile(docSnap.data());
+        } else {
+          setProfile({ coins: 0, diamonds: 0 });
+        }
+      },
+      (err) => {
+        console.error('Profile snapshot error:', err);
+        setProfile({ coins: 0, diamonds: 0 });
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Materials listener
   useEffect(() => {
     const q = query(collection(db, 'materials'), orderBy('createdAt', 'desc'));
 
@@ -93,13 +132,24 @@ function Material() {
 
   const hasActiveFilters = Object.values(filters).some((arr) => arr.length > 0);
 
+  // ── Price per category ────────────────────────────────────────────────────
+  const getMaterialPriceInCoins = (category) => {
+    const priceMap = {
+      'Past Questions': 1,
+      'PDF Notes': 2,
+      'Video Tutorials': 4,
+      'Technical Reviews': 3,
+    };
+    return priceMap[category] || 2; // fallback
+  };
+
   const toggleFavorite = async (material) => {
-    if (!user) {
+    if (!currentUser) {
       toast.info("Please sign in to favorite materials");
       return;
     }
 
-    const favRef = doc(db, `users/${user.uid}/favorites`, material.id);
+    const favRef = doc(db, `users/${currentUser.uid}/favorites`, material.id);
 
     try {
       const exists = (await getDoc(favRef)).exists();
@@ -123,35 +173,128 @@ function Material() {
     }
   };
 
+  // ── FIXED handleDownload: all reads before writes + diamonds_earned tracking ──
   const handleDownload = async (material) => {
-    if (!user) {
+    if (!currentUser) {
       toast.info("Please sign in to download");
       return;
     }
 
-    const loadingToast = toast.loading(`Preparing "${material.title || material.name || 'file'}"...`);
+    const price = getMaterialPriceInCoins(material.category);
+    const isOwner = currentUser && material.ownerUid === currentUser.uid;
+
+    // Quick client-side check (optimistic)
+    if (!isOwner && (profile?.coins ?? 0) < price) {
+      toast.error(
+        `Not enough coins! This material costs ${price} coin${price !== 1 ? 's' : ''} (₦${price * 100}).`
+      );
+      return;
+    }
+
+    const titleForToast = material.title || material.name || 'file';
+    const loadingToast = toast.loading(`Preparing "${titleForToast}"...`);
     setDownloadingId(material.id);
 
     try {
-      // 1. Increment global download count
-      await updateDoc(doc(db, 'materials', material.id), {
-        downloads: increment(1),
+      // Document references
+      const materialRef = doc(db, 'materials', material.id);
+      const buyerRef   = doc(db, 'users', currentUser.uid);
+      const ownerRef   = material.ownerUid && !isOwner 
+        ? doc(db, 'users', material.ownerUid) 
+        : null;
+
+      const diamondsToCredit = Math.floor(price * 0.6);
+
+      await runTransaction(db, async (transaction) => {
+        // ───────────────────────────────────────────────────────────────
+        // PHASE 1: ALL READS FIRST (Firestore requirement)
+        // ───────────────────────────────────────────────────────────────
+
+        // 1. Read material document
+        const materialSnap = await transaction.get(materialRef);
+        if (!materialSnap.exists()) {
+          throw new Error("This material no longer exists");
+        }
+
+        // 2. Read buyer's profile (if not owner)
+        let buyerCoins = 0;
+        if (!isOwner) {
+          const buyerSnap = await transaction.get(buyerRef);
+          if (!buyerSnap.exists()) {
+            throw new Error("Your user profile was not found");
+          }
+          buyerCoins = buyerSnap.data().coins || 0;
+
+          if (buyerCoins < price) {
+            throw new Error(`Insufficient coins (you have ${buyerCoins}, need ${price})`);
+          }
+        }
+
+        // 3. Optional: read owner document (confirms existence)
+        let ownerExists = false;
+        if (ownerRef) {
+          const ownerSnap = await transaction.get(ownerRef);
+          ownerExists = ownerSnap.exists();
+        }
+
+        // ───────────────────────────────────────────────────────────────
+        // PHASE 2: ALL WRITES (only after all reads)
+        // ───────────────────────────────────────────────────────────────
+
+        // Always increment global download count
+        transaction.update(materialRef, {
+          downloads: increment(1)
+        });
+
+        // NEW: Track how many diamonds this specific material has earned
+        //      → used in AnalyticsDashboard to show earnings per material
+        if (diamondsToCredit > 0) {
+          transaction.update(materialRef, {
+            diamonds_earned: increment(diamondsToCredit)
+          });
+        }
+
+        // Deduct coins from buyer (skip if owner)
+        if (!isOwner) {
+          transaction.update(buyerRef, {
+            coins: buyerCoins - price
+          });
+        }
+
+        // Credit 60% as diamonds to uploader's wallet
+        if (ownerRef && diamondsToCredit > 0) {
+          transaction.update(ownerRef, {
+            diamonds: increment(diamondsToCredit)
+          });
+        }
       });
 
-      // 2. Record in user's personal downloads subcollection
-      const downloadRef = doc(db, `users/${user.uid}/downloads`, material.id);
-      await setDoc(downloadRef, {
+      // ───────────────────────────────────────────────────────────────
+      // Outside transaction: record personal download history
+      // ───────────────────────────────────────────────────────────────
+      const downloadHistoryRef = doc(db, `users/${currentUser.uid}/downloads`, material.id);
+      await setDoc(downloadHistoryRef, {
         downloadedAt: serverTimestamp(),
         title: material.title || material.name || 'Untitled',
         course: material.course || '—',
         school: material.school || '—',
         category: material.category || 'Material',
-        file_path: material.file_path,           // ← ADDED THIS LINE
+        file_path: material.file_path,
+        coinsSpent: isOwner ? 0 : price,
+        amountNGN: isOwner ? 0 : price * 100,
+        isOwnerDownload: isOwner,
       }, { merge: true });
 
-      // 3. Get signed URL
-      const idToken = await user.getIdToken();
+      // Optimistic UI update (buyer coins)
+      if (!isOwner && profile) {
+        setProfile(prev => ({
+          ...prev,
+          coins: Math.max(0, (prev?.coins || 0) - price)
+        }));
+      }
 
+      // Get download URL
+      const idToken = await currentUser.getIdToken(true);
       const res = await fetch('/api/generate-storj-download-url', {
         method: 'POST',
         headers: {
@@ -165,27 +308,40 @@ function Material() {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Failed to get signed URL: ${errText}`);
+        let errorText = await res.text();
+        throw new Error(`Failed to generate download link (HTTP ${res.status}): ${errorText}`);
       }
 
       const { url: signedUrl } = await res.json();
-
       window.open(signedUrl, '_blank');
 
       toast.update(loadingToast, {
-        render: 'Download ready!',
+        render: isOwner
+          ? "Your free download has started!"
+          : `Success! ${price} coin${price !== 1 ? 's' : ''} deducted • Download ready`,
         type: 'success',
         isLoading: false,
-        autoClose: 4000,
+        autoClose: 4500,
       });
-    } catch (error) {
-      console.error('Download error:', error);
+
+    } catch (err) {
+      console.error("Download transaction failed:", err);
+
+      let friendlyMessage = "Could not complete download";
+
+      if (err.message.includes("Insufficient coins")) {
+        friendlyMessage = `Not enough coins (${price} required)`;
+      } else if (err.message.includes("profile was not found")) {
+        friendlyMessage = "Profile issue – please try logging out and back in";
+      } else if (err.message.includes("no longer exists")) {
+        friendlyMessage = "This material has been removed";
+      }
+
       toast.update(loadingToast, {
-        render: 'Could not prepare download',
+        render: friendlyMessage,
         type: 'error',
         isLoading: false,
-        autoClose: 5000,
+        autoClose: 7000,
       });
     } finally {
       setDownloadingId(null);
@@ -245,6 +401,9 @@ function Material() {
               const { icon: CategoryIcon, color: badgeColor } = getCategoryInfo(material.category);
               const isFavorited = favoritedIds.has(material.id);
               const isDownloading = downloadingId === material.id;
+              const price = getMaterialPriceInCoins(material.category);
+              const isOwner = currentUser && material.ownerUid === currentUser.uid;
+              const hasSufficient = isOwner || ((profile?.coins ?? 0) >= price);
 
               return (
                 <div
@@ -290,8 +449,10 @@ function Material() {
 
                     <button
                       onClick={() => handleDownload(material)}
-                      disabled={isDownloading}
-                      className="flex-1 py-3 flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-300 disabled:opacity-60"
+                      disabled={isDownloading || !hasSufficient}
+                      className={`flex-1 py-3 flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed ${
+                        !hasSufficient ? 'opacity-50' : ''
+                      }`}
                     >
                       {isDownloading ? (
                         <Loader2 size={16} className="animate-spin" />
@@ -299,7 +460,11 @@ function Material() {
                         <Download size={16} />
                       )}
                       <span className="text-sm font-medium">
-                        {isDownloading ? 'Preparing...' : 'Download'}
+                        {isDownloading
+                          ? 'Preparing...'
+                          : isOwner
+                          ? 'Download (Free)'
+                          : `Download (${price} coin${price !== 1 ? 's' : ''})`}
                       </span>
                     </button>
                   </div>
