@@ -19,15 +19,16 @@ import {
 } from '@aws-sdk/client-s3';
 import { Upload as ManagedUpload } from '@aws-sdk/lib-storage';
 
-// Storj S3 gateway config (MOVE TO BACKEND IN PRODUCTION!)
+// IMPORTANT: MOVE THESE TO BACKEND (Cloud Functions / API route) IN PRODUCTION!
+// Exposing them client-side allows anyone to read source and abuse your bucket.
 const STORJ_ENDPOINT = 'https://gateway.storjshare.io';
-const STORJ_ACCESS_KEY = 'jwsaexj637gtrgje6g4andnm5rkq';     // ← Replace with real key
-const STORJ_SECRET_KEY = 'j372lssi5bxkmqfu4nkzhg476kohlqa7plgmvqgpkgjiaujrsvvyg'; // ← Replace with real secret
+const STORJ_ACCESS_KEY = 'jwsaexj637gtrgje6g4andnm5rkq';     
+const STORJ_SECRET_KEY = 'j372lssi5bxkmqfu4nkzhg476kohlqa7plgmvqgpkgjiaujrsvvyg'; 
 const BUCKET_NAME = 'weconnect';
 
 const s3Client = new S3Client({
   endpoint: STORJ_ENDPOINT,
-  region: 'eu1',                    // EU-oriented dummy region
+  region: 'eu1',
   credentials: {
     accessKeyId: STORJ_ACCESS_KEY,
     secretAccessKey: STORJ_SECRET_KEY,
@@ -86,6 +87,11 @@ function UploadsData() {
   };
 
   const startUpload = async () => {
+    if (!auth.currentUser) {
+      toast.error("You must be signed in to upload materials");
+      return;
+    }
+
     if (!formData.file || !selectedCategory) {
       toast.error("Please select a file and category");
       return;
@@ -110,7 +116,7 @@ function UploadsData() {
           ContentType: file.type || 'application/octet-stream',
         },
         queueSize: 4,
-        partSize: 6 * 1024 * 1024,
+        partSize: 6 * 1024 * 1024, // 6MB parts — good balance for most files
         leavePartsOnError: true,
       });
 
@@ -125,9 +131,10 @@ function UploadsData() {
 
       await parallelUploads3.done();
 
-      const publicUrl = `https://link.storjshare.io/s/${BUCKET_NAME}/${filePath}`;
+      // Use /raw/ for direct file access (better for <video>, <img>, downloads)
+      const publicUrl = `https://link.storjshare.io/raw/${BUCKET_NAME}/${filePath}`;
 
-      // ── Save to Firestore instead of Supabase ───────────────────────────────
+      // ── Save metadata to Firestore ───────────────────────────────────────
       await addDoc(collection(db, 'materials'), {
         name: formData.title.trim(),
         title: formData.title.trim(),
@@ -141,17 +148,24 @@ function UploadsData() {
         file_size: file.size,
         mime_type: file.type,
         public_url: publicUrl,
-        uid: auth.currentUser?.uid || null,
+        uid: auth.currentUser.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      toast.success("Material uploaded successfully!");
+      toast.success("Material uploaded and saved successfully!");
       setStep(4);
 
     } catch (err) {
       console.error("Upload error:", err);
-      toast.error("Upload failed: " + (err.message || "Unknown error"));
+
+      if (err.code === 'permission-denied') {
+        toast.error("Permission denied — check your Firestore security rules allow authenticated creates on 'materials'");
+      } else if (err.name === 'NotAuthorized') {
+        toast.error("Storj authentication failed — check your access/secret keys");
+      } else {
+        toast.error("Upload failed: " + (err.message || "Unknown error"));
+      }
     } finally {
       cleanupUpload();
     }
@@ -161,16 +175,17 @@ function UploadsData() {
     if (!uploadRef.current) return;
 
     if (isPaused) {
-      toast.info("Resume not fully supported – restarting upload");
+      toast.info("Resume not fully supported in this version – restarting upload");
       setIsPaused(false);
-      startUpload();
+      startUpload(); // simplistic restart
     } else {
       try {
         await uploadRef.current.abort();
         setIsPaused(true);
-        toast.info("Upload paused (parts preserved on Storj)");
+        toast.info("Upload paused (uploaded parts preserved on Storj)");
       } catch (err) {
         console.warn("Abort failed:", err);
+        toast.warn("Could not pause cleanly");
       }
     }
   };
@@ -203,7 +218,7 @@ function UploadsData() {
   };
 
   // ────────────────────────────────────────────────
-  //  RENDER (unchanged)
+  //  RENDER
   // ────────────────────────────────────────────────
 
   return (
@@ -235,6 +250,7 @@ function UploadsData() {
           </div>
         </div>
 
+        {/* The rest of your JSX remains unchanged — only logic above was updated */}
         {/* Step 1: Category Selection */}
         {step === 1 && (
           <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">

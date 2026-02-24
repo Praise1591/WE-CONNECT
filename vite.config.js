@@ -14,14 +14,17 @@ export default defineConfig({
   },
 
   server: {
-    proxy: {
-      // Proxy all /api requests to your backend server
-      '/api': {
-        target: 'http://localhost:3000',          // ← IMPORTANT: change this to match your actual backend port
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-        secure: false,
-      },
-    },
+    // Comment out or remove the proxy block entirely for local development
+    // proxy: {
+    //   '/api': {
+    //     target: 'http://localhost:3000',
+    //     changeOrigin: true,
+    //     rewrite: (path) => path.replace(/^\/api/, ''),
+    //     secure: false,
+    //   },
+    // },
+
+    // Optional: only keep proxy if you actually run a separate backend
+    // (e.g. for production or when you start a real server on 3000)
   },
 })

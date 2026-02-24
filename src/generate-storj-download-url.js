@@ -7,8 +7,8 @@ const s3 = new S3Client({
   region: 'us-east-1',               // ← almost always this for Storj
   endpoint: 'https://gateway.storjshare.io',  // or your self-hosted gateway
   credentials: {
-    accessKeyId: process.env.STORJ_ACCESS_KEY,     // double-check these values
-    secretAccessKey: process.env.STORJ_SECRET_KEY,
+    accessKeyId: process.env.jwsaexj637gtrgje6g4andnm5rkq,     // double-check these values
+    secretAccessKey: process.env.j372lssi5bxkmqfu4nkzhg476kohlqa7plgmvqgpkgjiaujrsvvyg,
   },
   forcePathStyle: true,  // important for Storj gateway
 });

@@ -45,6 +45,7 @@ function Material() {
   const [previewMaterial, setPreviewMaterial] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
 
   // Auth listener
   useEffect(() => {
@@ -75,7 +76,7 @@ function Material() {
     const unsubscribe = onSnapshot(userRef, (snap) => {
       setProfile(snap.exists() ? snap.data() : { coins: 0, diamonds: 0 });
     }, (err) => {
-      console.error(err);
+      console.error("Profile listener error:", err);
       setProfile({ coins: 0, diamonds: 0 });
     });
     return unsubscribe;
@@ -88,7 +89,7 @@ function Material() {
       setMaterials(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.error("Materials listener error:", err);
       toast.error('Failed to load materials');
       setLoading(false);
     });
@@ -142,13 +143,12 @@ function Material() {
         toast.success("Added to favorites ❤️");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Favorite toggle failed:", err);
       toast.error("Failed to update favorites");
     }
   };
 
   const handleDownload = async (material) => {
-    // ── your existing download logic (unchanged) ──
     if (!currentUser) {
       toast.info("Please sign in to download");
       return;
@@ -185,7 +185,7 @@ function Material() {
           if (buyerCoins < price) throw new Error("Insufficient coins");
         }
 
-        if (ownerRef) await t.get(ownerRef); // confirm owner exists
+        if (ownerRef) await t.get(ownerRef);
 
         t.update(materialRef, { downloads: increment(1) });
         if (diamondsToCredit > 0) {
@@ -226,7 +226,10 @@ function Material() {
         body: JSON.stringify({ fileKey: material.file_path, bucket: BUCKET_NAME }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Download URL failed: ${res.status} - ${errText}`);
+      }
 
       const { url: signedUrl } = await res.json();
       window.open(signedUrl, '_blank');
@@ -238,7 +241,7 @@ function Material() {
         autoClose: 4500,
       });
     } catch (err) {
-      console.error(err);
+      console.error("Download process failed:", err);
       let msg = "Could not complete download";
       if (err.message.includes("Insufficient coins")) msg = `Not enough coins (${price} required)`;
       if (err.message.includes("no longer exists")) msg = "This material was removed";
@@ -248,18 +251,30 @@ function Material() {
     }
   };
 
-  // ── NEW: Preview handler ───────────────────────────────────────────────────
   const openPreview = async (material) => {
     if (!currentUser) {
       toast.info("Please sign in to preview");
       return;
     }
 
+    if (!material?.file_path) {
+      toast.error("This material has no file attached");
+      return;
+    }
+
     setPreviewMaterial(material);
     setPreviewUrl(null);
+    setPreviewError(null);
     setPreviewLoading(true);
 
     try {
+      console.log("[Preview requested]", {
+        materialId: material.id,
+        category: material.category,
+        filePath: material.file_path,
+        userId: currentUser.uid,
+      });
+
       const idToken = await currentUser.getIdToken(true);
       const res = await fetch('/api/generate-storj-preview-url', {
         method: 'POST',
@@ -268,23 +283,64 @@ function Material() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fileKey: material.file_path,          // or material.preview_path if you store separate previews
+          fileKey: material.file_path,
           bucket: BUCKET_NAME,
           isPreview: true,
+          category: material.category,
         }),
       });
 
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `HTTP ${res.status}`);
+        let data;
+        let errText = '';
+        try {
+          data = await res.json();
+          errText = data.error || data.message || '';
+        } catch {
+          errText = await res.text().catch(() => '');
+        }
+
+        console.error("[Preview failed]", {
+          status: res.status,
+          responseText: errText,
+          responseData: data,
+          materialId: material.id,
+          fileKey: material.file_path,
+        });
+
+        let friendlyMsg = "Could not load preview";
+
+        if (res.status === 404 || errText.toLowerCase().includes('not found') || errText.includes('NoSuchKey')) {
+          friendlyMsg = "This file appears to be missing from storage or inaccessible for preview.";
+        } else if (res.status === 403 || errText.includes('AccessDenied') || errText.includes('forbidden')) {
+          friendlyMsg = "Access denied — preview permission issue (Storj credentials or bucket settings).";
+        } else if (res.status === 500 || errText.includes('InternalError') || errText.includes('Internal Server')) {
+          friendlyMsg = "Preview service internal error — file storage may be temporarily unstable.";
+        } else if (errText.includes('timeout') || res.status === 503 || errText.includes('503')) {
+          friendlyMsg = "Preview request timed out — storage service is responding slowly.";
+        } else if (errText) {
+          friendlyMsg = `Preview failed: ${errText}`;
+        } else {
+          friendlyMsg = `Preview request failed (${res.status}) — no error details received.`;
+        }
+
+        setPreviewError(friendlyMsg);
+        toast.error(friendlyMsg, { autoClose: 7500 });
+        throw new Error(`Preview endpoint failed (${res.status}): ${errText || 'no details'}`);
       }
 
-      const { url } = await res.json();
-      setPreviewUrl(url);
+      const data = await res.json();
+      if (!data.url) {
+        throw new Error("No preview URL returned from server");
+      }
+
+      setPreviewUrl(data.url);
+      console.log("[Preview success] URL:", data.url.substring(0, 120) + (data.url.length > 120 ? '...' : ''));
     } catch (err) {
-      console.error("Preview failed:", err);
-      toast.error("Preview not available for this material");
-      setPreviewMaterial(null);
+      console.error("openPreview failed:", err);
+      // Fallback in case something throws outside the fetch block
+      setPreviewError("Unexpected error while preparing preview — please try downloading the full file.");
+      toast.error("Unexpected preview error — download is available as fallback.", { autoClose: 6500 });
     } finally {
       setPreviewLoading(false);
     }
@@ -451,6 +507,7 @@ function Material() {
                 onClick={() => {
                   setPreviewMaterial(null);
                   setPreviewUrl(null);
+                  setPreviewError(null);
                 }}
                 className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 flex-shrink-0"
               >
@@ -458,18 +515,69 @@ function Material() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 bg-slate-50 dark:bg-slate-950">
+            <div className="flex-1 overflow-auto p-6 bg-slate-50 dark:bg-slate-950">
               {previewLoading ? (
                 <div className="h-96 flex items-center justify-center">
                   <Loader2 className="h-12 w-12 animate-spin text-violet-600" />
                 </div>
+              ) : previewError ? (
+                <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-12 px-6">
+                  <Eye size={80} className="text-slate-400 dark:text-slate-500 opacity-60 mb-4" />
+                  
+                  <div className="space-y-4 max-w-lg">
+                    <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
+                      {previewError}
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      Previews can fail if the file is missing from storage, if permissions are restricted, or due to temporary issues with our file host (Storj).
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      The full file is still available for download if you have sufficient coins.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                    <button
+                      onClick={() => {
+                        setPreviewMaterial(null);
+                        setPreviewUrl(null);
+                        setPreviewError(null);
+                      }}
+                      className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg font-medium transition-colors min-w-[140px]"
+                    >
+                      Close
+                    </button>
+
+                    <button
+                      onClick={() => openPreview(previewMaterial)}
+                      disabled={previewLoading}
+                      className="px-8 py-3 bg-violet-100 hover:bg-violet-200 dark:bg-violet-900/40 dark:hover:bg-violet-800/60 text-violet-700 dark:text-violet-300 rounded-lg font-medium transition-colors flex items-center gap-2 min-w-[160px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {previewLoading && <Loader2 size={18} className="animate-spin" />}
+                      Retry Preview
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        handleDownload(previewMaterial);
+                        setPreviewMaterial(null);
+                        setPreviewUrl(null);
+                        setPreviewError(null);
+                      }}
+                      className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium shadow-md transition-all flex items-center gap-2 min-w-[180px] justify-center"
+                    >
+                      <Download size={18} />
+                      Download Full File
+                    </button>
+                  </div>
+                </div>
               ) : previewUrl ? (
-                previewMaterial.category.includes('Video') ? (
+                previewMaterial.category?.toLowerCase().includes('video') ? (
                   <video
                     src={previewUrl}
                     controls
                     autoPlay
-                    className="w-full max-h-[75vh] rounded-lg shadow-md"
+                    className="w-full max-h-[75vh] rounded-lg shadow-md mx-auto"
                   >
                     Your browser does not support the video tag.
                   </video>
@@ -479,19 +587,19 @@ function Material() {
                     className="w-full h-[70vh] md:h-[80vh] rounded-lg border border-slate-200 dark:border-slate-700"
                     title="Material Preview"
                     allowFullScreen
+                    sandbox="allow-scripts allow-same-origin allow-popups"
                   />
                 )
               ) : (
                 <div className="h-96 flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  Could not load preview
+                  Preparing preview...
                 </div>
               )}
             </div>
 
-            <div className="p-4 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400">
-              This is a limited preview. {previewMaterial.category.includes('Video') ? 'Video' : 'Full document'} available after purchase (
-              {getMaterialPriceInCoins(previewMaterial.category)} coin
-              {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''})
+            <div className="p-4 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400 bg-slate-100/50 dark:bg-slate-900/30">
+              This is a limited preview. Full {previewMaterial.category?.includes('Video') ? 'video' : 'document'} available for {getMaterialPriceInCoins(previewMaterial.category)} coin
+              {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''}
             </div>
           </div>
         </div>
