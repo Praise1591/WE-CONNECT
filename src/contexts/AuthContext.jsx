@@ -1,37 +1,55 @@
-// AuthContext.jsx
-import { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db } from '../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+// src/contexts/AuthContext.jsx
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { auth, db } from '../firebase'; // ← your firebase.js file
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut 
+} from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Listen to auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
 
-      if (currentUser) {
-        // Fetch user profile from Firestore
+      if (firebaseUser) {
+        // Fetch or create profile
         try {
-          const profileRef = doc(db, 'profiles', currentUser.uid);
+          const profileRef = doc(db, 'users', firebaseUser.uid); // or 'profiles'
           const profileSnap = await getDoc(profileRef);
 
           if (profileSnap.exists()) {
-            setUserProfile(profileSnap.data());
+            setProfile(profileSnap.data());
           } else {
-            setUserProfile(null);
+            // Auto-create minimal profile on first sign-in
+            const defaultProfile = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName || '',
+              photoURL: firebaseUser.photoURL || '',
+              createdAt: new Date().toISOString(),
+              // Add any other fields your app needs
+            };
+            await setDoc(profileRef, defaultProfile);
+            setProfile(defaultProfile);
           }
         } catch (err) {
-          console.error('Error fetching user profile:', err);
-          setUserProfile(null);
+          console.error("Profile init error:", err);
+          // You can show a toast here if desired
         }
       } else {
-        setUserProfile(null);
+        setProfile(null);
       }
 
       setLoading(false);
@@ -40,11 +58,32 @@ export function AuthProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
+  const value = {
+    user,
+    profile,
+    loading,
+    signInWithEmail: (email, password) => 
+      signInWithEmailAndPassword(auth, email, password),
+    signUpWithEmail: (email, password) => 
+      createUserWithEmailAndPassword(auth, email, password),
+    signInWithGoogle: () => {
+      const provider = new GoogleAuthProvider();
+      return signInWithPopup(auth, provider);
+    },
+    logout: () => signOut(auth),
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};

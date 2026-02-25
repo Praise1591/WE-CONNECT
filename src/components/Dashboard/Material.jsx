@@ -1,3 +1,7 @@
+// Material.jsx
+// Preview is FREE (only needs auth)
+// Download requires coins (unless owner)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import Schools from './Schools';
@@ -7,7 +11,7 @@ import {
 } from 'lucide-react';
 
 // ── Firebase ────────────────────────────────────────────────────────────────
-import { db, auth } from '@/firebase';
+import { db, storage, auth } from '@/firebase';
 import {
   collection,
   query,
@@ -22,8 +26,7 @@ import {
   getDoc,
   runTransaction,
 } from 'firebase/firestore';
-
-const BUCKET_NAME = 'weconnect';
+import { ref, getDownloadURL } from 'firebase/storage';
 
 function Material() {
   const [filters, setFilters] = useState({
@@ -37,11 +40,9 @@ function Material() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [favoritedIds, setFavoritedIds] = useState(new Set());
 
-  // Wallet + Auth
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
 
-  // ── Preview state ──────────────────────────────────────────────────────────
   const [previewMaterial, setPreviewMaterial] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -66,7 +67,7 @@ function Material() {
     return unsubscribe;
   }, [currentUser]);
 
-  // Profile (coins/diamonds) listener
+  // Profile listener (coins/diamonds)
   useEffect(() => {
     if (!currentUser) {
       setProfile(null);
@@ -148,56 +149,20 @@ function Material() {
     }
   };
 
-  const handleDownload = async (material) => {
-    if (!currentUser) {
-      toast.info("Please sign in to download");
-      return;
-    }
-
-    const price = getMaterialPriceInCoins(material.category);
-    const isOwner = currentUser?.uid === material.ownerUid;
-
-    if (!isOwner && (profile?.coins ?? 0) < price) {
-      toast.error(`Not enough coins! This costs ${price} coin${price !== 1 ? 's' : ''}.`);
-      return;
-    }
-
-    const titleForToast = material.title || material.name || 'file';
-    const loadingToast = toast.loading(`Preparing "${titleForToast}"...`);
-    setDownloadingId(material.id);
-
+  // ── Coin deduction & download history (only used for full download) ────────
+  const deductCoinsAndRecord = async (material, price) => {
     try {
-      const materialRef = doc(db, 'materials', material.id);
-      const buyerRef = doc(db, 'users', currentUser.uid);
-      const ownerRef = material.ownerUid && !isOwner ? doc(db, 'users', material.ownerUid) : null;
-
-      const diamondsToCredit = Math.floor(price * 0.6);
-
       await runTransaction(db, async (t) => {
-        const materialSnap = await t.get(materialRef);
-        if (!materialSnap.exists()) throw new Error("Material no longer exists");
+        const buyerRef = doc(db, 'users', currentUser.uid);
+        const buyerSnap = await t.get(buyerRef);
+        if (!buyerSnap.exists()) throw new Error("Profile not found");
+        const buyerCoins = buyerSnap.data().coins || 0;
+        if (buyerCoins < price) throw new Error("Insufficient coins");
 
-        let buyerCoins = 0;
-        if (!isOwner) {
-          const buyerSnap = await t.get(buyerRef);
-          if (!buyerSnap.exists()) throw new Error("Profile not found");
-          buyerCoins = buyerSnap.data().coins || 0;
-          if (buyerCoins < price) throw new Error("Insufficient coins");
-        }
-
-        if (ownerRef) await t.get(ownerRef);
-
-        t.update(materialRef, { downloads: increment(1) });
-        if (diamondsToCredit > 0) {
-          t.update(materialRef, { diamonds_earned: increment(diamondsToCredit) });
-        }
-        if (!isOwner) {
-          t.update(buyerRef, { coins: buyerCoins - price });
-        }
-        if (ownerRef && diamondsToCredit > 0) {
-          t.update(ownerRef, { diamonds: increment(diamondsToCredit) });
-        }
+        t.update(buyerRef, { coins: buyerCoins - price });
       });
+
+      setProfile(prev => ({ ...prev, coins: Math.max(0, (prev?.coins || 0) - price) }));
 
       const downloadHistoryRef = doc(db, `users/${currentUser.uid}/downloads`, material.id);
       await setDoc(downloadHistoryRef, {
@@ -207,48 +172,119 @@ function Material() {
         school: material.school || '—',
         category: material.category || 'Material',
         file_path: material.file_path,
-        coinsSpent: isOwner ? 0 : price,
-        amountNGN: isOwner ? 0 : price * 100,
-        isOwnerDownload: isOwner,
+        coinsSpent: price,
+        amountNGN: price * 100,
+        isOwnerDownload: false,
       }, { merge: true });
 
-      if (!isOwner && profile) {
-        setProfile(prev => ({ ...prev, coins: Math.max(0, (prev?.coins || 0) - price) }));
-      }
+      return true;
+    } catch (err) {
+      console.error("Coin deduction failed:", err);
+      const msg = err.message.includes("Insufficient") 
+        ? `Not enough coins (${price} required)` 
+        : err.code === 'permission-denied'
+          ? "Permission denied — check Firestore security rules for 'users' collection"
+          : "Failed to process payment";
+      toast.error(msg);
+      return false;
+    }
+  };
 
-      const idToken = await currentUser.getIdToken(true);
-      const res = await fetch('/api/generate-storj-download-url', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ fileKey: material.file_path, bucket: BUCKET_NAME }),
-      });
+  // ── Increment download count & credit owner diamonds (non-blocking) ────────
+  const incrementDownloadStats = async (material, price, isOwner) => {
+    if (isOwner) return;
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        throw new Error(`Download URL failed: ${res.status} - ${errText}`);
-      }
+    const diamondsToCredit = Math.floor(price * 0.6);
+    if (diamondsToCredit <= 0) return;
 
-      const { url: signedUrl } = await res.json();
-      window.open(signedUrl, '_blank');
+    const materialRef = doc(db, 'materials', material.id);
+    const ownerRef = material.ownerUid ? doc(db, 'users', material.ownerUid) : null;
 
-      toast.update(loadingToast, {
-        render: isOwner ? "Free download started!" : `Success! ${price} coin${price !== 1 ? 's' : ''} deducted`,
-        type: 'success',
-        isLoading: false,
-        autoClose: 4500,
+    try {
+      await runTransaction(db, async (t) => {
+        const materialSnap = await t.get(materialRef);
+        if (!materialSnap.exists()) return;
+
+        t.update(materialRef, { 
+          downloads: increment(1),
+          diamonds_earned: increment(diamondsToCredit)
+        });
+
+        if (ownerRef) {
+          t.update(ownerRef, { diamonds: increment(diamondsToCredit) });
+        }
       });
     } catch (err) {
-      console.error("Download process failed:", err);
-      let msg = "Could not complete download";
-      if (err.message.includes("Insufficient coins")) msg = `Not enough coins (${price} required)`;
-      if (err.message.includes("no longer exists")) msg = "This material was removed";
-      toast.update(loadingToast, { render: msg, type: 'error', isLoading: false, autoClose: 7000 });
+      console.warn("Stats update failed (non-critical):", err);
+    }
+  };
+
+  // ── Core function: get URL from Firebase Storage ───────────────────────────
+  const getFileUrl = async (material, isPreview = false) => {
+    if (!currentUser) {
+      toast.info("Please sign in");
+      return null;
+    }
+
+    const price = getMaterialPriceInCoins(material.category);
+    const isOwner = currentUser?.uid === material.ownerUid;
+
+    // Preview → free (no coin deduction)
+    if (isPreview) {
+      try {
+        const storageRef = ref(storage, material.file_path);
+        return await getDownloadURL(storageRef);
+      } catch (err) {
+        console.error("Preview URL error:", err);
+        let msg = "Could not load preview";
+        if (err.code === 'storage/object-not-found') msg = "File not found";
+        if (err.code === 'storage/unauthorized') msg = "File access restricted";
+        toast.error(msg);
+        return null;
+      }
+    }
+
+    // Full download → requires coins (unless owner)
+    if (!isOwner && (profile?.coins ?? 0) < price) {
+      toast.error(`Not enough coins! Requires ${price} coin${price !== 1 ? 's' : ''}.`);
+      return null;
+    }
+
+    let deductionSuccess = true;
+    if (!isOwner) {
+      deductionSuccess = await deductCoinsAndRecord(material, price);
+    }
+
+    if (!deductionSuccess) return null;
+
+    // Update stats in background
+    incrementDownloadStats(material, price, isOwner);
+
+    try {
+      const storageRef = ref(storage, material.file_path);
+      const url = await getDownloadURL(storageRef);
+
+      if (!isPreview) {
+        window.open(url, '_blank');
+        toast.success(isOwner 
+          ? "Free download started!" 
+          : `Download started (${price} coin${price !== 1 ? 's' : ''} deducted)`
+        );
+      }
+
+      return url;
+    } catch (err) {
+      console.error("Download URL error:", err);
+      toast.error("Could not access file");
+      return null;
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const handleDownload = (material) => {
+    setDownloadingId(material.id);
+    getFileUrl(material, false); // false = full download
   };
 
   const openPreview = async (material) => {
@@ -258,7 +294,7 @@ function Material() {
     }
 
     if (!material?.file_path) {
-      toast.error("This material has no file attached");
+      toast.error("No file attached");
       return;
     }
 
@@ -267,83 +303,15 @@ function Material() {
     setPreviewError(null);
     setPreviewLoading(true);
 
-    try {
-      console.log("[Preview requested]", {
-        materialId: material.id,
-        category: material.category,
-        filePath: material.file_path,
-        userId: currentUser.uid,
-      });
+    const url = await getFileUrl(material, true); // true = preview (free)
 
-      const idToken = await currentUser.getIdToken(true);
-      const res = await fetch('/api/generate-storj-preview-url', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileKey: material.file_path,
-          bucket: BUCKET_NAME,
-          isPreview: true,
-          category: material.category,
-        }),
-      });
-
-      if (!res.ok) {
-        let data;
-        let errText = '';
-        try {
-          data = await res.json();
-          errText = data.error || data.message || '';
-        } catch {
-          errText = await res.text().catch(() => '');
-        }
-
-        console.error("[Preview failed]", {
-          status: res.status,
-          responseText: errText,
-          responseData: data,
-          materialId: material.id,
-          fileKey: material.file_path,
-        });
-
-        let friendlyMsg = "Could not load preview";
-
-        if (res.status === 404 || errText.toLowerCase().includes('not found') || errText.includes('NoSuchKey')) {
-          friendlyMsg = "This file appears to be missing from storage or inaccessible for preview.";
-        } else if (res.status === 403 || errText.includes('AccessDenied') || errText.includes('forbidden')) {
-          friendlyMsg = "Access denied — preview permission issue (Storj credentials or bucket settings).";
-        } else if (res.status === 500 || errText.includes('InternalError') || errText.includes('Internal Server')) {
-          friendlyMsg = "Preview service internal error — file storage may be temporarily unstable.";
-        } else if (errText.includes('timeout') || res.status === 503 || errText.includes('503')) {
-          friendlyMsg = "Preview request timed out — storage service is responding slowly.";
-        } else if (errText) {
-          friendlyMsg = `Preview failed: ${errText}`;
-        } else {
-          friendlyMsg = `Preview request failed (${res.status}) — no error details received.`;
-        }
-
-        setPreviewError(friendlyMsg);
-        toast.error(friendlyMsg, { autoClose: 7500 });
-        throw new Error(`Preview endpoint failed (${res.status}): ${errText || 'no details'}`);
-      }
-
-      const data = await res.json();
-      if (!data.url) {
-        throw new Error("No preview URL returned from server");
-      }
-
-      setPreviewUrl(data.url);
-      console.log("[Preview success] URL:", data.url.substring(0, 120) + (data.url.length > 120 ? '...' : ''));
-    } catch (err) {
-      console.error("openPreview failed:", err);
-      // Fallback in case something throws outside the fetch block
-      setPreviewError("Unexpected error while preparing preview — please try downloading the full file.");
-      toast.error("Unexpected preview error — download is available as fallback.", { autoClose: 6500 });
-    } finally {
-      setPreviewLoading(false);
+    if (url) {
+      setPreviewUrl(url);
+    } else {
+      setPreviewError("Could not load preview — the file may be missing or restricted.");
     }
+
+    setPreviewLoading(false);
   };
 
   const getCategoryInfo = (category) => {
@@ -371,6 +339,7 @@ function Material() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 space-y-6 md:space-y-8">
 
+        {/* Header + Filter Bar */}
         <div className="text-center sm:text-left">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
             Educational Materials
@@ -459,9 +428,9 @@ function Material() {
 
                     <button
                       onClick={() => handleDownload(material)}
-                      disabled={isDownloading || !canAfford}
+                      disabled={isDownloading || (!isOwner && !canAfford)}
                       className={`py-4 flex items-center justify-center gap-2 font-medium transition-colors min-h-[52px] ${
-                        !canAfford
+                        (!isOwner && !canAfford)
                           ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed'
                           : isDownloading
                           ? 'text-violet-600'
@@ -495,7 +464,7 @@ function Material() {
         )}
       </div>
 
-      {/* ── Preview Modal ──────────────────────────────────────────────────────── */}
+      {/* Preview Modal */}
       {previewMaterial && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl overflow-hidden">
@@ -523,19 +492,12 @@ function Material() {
               ) : previewError ? (
                 <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-12 px-6">
                   <Eye size={80} className="text-slate-400 dark:text-slate-500 opacity-60 mb-4" />
-                  
-                  <div className="space-y-4 max-w-lg">
-                    <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
-                      {previewError}
-                    </p>
-                    <p className="text-slate-600 dark:text-slate-400">
-                      Previews can fail if the file is missing from storage, if permissions are restricted, or due to temporary issues with our file host (Storj).
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      The full file is still available for download if you have sufficient coins.
-                    </p>
-                  </div>
-
+                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
+                    {previewError}
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    Preview is free, but the file might be unavailable, deleted, or restricted in storage.
+                  </p>
                   <div className="flex flex-col sm:flex-row gap-4 mt-8">
                     <button
                       onClick={() => {
@@ -543,7 +505,7 @@ function Material() {
                         setPreviewUrl(null);
                         setPreviewError(null);
                       }}
-                      className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg font-medium transition-colors min-w-[140px]"
+                      className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg font-medium min-w-[140px]"
                     >
                       Close
                     </button>
@@ -551,7 +513,7 @@ function Material() {
                     <button
                       onClick={() => openPreview(previewMaterial)}
                       disabled={previewLoading}
-                      className="px-8 py-3 bg-violet-100 hover:bg-violet-200 dark:bg-violet-900/40 dark:hover:bg-violet-800/60 text-violet-700 dark:text-violet-300 rounded-lg font-medium transition-colors flex items-center gap-2 min-w-[160px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-8 py-3 bg-violet-100 hover:bg-violet-200 dark:bg-violet-900/40 dark:hover:bg-violet-800/60 text-violet-700 dark:text-violet-300 rounded-lg font-medium flex items-center gap-2 min-w-[160px] justify-center disabled:opacity-50"
                     >
                       {previewLoading && <Loader2 size={18} className="animate-spin" />}
                       Retry Preview
@@ -564,10 +526,10 @@ function Material() {
                         setPreviewUrl(null);
                         setPreviewError(null);
                       }}
-                      className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium shadow-md transition-all flex items-center gap-2 min-w-[180px] justify-center"
+                      className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium shadow-md flex items-center gap-2 min-w-[180px] justify-center"
                     >
                       <Download size={18} />
-                      Download Full File
+                      Download Full ({isOwner ? 'Free' : `${getMaterialPriceInCoins(previewMaterial.category)} coin${getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''}`})
                     </button>
                   </div>
                 </div>
@@ -579,7 +541,7 @@ function Material() {
                     autoPlay
                     className="w-full max-h-[75vh] rounded-lg shadow-md mx-auto"
                   >
-                    Your browser does not support the video tag.
+                    Browser does not support video.
                   </video>
                 ) : (
                   <iframe
@@ -590,16 +552,12 @@ function Material() {
                     sandbox="allow-scripts allow-same-origin allow-popups"
                   />
                 )
-              ) : (
-                <div className="h-96 flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  Preparing preview...
-                </div>
-              )}
+              ) : null}
             </div>
 
             <div className="p-4 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400 bg-slate-100/50 dark:bg-slate-900/30">
-              This is a limited preview. Full {previewMaterial.category?.includes('Video') ? 'video' : 'document'} available for {getMaterialPriceInCoins(previewMaterial.category)} coin
-              {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''}
+              Free preview — full file costs {getMaterialPriceInCoins(previewMaterial.category)} coin
+              {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} (free if you are the owner)
             </div>
           </div>
         </div>

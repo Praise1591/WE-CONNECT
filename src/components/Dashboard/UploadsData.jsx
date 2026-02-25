@@ -1,40 +1,18 @@
 // UploadsData.jsx
-// Features: multi-step upload form, direct Storj S3 multipart upload, progress bar, pause/resume/cancel
-// Authentication: Firebase | Metadata: Firestore | Storage: Storj (S3 gateway)
+// Multi-step upload form with Firebase Storage (resumable), progress, pause/resume/cancel
+// All input fields in Step 2 now fully implemented
 
 import React, { useState, useRef } from 'react';
 import { 
   Upload, X, FileText, Video, BookOpen, ScrollText,
-  ArrowRight, Check, Loader2, ArrowLeft 
+  ArrowRight, Check, ArrowLeft 
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-// ── Firebase imports ────────────────────────────────────────────────────────
-import { db, auth } from '@/firebase';
+// ── Firebase ────────────────────────────────────────────────────────────────
+import { db, storage, auth } from '@/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-
-// ── AWS SDK for Storj S3 compatibility ──────────────────────────────────────
-import {
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { Upload as ManagedUpload } from '@aws-sdk/lib-storage';
-
-// IMPORTANT: MOVE THESE TO BACKEND (Cloud Functions / API route) IN PRODUCTION!
-// Exposing them client-side allows anyone to read source and abuse your bucket.
-const STORJ_ENDPOINT = 'https://gateway.storjshare.io';
-const STORJ_ACCESS_KEY = 'jwsaexj637gtrgje6g4andnm5rkq';     
-const STORJ_SECRET_KEY = 'j372lssi5bxkmqfu4nkzhg476kohlqa7plgmvqgpkgjiaujrsvvyg'; 
-const BUCKET_NAME = 'weconnect';
-
-const s3Client = new S3Client({
-  endpoint: STORJ_ENDPOINT,
-  region: 'eu1',
-  credentials: {
-    accessKeyId: STORJ_ACCESS_KEY,
-    secretAccessKey: STORJ_SECRET_KEY,
-  },
-  forcePathStyle: true,
-});
 
 function UploadsData() {
   const [step, setStep] = useState(1);
@@ -51,13 +29,13 @@ function UploadsData() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const uploadRef = useRef(null);
+  const uploadTaskRef = useRef(null);
 
   const categories = [
-    { value: 'Past Questions', icon: ScrollText, label: 'Past Questions', color: 'from-amber-500 to-orange-600', accept: '.pdf,.doc,.docx' },
-    { value: 'PDF Notes',       icon: FileText,   label: 'PDF Notes',       color: 'from-blue-500 to-cyan-600',   accept: '.pdf,.doc,.docx' },
-    { value: 'Video Tutorials', icon: Video,      label: 'Video Tutorials', color: 'from-purple-500 to-pink-600',  accept: '.mp4,.avi,.mov,.webm' },
-    { value: 'Technical Reviews', icon: BookOpen, label: 'Technical Reviews', color: 'from-emerald-500 to-teal-600', accept: '.pdf,.doc,.docx' },
+    { value: 'Past Questions',    icon: ScrollText, label: 'Past Questions',    color: 'from-amber-500 to-orange-600',  accept: '.pdf,.doc,.docx' },
+    { value: 'PDF Notes',         icon: FileText,   label: 'PDF Notes',         color: 'from-blue-500 to-cyan-600',    accept: '.pdf,.doc,.docx' },
+    { value: 'Video Tutorials',   icon: Video,      label: 'Video Tutorials',   color: 'from-purple-500 to-pink-600',  accept: '.mp4,.avi,.mov,.webm' },
+    { value: 'Technical Reviews', icon: BookOpen,   label: 'Technical Reviews', color: 'from-emerald-500 to-teal-600',  accept: '.pdf,.doc,.docx' },
   ];
 
   const handleCategorySelect = (cat) => {
@@ -86,12 +64,11 @@ function UploadsData() {
     reader.readAsDataURL(file);
   };
 
-  const startUpload = async () => {
+  const startUpload = () => {
     if (!auth.currentUser) {
       toast.error("You must be signed in to upload materials");
       return;
     }
-
     if (!formData.file || !selectedCategory) {
       toast.error("Please select a file and category");
       return;
@@ -102,100 +79,74 @@ function UploadsData() {
     setIsPaused(false);
 
     const file = formData.file;
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
-    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
-    const filePath = `${uniqueSuffix}.${fileExt}`;
+    const fileName = file.name;
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2,10)}_${fileName}`;
+    const storagePath = `users/${auth.currentUser.uid}/materials/${uniqueName}`;
+    const storageRef = ref(storage, storagePath);
 
-    try {
-      const parallelUploads3 = new ManagedUpload({
-        client: s3Client,
-        params: {
-          Bucket: BUCKET_NAME,
-          Key: filePath,
-          Body: file,
-          ContentType: file.type || 'application/octet-stream',
-        },
-        queueSize: 4,
-        partSize: 6 * 1024 * 1024, // 6MB parts — good balance for most files
-        leavePartsOnError: true,
-      });
+    const uploadTask = uploadBytesResumable(storageRef, file);
+    uploadTaskRef.current = uploadTask;
 
-      parallelUploads3.on('httpUploadProgress', (progressEvent) => {
-        if (progressEvent.loaded && progressEvent.total) {
-          const percent = Math.floor((progressEvent.loaded / progressEvent.total) * 100);
-          setProgress(percent);
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const prog = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+        setProgress(prog);
+
+        if (snapshot.state === 'paused') setIsPaused(true);
+        if (snapshot.state === 'running') setIsPaused(false);
+      },
+      (error) => {
+        console.error("Upload error:", error);
+        const msg = error.code === 'storage/unauthorized'
+          ? "Permission denied — check Firebase Storage rules"
+          : error.code === 'storage/canceled'
+            ? "Upload cancelled"
+            : "Upload failed";
+        toast.error(msg);
+        cleanupUpload();
+      },
+      async () => {
+        try {
+          const publicUrl = await getDownloadURL(storageRef);
+
+          await addDoc(collection(db, 'materials'), {
+            name: formData.title.trim(),
+            title: formData.title.trim(),
+            course: formData.course.trim(),
+            school: formData.school.trim(),
+            department: formData.department?.trim() || null,
+            description: formData.description?.trim() || null,
+            category: selectedCategory.value,
+            file_name: fileName,
+            file_path: storagePath,
+            file_size: file.size,
+            mime_type: file.type,
+            public_url: publicUrl,
+            uid: auth.currentUser.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          toast.success("Material uploaded and saved successfully!");
+          setStep(4);
+        } catch (err) {
+          console.error("Metadata save error:", err);
+          toast.error("Failed to save material info");
+        } finally {
+          cleanupUpload();
         }
-      });
-
-      uploadRef.current = parallelUploads3;
-
-      await parallelUploads3.done();
-
-      // Use /raw/ for direct file access (better for <video>, <img>, downloads)
-      const publicUrl = `https://link.storjshare.io/raw/${BUCKET_NAME}/${filePath}`;
-
-      // ── Save metadata to Firestore ───────────────────────────────────────
-      await addDoc(collection(db, 'materials'), {
-        name: formData.title.trim(),
-        title: formData.title.trim(),
-        course: formData.course.trim(),
-        school: formData.school.trim(),
-        department: formData.department?.trim() || null,
-        description: formData.description?.trim() || null,
-        category: selectedCategory.value,
-        file_name: file.name,
-        file_path: filePath,
-        file_size: file.size,
-        mime_type: file.type,
-        public_url: publicUrl,
-        uid: auth.currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      toast.success("Material uploaded and saved successfully!");
-      setStep(4);
-
-    } catch (err) {
-      console.error("Upload error:", err);
-
-      if (err.code === 'permission-denied') {
-        toast.error("Permission denied — check your Firestore security rules allow authenticated creates on 'materials'");
-      } else if (err.name === 'NotAuthorized') {
-        toast.error("Storj authentication failed — check your access/secret keys");
-      } else {
-        toast.error("Upload failed: " + (err.message || "Unknown error"));
       }
-    } finally {
-      cleanupUpload();
-    }
+    );
   };
 
-  const togglePauseResume = async () => {
-    if (!uploadRef.current) return;
-
-    if (isPaused) {
-      toast.info("Resume not fully supported in this version – restarting upload");
-      setIsPaused(false);
-      startUpload(); // simplistic restart
-    } else {
-      try {
-        await uploadRef.current.abort();
-        setIsPaused(true);
-        toast.info("Upload paused (uploaded parts preserved on Storj)");
-      } catch (err) {
-        console.warn("Abort failed:", err);
-        toast.warn("Could not pause cleanly");
-      }
-    }
+  const togglePauseResume = () => {
+    if (!uploadTaskRef.current) return;
+    isPaused ? uploadTaskRef.current.resume() : uploadTaskRef.current.pause();
   };
 
-  const cancelUpload = async () => {
-    if (uploadRef.current) {
-      try {
-        await uploadRef.current.abort();
-      } catch {}
-    }
+  const cancelUpload = () => {
+    if (uploadTaskRef.current) uploadTaskRef.current.cancel();
     cleanupUpload();
     toast.info("Upload cancelled");
   };
@@ -204,7 +155,7 @@ function UploadsData() {
     setUploading(false);
     setIsPaused(false);
     setProgress(0);
-    uploadRef.current = null;
+    uploadTaskRef.current = null;
   };
 
   const resetForm = () => {
@@ -225,7 +176,7 @@ function UploadsData() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
       <div className="p-4 sm:p-6 md:p-10 lg:p-12 max-w-4xl mx-auto">
 
-        {/* Progress indicator */}
+        {/* Progress Steps */}
         <div className="mb-8 sm:mb-12">
           <div className="flex items-center justify-between">
             {[1, 2, 3, 4].map(s => (
@@ -250,15 +201,14 @@ function UploadsData() {
           </div>
         </div>
 
-        {/* The rest of your JSX remains unchanged — only logic above was updated */}
-        {/* Step 1: Category Selection */}
+        {/* STEP 1 – Category Selection */}
         {step === 1 && (
           <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-4 sm:mb-6 text-center">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-6 text-center">
               What are you uploading?
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              {categories.map((cat) => (
+              {categories.map(cat => (
                 <button
                   key={cat.value}
                   onClick={() => handleCategorySelect(cat)}
@@ -273,7 +223,7 @@ function UploadsData() {
           </div>
         )}
 
-        {/* Step 2: Details Form */}
+        {/* STEP 2 – Material Details (ALL FIELDS NOW INCLUDED) */}
         {step === 2 && (
           <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-4 sm:mb-6">
@@ -371,7 +321,7 @@ function UploadsData() {
               <button
                 onClick={() => {
                   if (!formData.title.trim() || !formData.course.trim() || !formData.school.trim()) {
-                    toast.error("Please fill in all required fields (Title, Course, School)");
+                    toast.error("Please fill in all required fields: Title, Course, School");
                     return;
                   }
                   setStep(3);
@@ -384,14 +334,14 @@ function UploadsData() {
           </div>
         )}
 
-        {/* Step 3: File upload + progress */}
+        {/* STEP 3 – File Upload */}
         {step === 3 && (
           <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-4 sm:mb-6">
-              Upload Your File to Storj
+              Upload Your File
             </h2>
             <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-6 sm:mb-8">
-              {selectedCategory?.label} — multipart upload via S3 gateway
+              {selectedCategory?.label} — resumable upload to Firebase Storage
             </p>
 
             <div className="space-y-6">
@@ -403,10 +353,7 @@ function UploadsData() {
                   className="hidden"
                   id="file-upload"
                 />
-                <label
-                  htmlFor="file-upload"
-                  className="cursor-pointer flex flex-col items-center gap-3"
-                >
+                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-3">
                   <Upload size={48} className="text-blue-600 dark:text-blue-400" />
                   <div>
                     <p className="text-lg font-medium text-slate-800 dark:text-white">
@@ -422,7 +369,7 @@ function UploadsData() {
               {formData.file && (
                 <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl flex items-center gap-4">
                   {formData.preview?.startsWith('data:video') ? (
-                    <video src={formData.preview} className="w-20 h-20 object-cover rounded" />
+                    <video src={formData.preview} className="w-20 h-20 object-cover rounded" controlsList="nodownload" />
                   ) : formData.preview ? (
                     <img src={formData.preview} alt="preview" className="w-20 h-20 object-cover rounded" />
                   ) : (
@@ -464,7 +411,7 @@ function UploadsData() {
                     </div>
                     <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
                       <span>{progress}%</span>
-                      <span>Uploading...</span>
+                      <span>{isPaused ? 'Paused' : 'Uploading...'}</span>
                     </div>
                   </div>
 
@@ -498,7 +445,7 @@ function UploadsData() {
           </div>
         )}
 
-        {/* Step 4: Success */}
+        {/* STEP 4 – Success */}
         {step === 4 && (
           <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-8 sm:p-12 text-center border border-slate-200/50 dark:border-slate-700/50">
             <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">

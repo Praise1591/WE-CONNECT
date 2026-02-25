@@ -1,15 +1,14 @@
 // App.jsx — FINAL WORKING VERSION with Landing page + Protected Routes
-// Supabase Auth integrated | Fixed sidebar (no scroll with content) + responsive collapse
-// Added dev-mode suppression for common React Router / fetch AbortError noise
+// Now using Firebase Auth + Firestore | Fixed sidebar (no scroll with content) + responsive collapse
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   BrowserRouter,
   Routes,
   Route,
   Navigate,
   Outlet,
-  useNavigate,
+  useLocation,
 } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -21,7 +20,7 @@ import Header from './components/Layout/Header';
 import Dashboard from './components/Dashboard/Dashboard';
 import Material from './components/Dashboard/Material';
 import Favorites from './components/Dashboard/Favorites';
-import SettingsPage from './components/Dashboard/SettingsPage';
+import ProfileSettings from './components/Dashboard/ProfileSettings';
 import Connect from './components/Dashboard/Connect';
 import Notification from './components/Dashboard/Notifications';
 import DownloadsPage from './components/Dashboard/DownloadsPage';
@@ -30,23 +29,6 @@ import About from './components/Dashboard/About';
 import UploadsData from './components/Dashboard/UploadsData';
 import AnalyticsDashboard from './components/Dashboard/AnalyticsDashboard';
 import Landing from './pages/Landing';
-
-
-// ── Suppress noisy AbortError in development ────────────────────────────────
-if (import.meta.env.DEV) {
-  const originalConsoleError = console.error;
-  console.error = (...args) => {
-    // Filter out the very common "signal is aborted without reason" noise
-    if (
-      typeof args[0] === 'string' &&
-      args[0].includes('AbortError') &&
-      args[0].includes('signal is aborted without reason')
-    ) {
-      return;
-    }
-    originalConsoleError(...args);
-  };
-}
 
 // ── Error Boundary Component ─────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -95,26 +77,22 @@ class ErrorBoundary extends React.Component {
 // ── Protected Layout ─────────────────────────────────────────────────────────
 function ProtectedLayout() {
   const { user, loading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading && !user && window.location.pathname !== '/') {
-      navigate('/', { replace: true });
-    }
-  }, [loading, user, navigate]);
+  const location = useLocation();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-base font-medium text-slate-700 dark:text-slate-300 animate-pulse">
+        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <span className="ml-4 text-lg font-medium text-slate-700 dark:text-slate-300">
           Verifying session...
-        </div>
+        </span>
       </div>
     );
   }
 
   if (!user) {
-    return null;
+    // Redirect to login and preserve the location they tried to reach
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   return <DashboardLayout><Outlet /></DashboardLayout>;
@@ -135,7 +113,7 @@ function App() {
               <Route path="upload" element={<UploadsData />} />
               <Route path="analytics" element={<AnalyticsDashboard />} />
               <Route path="favorites" element={<Favorites />} />
-              <Route path="settings" element={<SettingsPage />} />
+              <Route path="settings" element={<ProfileSettings />} />
               <Route path="connect" element={<Connect />} />
               <Route path="notifications" element={<Notification />} />
               <Route path="downloads" element={<DownloadsPage />} />
