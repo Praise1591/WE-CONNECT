@@ -1,13 +1,11 @@
 // Material.jsx
-// Preview is FREE (only needs auth)
-// Download requires coins (unless owner)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import Schools from './Schools';
-import { 
-  Download, Heart, FileText, Video, BookOpen, ScrollText, 
-  PersonStanding, Loader2, Eye, X 
+import {
+  Download, Heart, FileText, Video, BookOpen, ScrollText,
+  PersonStanding, Loader2, Eye, X
 } from 'lucide-react';
 
 // ── Firebase ────────────────────────────────────────────────────────────────
@@ -27,6 +25,26 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
+
+// ── Helper: Record transaction (you can move this to a separate file later) ──
+const addTransaction = async (userId, type, amountNGN, description, status = 'completed', metadata = {}) => {
+  if (!userId) return; // silent fail if no user
+
+  try {
+    const txRef = doc(collection(db, `users/${userId}/transactions`));
+    await setDoc(txRef, {
+      type,
+      amountNGN,
+      description,
+      status,
+      createdAt: serverTimestamp(),
+      ...metadata,
+    });
+  } catch (err) {
+    console.error("Failed to record transaction:", err);
+    // Consider toast.error here if you want user-visible feedback
+  }
+};
 
 function Material() {
   const [filters, setFilters] = useState({
@@ -149,7 +167,6 @@ function Material() {
     }
   };
 
-  // ── Coin deduction & download history (only used for full download) ────────
   const deductCoinsAndRecord = async (material, price) => {
     try {
       await runTransaction(db, async (t) => {
@@ -162,7 +179,22 @@ function Material() {
         t.update(buyerRef, { coins: buyerCoins - price });
       });
 
+      // Local state update (optimistic UI)
       setProfile(prev => ({ ...prev, coins: Math.max(0, (prev?.coins || 0) - price) }));
+
+      // Record transaction
+      await addTransaction(
+        currentUser.uid,
+        'spend',
+        price * 100, // amount in Naira equivalent
+        `Spent ${price} coin${price !== 1 ? 's' : ''} on "${material.title || 'Material'}"`,
+        'completed',
+        {
+          materialId: material.id,
+          category: material.category,
+          coinsSpent: price,
+        }
+      );
 
       const downloadHistoryRef = doc(db, `users/${currentUser.uid}/downloads`, material.id);
       await setDoc(downloadHistoryRef, {
@@ -180,8 +212,8 @@ function Material() {
       return true;
     } catch (err) {
       console.error("Coin deduction failed:", err);
-      const msg = err.message.includes("Insufficient") 
-        ? `Not enough coins (${price} required)` 
+      const msg = err.message.includes("Insufficient")
+        ? `Not enough coins (${price} required)`
         : err.code === 'permission-denied'
           ? "Permission denied — check Firestore security rules for 'users' collection"
           : "Failed to process payment";
@@ -190,7 +222,6 @@ function Material() {
     }
   };
 
-  // ── Increment download count & credit owner diamonds (non-blocking) ────────
   const incrementDownloadStats = async (material, price, isOwner) => {
     if (isOwner) return;
 
@@ -205,7 +236,7 @@ function Material() {
         const materialSnap = await t.get(materialRef);
         if (!materialSnap.exists()) return;
 
-        t.update(materialRef, { 
+        t.update(materialRef, {
           downloads: increment(1),
           diamonds_earned: increment(diamondsToCredit)
         });
@@ -219,7 +250,16 @@ function Material() {
     }
   };
 
-  // ── Core function: get URL from Firebase Storage ───────────────────────────
+  const forceDownload = (url, filename) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getFileUrl = async (material, isPreview = false) => {
     if (!currentUser) {
       toast.info("Please sign in");
@@ -229,7 +269,6 @@ function Material() {
     const price = getMaterialPriceInCoins(material.category);
     const isOwner = currentUser?.uid === material.ownerUid;
 
-    // Preview → free (no coin deduction)
     if (isPreview) {
       try {
         const storageRef = ref(storage, material.file_path);
@@ -244,7 +283,6 @@ function Material() {
       }
     }
 
-    // Full download → requires coins (unless owner)
     if (!isOwner && (profile?.coins ?? 0) < price) {
       toast.error(`Not enough coins! Requires ${price} coin${price !== 1 ? 's' : ''}.`);
       return null;
@@ -257,7 +295,6 @@ function Material() {
 
     if (!deductionSuccess) return null;
 
-    // Update stats in background
     incrementDownloadStats(material, price, isOwner);
 
     try {
@@ -265,16 +302,25 @@ function Material() {
       const url = await getDownloadURL(storageRef);
 
       if (!isPreview) {
-        window.open(url, '_blank');
-        toast.success(isOwner 
-          ? "Free download started!" 
-          : `Download started (${price} coin${price !== 1 ? 's' : ''} deducted)`
+        const extension = material.file_path.split('.').pop()?.toLowerCase() || 'pdf';
+        const safeTitle = (material.title || `material-${material.id}`)
+          .replace(/[^a-z0-9]/gi, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
+        const filename = `${safeTitle}.${extension}`;
+
+        forceDownload(url, filename);
+
+        toast.success(
+          isOwner
+            ? "File downloaded!"
+            : `File downloaded (${price} coin${price !== 1 ? 's' : ''} deducted)`
         );
       }
 
       return url;
     } catch (err) {
-      console.error("Download URL error:", err);
+      console.error("File access error:", err);
       toast.error("Could not access file");
       return null;
     } finally {
@@ -284,7 +330,7 @@ function Material() {
 
   const handleDownload = (material) => {
     setDownloadingId(material.id);
-    getFileUrl(material, false); // false = full download
+    getFileUrl(material, false);
   };
 
   const openPreview = async (material) => {
@@ -303,7 +349,7 @@ function Material() {
     setPreviewError(null);
     setPreviewLoading(true);
 
-    const url = await getFileUrl(material, true); // true = preview (free)
+    const url = await getFileUrl(material, true);
 
     if (url) {
       setPreviewUrl(url);
@@ -360,7 +406,7 @@ function Material() {
 
         {filteredMaterials.length === 0 ? (
           <div className="bg-white/70 dark:bg-slate-800/70 rounded-2xl p-10 md:p-16 text-center border border-slate-200/60 dark:border-slate-700/50 shadow-sm">
-            <Eye className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500 mb-4 opacity-70" />
+            <Eye className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500 opacity-70 mb-4" />
             <h3 className="text-xl font-semibold text-slate-700 dark:text-slate-200">
               No materials found
             </h3>
@@ -433,22 +479,23 @@ function Material() {
                         (!isOwner && !canAfford)
                           ? 'text-slate-400 dark:text-slate-500 cursor-not-allowed'
                           : isDownloading
-                          ? 'text-violet-600'
+                          ? 'text-violet-600 cursor-wait'
                           : 'text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/30 active:bg-violet-100'
                       }`}
                     >
                       {isDownloading ? (
-                        <Loader2 size={18} className="animate-spin" />
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          <span>Preparing…</span>
+                        </>
                       ) : (
-                        <Download size={18} />
+                        <>
+                          <Download size={18} />
+                          <span>
+                            {isOwner ? 'Free' : `${price} coin${price !== 1 ? 's' : ''}`}
+                          </span>
+                        </>
                       )}
-                      <span>
-                        {isDownloading
-                          ? 'Preparing…'
-                          : isOwner
-                          ? 'Free'
-                          : `${price} coin${price !== 1 ? 's' : ''}`}
-                      </span>
                     </button>
                   </div>
 

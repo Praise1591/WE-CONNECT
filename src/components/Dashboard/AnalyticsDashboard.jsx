@@ -1,5 +1,5 @@
 // src/components/Dashboard/AnalyticsDashboard.jsx
-// Restored original UI + switched to Firestore + shows diamonds_earned per material
+// Enhanced mobile responsiveness – Android / small screen optimized (all inline Tailwind)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
@@ -29,8 +29,6 @@ import {
   AlertCircle,
   TrendingUp,
   Gem,
-  DollarSign,
-  UploadCloud,
   Eye,
   Download,
   FileText,
@@ -142,39 +140,48 @@ function AnalyticsDashboard() {
         position: 'top',
         labels: {
           usePointStyle: true,
-          padding: 16,
-          font: { size: window.innerWidth < 640 ? 12 : 13, weight: 500 },
+          padding: 12,
+          font: { size: 12, weight: 500 },
           boxWidth: 10,
+          boxHeight: 10,
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.96)',
+        enabled: true,
+        backgroundColor: 'rgba(15, 23, 42, 0.94)',
         titleFont: { size: 14 },
         bodyFont: { size: 13 },
-        padding: 12,
-        cornerRadius: 10,
+        padding: 10,
+        cornerRadius: 8,
       },
     },
     scales: {
       x: {
         grid: { display: false },
-        ticks: { maxRotation: 45, minRotation: 0, font: { size: window.innerWidth < 640 ? 11 : 12 } },
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45,
+          font: { size: 11 },
+        },
       },
       'y-diamonds': {
         position: 'left',
-        title: { display: window.innerWidth >= 768, text: 'Diamonds', color: '#a78bfa', font: { size: 13 } },
-        ticks: { font: { size: window.innerWidth < 640 ? 11 : 12 } },
-        grid: { color: 'rgba(0,0,0,0.06)' },
+        title: { display: false },
+        ticks: { font: { size: 11 }, precision: 0 },
+        grid: { color: 'rgba(0,0,0,0.05)' },
         beginAtZero: true,
       },
       'y-earnings': {
         position: 'right',
-        title: { display: window.innerWidth >= 768, text: 'Earnings ($)', color: '#34d399', font: { size: 13 } },
-        ticks: { font: { size: window.innerWidth < 640 ? 11 : 12 } },
+        title: { display: false },
+        ticks: { font: { size: 11 }, precision: 2 },
         grid: { drawOnChartArea: false },
         beginAtZero: true,
       },
     },
+    layout: {
+      padding: { top: 8, bottom: 16, left: 4, right: 12 }
+    }
   };
 
   const exportToCSV = () => {
@@ -184,15 +191,8 @@ function AnalyticsDashboard() {
     }
 
     const headers = [
-      'Title',
-      'Category',
-      'School',
-      'Course',
-      'Uploaded At',
-      'Views',
-      'Downloads',
-      'Diamonds Earned',
-      'Earnings ($)',
+      'Title', 'Category', 'School', 'Course', 'Uploaded At',
+      'Views', 'Downloads', 'Diamonds Earned', 'Earnings ($)',
     ];
 
     const rows = filteredMaterials.map((m) => [
@@ -217,7 +217,7 @@ function AnalyticsDashboard() {
     link.click();
     URL.revokeObjectURL(url);
 
-    toast.success('CSV file downloaded');
+    toast.success('CSV exported');
   };
 
   const exportToJSON = () => {
@@ -231,7 +231,7 @@ function AnalyticsDashboard() {
       category: m.category || '',
       school: m.school || '',
       course: m.course || '',
-      created_at: m.created_at,
+      created_at: m.created_at.toISOString(),
       views: m.views || 0,
       downloads: m.downloads || 0,
       diamonds_earned: m.diamonds_earned || 0,
@@ -246,16 +246,16 @@ function AnalyticsDashboard() {
     link.click();
     URL.revokeObjectURL(url);
 
-    toast.success('JSON file downloaded');
+    toast.success('JSON exported');
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this material permanently?')) return;
     try {
-      // You can add Firestore delete here if desired
-      // await deleteDoc(doc(db, 'materials', id));
-      toast.success('Deleted');
-    } catch {
+      // await deleteDoc(doc(db, 'materials', id));  // ← uncomment when ready
+      toast.success('Material deleted');
+    } catch (err) {
+      console.error(err);
       toast.error('Failed to delete');
     }
   };
@@ -264,22 +264,22 @@ function AnalyticsDashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 px-4">
         <div className="w-14 h-14 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-        <p className="text-base sm:text-lg font-medium text-slate-600 dark:text-slate-300">
-          Loading your analytics...
+        <p className="text-base font-medium text-slate-600 dark:text-slate-300">
+          Loading analytics...
         </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen pb-12 sm:pb-16 px-3 sm:px-5 lg:px-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">
+    <div className="min-h-screen pb-16 px-3 sm:px-5 lg:px-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 sm:gap-6 pt-2 sm:pt-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 pt-2">
         <div>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent tracking-tight">
             Content Analytics
           </h1>
-          <p className="mt-1.5 sm:mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-400">
+          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
             Track earnings, views & student engagement
           </p>
         </div>
@@ -287,7 +287,9 @@ function AnalyticsDashboard() {
         <select
           value={timeRange}
           onChange={(e) => setTimeRange(e.target.value)}
-          className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg"
+          className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 
+                     rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+                     min-w-[140px] h-10 touch-manipulation"
         >
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -296,31 +298,99 @@ function AnalyticsDashboard() {
         </select>
       </div>
 
-      {/* ... rest of your original JSX remains unchanged ... */}
+      {/* Quick stats cards – 2 columns on mobile */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/70 dark:from-indigo-950/50 dark:to-indigo-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+              <FileText className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Materials</p>
+              <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+                {stats.totalMaterials.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
 
-      {/* Materials Table + Export buttons */}
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100/70 dark:from-blue-950/50 dark:to-blue-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+              <Eye className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Views</p>
+              <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+                {stats.totalViews.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/70 dark:from-emerald-950/50 dark:to-emerald-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+              <Download className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Downloads</p>
+              <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+                {stats.totalDownloads.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-violet-50 to-violet-100/70 dark:from-violet-950/50 dark:to-violet-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+              <Gem className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Diamonds</p>
+              <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+                {stats.totalDiamonds.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart – same height, responsive */}
+      <div className="bg-white/90 dark:bg-slate-900/70 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/40 p-4 sm:p-6 h-72 sm:h-80 lg:h-96">
+        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2.5 text-slate-900 dark:text-white">
+          <TrendingUp className="h-5 w-5 text-indigo-500" />
+          Performance Trend
+        </h2>
+        <div className="h-[calc(100%-44px)]">
+          <Line data={chartData} options={chartOptions} />
+        </div>
+      </div>
+
+      {/* Materials Table – mobile optimized */}
       <div className="bg-white/90 dark:bg-slate-900/70 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/40 overflow-hidden">
-        <div className="p-5 sm:p-6 border-b border-slate-200/70 dark:border-slate-700/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="p-4 sm:p-6 border-b border-slate-200/70 dark:border-slate-700/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-500" />
-            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white">Your Materials</h2>
+            <FileText className="h-5 w-5 text-indigo-500" />
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Your Materials</h2>
           </div>
 
           {filteredMaterials.length > 0 && (
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 min-h-[44px]"
               >
                 <Download size={16} />
-                Export CSV
+                CSV
               </button>
               <button
                 onClick={exportToJSON}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:bg-slate-600 dark:hover:bg-slate-500"
+                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 min-h-[44px] dark:bg-slate-600 dark:hover:bg-slate-600/90"
               >
                 <Download size={16} />
-                Export JSON
+                JSON
               </button>
             </div>
           )}
@@ -328,87 +398,77 @@ function AnalyticsDashboard() {
 
         {filteredMaterials.length === 0 ? (
           <div className="p-10 sm:p-16 text-center space-y-4">
-            <AlertCircle className="mx-auto h-12 w-12 sm:h-14 sm:w-14 text-slate-400" />
-            <h3 className="text-lg sm:text-xl font-medium text-slate-700 dark:text-slate-300">No materials yet</h3>
-            <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Upload notes, past questions or summaries to start earning and see analytics here.
+            <AlertCircle className="mx-auto h-12 w-12 text-slate-400" />
+            <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300">No materials yet</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              Upload your notes, questions or summaries to start earning and track performance here.
             </p>
           </div>
         ) : (
           <div className="relative">
-            <div className="sm:hidden absolute right-2 top-4 bg-indigo-500/80 text-white text-xs px-2.5 py-1 rounded-full z-10 animate-pulse">
-              Swipe ←→
+            {/* Mobile swipe hint – more prominent */}
+            <div className="sm:hidden absolute -top-2 right-3 z-20 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg animate-pulse pointer-events-none flex items-center gap-1.5">
+              <span>← Swipe →</span>
             </div>
 
-            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
-              <table className="min-w-[900px] w-full divide-y divide-slate-200/70 dark:divide-slate-700/60">
-                <thead className="bg-slate-50/90 dark:bg-slate-950/60 sticky top-0 z-10">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-400/60 dark:scrollbar-thumb-slate-600/70 scrollbar-track-transparent pb-3">
+              <table className="min-w-[540px] sm:min-w-[680px] w-full divide-y divide-slate-200/60 dark:divide-slate-700/50 text-sm">
+                <thead className="bg-slate-50/90 dark:bg-slate-950/70 sticky top-0 z-10">
                   <tr>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Title
+                    <th className="px-2.5 sm:px-4 py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Material
                     </th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden lg:table-cell">
-                      Course
-                    </th>
-                    <th className="px-5 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden md:table-cell">
-                      Uploaded
-                    </th>
-                    <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="px-1.5 sm:px-3 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Views
                     </th>
-                    <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="px-1.5 sm:px-3 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       ↓
                     </th>
-                    <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Diamonds Earned
+                    <th className="px-1.5 sm:px-3 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Gems
                     </th>
-                    <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Earnings
+                    <th className="px-2 sm:px-4 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                      $
                     </th>
-                    <th className="px-3 py-4 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Del
+                    <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-12 sm:w-16">
+                      <span className="hidden sm:inline">Del</span>
+                      <span className="sm:hidden">✕</span>
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
                   {filteredMaterials.map((m) => (
                     <tr
                       key={m.id}
-                      className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors duration-150"
+                      className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors even:bg-slate-50/30 dark:even:bg-slate-800/10"
                     >
-                      <td className="px-5 py-4">
-                        <div className="font-medium text-slate-900 dark:text-white text-sm sm:text-base truncate max-w-[180px] sm:max-w-xs">
+                      <td className="px-2.5 sm:px-4 py-3">
+                        <div className="font-medium text-slate-900 dark:text-white text-xs sm:text-sm max-w-[140px] sm:max-w-[240px] truncate">
                           {m.title || 'Untitled'}
                         </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[180px] sm:max-w-xs">
-                          {m.category} • {m.school}
+                        <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[140px] sm:max-w-[240px]">
+                          {m.course || m.category || '—'}
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-300 hidden lg:table-cell">
-                        {m.course || '—'}
+                      <td className="px-1.5 sm:px-3 py-3 text-right text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">
+                        {m.views?.toLocaleString() || '0'}
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-300 hidden md:table-cell whitespace-nowrap">
-                        {format(new Date(m.created_at), 'MMM d, yyyy')}
+                      <td className="px-1.5 sm:px-3 py-3 text-right text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">
+                        {m.downloads?.toLocaleString() || '0'}
                       </td>
-                      <td className="px-4 py-4 text-right text-sm text-slate-600 dark:text-slate-300">
-                        {m.views?.toLocaleString() || 0}
-                      </td>
-                      <td className="px-4 py-4 text-right text-sm text-slate-600 dark:text-slate-300">
-                        {m.downloads?.toLocaleString() || 0}
-                      </td>
-                      <td className="px-4 py-4 text-right text-sm font-semibold text-violet-600 dark:text-violet-400">
+                      <td className="px-1.5 sm:px-3 py-3 text-right text-xs sm:text-sm font-semibold text-violet-600 dark:text-violet-400">
                         {(m.diamonds_earned || 0).toLocaleString()}
                       </td>
-                      <td className="px-4 py-4 text-right text-sm font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      <td className="px-2 sm:px-4 py-3 text-right text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                         ${(m.earnings ?? 0).toFixed(2)}
                       </td>
-                      <td className="px-3 py-4 text-center">
+                      <td className="px-1 sm:px-2 py-3 text-center w-12 sm:w-16">
                         <button
                           onClick={() => handleDelete(m.id)}
-                          className="p-2 rounded-lg text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors touch-manipulation"
+                          className="inline-flex items-center justify-center p-2.5 sm:p-3 rounded-full text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors touch-manipulation active:scale-95 min-w-[44px] min-h-[44px]"
                           aria-label="Delete material"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={18} className="sm:size-20" />
                         </button>
                       </td>
                     </tr>
@@ -416,44 +476,12 @@ function AnalyticsDashboard() {
                 </tbody>
               </table>
             </div>
+
+            <div className="sm:hidden text-center text-xs text-slate-500 dark:text-slate-400 py-3 px-4 border-t border-slate-200/70 dark:border-slate-700/50 bg-slate-50/40 dark:bg-slate-900/30">
+              Swipe horizontally • Delete button always visible
+            </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, color }) {
-  const gradients = {
-    indigo: 'from-indigo-50 to-indigo-100/70 dark:from-indigo-950/50 dark:to-indigo-900/40',
-    violet: 'from-violet-50 to-violet-100/70 dark:from-violet-950/50 dark:to-violet-900/40',
-    emerald: 'from-emerald-50 to-emerald-100/70 dark:from-emerald-950/50 dark:to-emerald-900/40',
-    blue: 'from-blue-50 to-blue-100/70 dark:from-blue-950/50 dark:to-blue-900/40',
-  };
-
-  const iconColors = {
-    indigo: 'text-indigo-600 dark:text-indigo-400',
-    violet: 'text-violet-600 dark:text-violet-400',
-    emerald: 'text-emerald-600 dark:text-emerald-400',
-    blue: 'text-blue-600 dark:text-blue-400',
-  };
-
-  return (
-    <div
-      className={`bg-gradient-to-br ${gradients[color]} rounded-2xl p-4 sm:p-6 shadow-md border border-slate-200/60 dark:border-slate-700/50 hover:shadow-lg transition-all duration-300 group`}
-    >
-      <div className="flex items-center gap-4 sm:gap-5">
-        <div
-          className={`p-3 sm:p-4 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-inset ring-slate-200/70 dark:ring-slate-700/50 group-hover:scale-105 transition-transform`}
-        >
-          <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${iconColors[color]}`} />
-        </div>
-        <div>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">{label}</p>
-          <p className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-slate-900 dark:text-white mt-0.5 sm:mt-1 tracking-tight">
-            {value}
-          </p>
-        </div>
       </div>
     </div>
   );

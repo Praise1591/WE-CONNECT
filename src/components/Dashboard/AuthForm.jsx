@@ -1,4 +1,5 @@
-// AuthForm.jsx — Firebase version (design & UI unchanged)
+// AuthForm.jsx — Firebase version (fixed serverTimestamp import + navigation reliability)
+
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -9,7 +10,7 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-// Firebase imports
+// Firebase imports - modular style
 import { 
   auth, 
   db, 
@@ -20,6 +21,8 @@ import {
   doc,
   setDoc
 } from '../../firebase';
+
+import { serverTimestamp } from 'firebase/firestore';   // ← Correct modern import location
 
 function AuthForm({ initialMode = 'login', onClose }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
@@ -59,7 +62,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
         email: user.email,
         role: 'student',
         photoURL: user.photoURL || null,
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),   // ← using the correct import
         coins: 0,
         diamonds: 0,
       }, { merge: true });
@@ -76,9 +79,14 @@ function AuthForm({ initialMode = 'login', onClose }) {
       localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
       toast.success('Welcome! Signed in with Google');
+
       onClose?.();
-      navigate('/dashboard');
-      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      setTimeout(() => {
+        console.log('[Google] Navigating — UID:', auth.currentUser?.uid);
+        navigate('/dashboard', { replace: true });
+        window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      }, 150);
+
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
@@ -125,7 +133,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
           gender: gender?.value || null,
           phone: formData.phone.trim() || null,
           address: formData.address.trim() || null,
-          createdAt: new Date().toISOString(),
+          createdAt: serverTimestamp(),   // ← using the correct import
           coins: 0,
           diamonds: 0,
           photoURL: user.photoURL || null,
@@ -154,20 +162,27 @@ function AuthForm({ initialMode = 'login', onClose }) {
         toast.success('Welcome back!');
       }
 
+      const user = userCredential.user;
+
       const basicProfile = {
-        id: userCredential.user.uid,
-        email: userCredential.user.email,
-        name: formData.name.trim() || userCredential.user.displayName || 'User',
+        id: user.uid,
+        email: user.email,
+        name: formData.name.trim() || user.displayName || 'User',
         role,
-        photoURL: userCredential.user.photoURL || null,
+        photoURL: user.photoURL || null,
         coins: 0,
         diamonds: 0,
       };
       localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
       onClose?.();
-      navigate('/dashboard');
-      window.dispatchEvent(new CustomEvent('userLoggedIn'));
+
+      setTimeout(() => {
+        console.log('[Email Auth] Navigating — UID:', auth.currentUser?.uid);
+        navigate('/dashboard', { replace: true });
+        window.dispatchEvent(new CustomEvent('userLoggedIn'));
+      }, 150);
+
     } catch (error) {
       console.error("[AUTH ERROR]", error);
       let message = 'An error occurred. Please try again.';
