@@ -26,9 +26,11 @@ import {
 } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 
-// ── Helper: Record transaction (you can move this to a separate file later) ──
+import { createNotification } from '@/utils/notifications';
+
+// ── Helper: Record transaction ──
 const addTransaction = async (userId, type, amountNGN, description, status = 'completed', metadata = {}) => {
-  if (!userId) return; // silent fail if no user
+  if (!userId) return;
 
   try {
     const txRef = doc(collection(db, `users/${userId}/transactions`));
@@ -42,7 +44,6 @@ const addTransaction = async (userId, type, amountNGN, description, status = 'co
     });
   } catch (err) {
     console.error("Failed to record transaction:", err);
-    // Consider toast.error here if you want user-visible feedback
   }
 };
 
@@ -145,9 +146,11 @@ function Material() {
       toast.info("Please sign in to favorite materials");
       return;
     }
+
     const favRef = doc(db, `users/${currentUser.uid}/favorites`, material.id);
     try {
       const exists = (await getDoc(favRef)).exists();
+
       if (exists) {
         await deleteDoc(favRef);
         toast.info("Removed from favorites");
@@ -159,7 +162,19 @@ function Material() {
           school: material.school || '—',
           category: material.category || 'Material',
         });
+
         toast.success("Added to favorites ❤️");
+
+        // Create notification
+        await createNotification(currentUser.uid, {
+          type: "favorite",
+          message: `You favorited "${material.title || material.name || 'Material'}"`,
+          targetId: material.id,
+          targetType: "material",
+          targetTitle: material.title || material.name || 'Untitled',
+          actorId: currentUser.uid,
+          actorName: currentUser.displayName || currentUser.email?.split('@')[0] || "You",
+        });
       }
     } catch (err) {
       console.error("Favorite toggle failed:", err);
@@ -179,14 +194,12 @@ function Material() {
         t.update(buyerRef, { coins: buyerCoins - price });
       });
 
-      // Local state update (optimistic UI)
       setProfile(prev => ({ ...prev, coins: Math.max(0, (prev?.coins || 0) - price) }));
 
-      // Record transaction
       await addTransaction(
         currentUser.uid,
         'spend',
-        price * 100, // amount in Naira equivalent
+        price * 100,
         `Spent ${price} coin${price !== 1 ? 's' : ''} on "${material.title || 'Material'}"`,
         'completed',
         {
@@ -209,13 +222,26 @@ function Material() {
         isOwnerDownload: false,
       }, { merge: true });
 
+      // Create download notification
+      await createNotification(currentUser.uid, {
+        type: "download",
+        message: `You downloaded "${material.title || material.name || 'Material'}" (${price} coin${price !== 1 ? 's' : ''})`,
+        targetId: material.id,
+        targetType: "material",
+        targetTitle: material.title || material.name || 'Untitled',
+        coinsSpent: price,
+        category: material.category,
+        actorId: currentUser.uid,
+        actorName: currentUser.displayName || currentUser.email?.split('@')[0] || "You",
+      });
+
       return true;
     } catch (err) {
       console.error("Coin deduction failed:", err);
       const msg = err.message.includes("Insufficient")
         ? `Not enough coins (${price} required)`
         : err.code === 'permission-denied'
-          ? "Permission denied — check Firestore security rules for 'users' collection"
+          ? "Permission denied — check Firestore security rules"
           : "Failed to process payment";
       toast.error(msg);
       return false;
