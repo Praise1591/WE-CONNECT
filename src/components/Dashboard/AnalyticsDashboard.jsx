@@ -1,5 +1,5 @@
 // src/components/Dashboard/AnalyticsDashboard.jsx
-// Enhanced mobile responsiveness – Android / small screen optimized (all inline Tailwind)
+// Enhanced mobile experience — card view on narrow screens, better chart scaling
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
@@ -40,6 +40,17 @@ function AnalyticsDashboard() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
+
+  // Simple client-side width check (you can also use useMediaQuery from tailwind or lib)
+  const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 480);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsNarrowScreen(window.innerWidth < 480);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -140,8 +151,8 @@ function AnalyticsDashboard() {
         position: 'top',
         labels: {
           usePointStyle: true,
-          padding: 12,
-          font: { size: 12, weight: 500 },
+          padding: 10,
+          font: { size: isNarrowScreen ? 11 : 12, weight: 500 },
           boxWidth: 10,
           boxHeight: 10,
         },
@@ -159,28 +170,27 @@ function AnalyticsDashboard() {
       x: {
         grid: { display: false },
         ticks: {
-          maxRotation: 45,
-          minRotation: 45,
-          font: { size: 11 },
+          maxRotation: 50,
+          minRotation: 50,
+          font: { size: isNarrowScreen ? 10 : 11 },
+          maxTicksLimit: isNarrowScreen ? 6 : 12, // prevents label overcrowding
         },
       },
       'y-diamonds': {
         position: 'left',
-        title: { display: false },
-        ticks: { font: { size: 11 }, precision: 0 },
+        ticks: { font: { size: isNarrowScreen ? 10 : 11 }, precision: 0 },
         grid: { color: 'rgba(0,0,0,0.05)' },
         beginAtZero: true,
       },
       'y-earnings': {
         position: 'right',
-        title: { display: false },
-        ticks: { font: { size: 11 }, precision: 2 },
+        ticks: { font: { size: isNarrowScreen ? 10 : 11 }, precision: 2 },
         grid: { drawOnChartArea: false },
         beginAtZero: true,
       },
     },
     layout: {
-      padding: { top: 8, bottom: 16, left: 4, right: 12 }
+      padding: { top: 6, bottom: isNarrowScreen ? 12 : 16, left: 4, right: 10 }
     }
   };
 
@@ -272,14 +282,14 @@ function AnalyticsDashboard() {
   }
 
   return (
-    <div className="min-h-screen pb-16 px-3 sm:px-5 lg:px-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">
+    <div className="min-h-screen pb-20 sm:pb-16 px-3 sm:px-5 lg:px-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 pt-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent tracking-tight">
             Content Analytics
           </h1>
-          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Track earnings, views & student engagement
           </p>
         </div>
@@ -289,7 +299,7 @@ function AnalyticsDashboard() {
           onChange={(e) => setTimeRange(e.target.value)}
           className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 
                      rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
-                     min-w-[140px] h-10 touch-manipulation"
+                     w-full sm:w-auto min-w-[140px] h-10 touch-manipulation"
         >
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -298,8 +308,8 @@ function AnalyticsDashboard() {
         </select>
       </div>
 
-      {/* Quick stats cards – 2 columns on mobile */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/70 dark:from-indigo-950/50 dark:to-indigo-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
@@ -357,18 +367,18 @@ function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* Chart – same height, responsive */}
-      <div className="bg-white/90 dark:bg-slate-900/70 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/40 p-4 sm:p-6 h-72 sm:h-80 lg:h-96">
-        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2.5 text-slate-900 dark:text-white">
+      {/* Chart */}
+      <div className="bg-white/90 dark:bg-slate-900/70 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/40 p-4 sm:p-6 h-64 sm:h-80 lg:h-96">
+        <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2.5 text-slate-900 dark:text-white">
           <TrendingUp className="h-5 w-5 text-indigo-500" />
           Performance Trend
         </h2>
-        <div className="h-[calc(100%-44px)]">
+        <div className="h-[calc(100%-40px)]">
           <Line data={chartData} options={chartOptions} />
         </div>
       </div>
 
-      {/* Materials Table – mobile optimized */}
+      {/* Materials Section */}
       <div className="bg-white/90 dark:bg-slate-900/70 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/40 overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-slate-200/70 dark:border-slate-700/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -387,7 +397,7 @@ function AnalyticsDashboard() {
               </button>
               <button
                 onClick={exportToJSON}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 min-h-[44px] dark:bg-slate-600 dark:hover:bg-slate-600/90"
+                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 min-h-[44px] dark:bg-slate-600 dark:hover:bg-slate-800"
               >
                 <Download size={16} />
                 JSON
@@ -404,35 +414,78 @@ function AnalyticsDashboard() {
               Upload your notes, questions or summaries to start earning and track performance here.
             </p>
           </div>
-        ) : (
-          <div className="relative">
-            {/* Mobile swipe hint – more prominent */}
-            <div className="sm:hidden absolute -top-2 right-3 z-20 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg animate-pulse pointer-events-none flex items-center gap-1.5">
-              <span>← Swipe →</span>
-            </div>
+        ) : isNarrowScreen ? (
+          // ── Mobile-friendly card list ──
+          <div className="divide-y divide-slate-200/60 dark:divide-slate-700/50">
+            {filteredMaterials.map((m) => (
+              <div
+                key={m.id}
+                className="p-4 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors"
+              >
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
+                      {m.title || 'Untitled'}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {m.course || m.category || '—'}
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-slate-600 dark:text-slate-300">Views:</span>{' '}
+                        {m.views?.toLocaleString() || 0}
+                      </div>
+                      <div>
+                        <span className="text-slate-600 dark:text-slate-300">Downloads:</span>{' '}
+                        {m.downloads?.toLocaleString() || 0}
+                      </div>
+                      <div>
+                        <span className="text-violet-600 dark:text-violet-400">Diamonds:</span>{' '}
+                        {(m.diamonds_earned || 0).toLocaleString()}
+                      </div>
+                      <div>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                          Earnings: ${(m.earnings ?? 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
 
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    className="p-3 -mr-2 -mt-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors active:scale-95 min-w-[48px] min-h-[48px] flex items-center justify-center"
+                    aria-label="Delete material"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // ── Desktop / wider mobile table (your original, slightly tweaked) ──
+          <div className="relative">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-400/60 dark:scrollbar-thumb-slate-600/70 scrollbar-track-transparent pb-3">
-              <table className="min-w-[540px] sm:min-w-[680px] w-full divide-y divide-slate-200/60 dark:divide-slate-700/50 text-sm">
+              <table className="min-w-[680px] w-full divide-y divide-slate-200/60 dark:divide-slate-700/50 text-sm">
                 <thead className="bg-slate-50/90 dark:bg-slate-950/70 sticky top-0 z-10">
                   <tr>
-                    <th className="px-2.5 sm:px-4 py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Material
                     </th>
-                    <th className="px-1.5 sm:px-3 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Views
                     </th>
-                    <th className="px-1.5 sm:px-3 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      ↓
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Downloads
                     </th>
-                    <th className="px-1.5 sm:px-3 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Gems
+                    <th className="px-3 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Diamonds
                     </th>
-                    <th className="px-2 sm:px-4 py-3 text-right text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                      $
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                      Earnings
                     </th>
-                    <th className="px-1 sm:px-2 py-3 text-center text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-12 sm:w-16">
-                      <span className="hidden sm:inline">Del</span>
-                      <span className="sm:hidden">✕</span>
+                    <th className="px-2 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-16">
+                      Action
                     </th>
                   </tr>
                 </thead>
@@ -442,43 +495,39 @@ function AnalyticsDashboard() {
                       key={m.id}
                       className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors even:bg-slate-50/30 dark:even:bg-slate-800/10"
                     >
-                      <td className="px-2.5 sm:px-4 py-3">
-                        <div className="font-medium text-slate-900 dark:text-white text-xs sm:text-sm max-w-[140px] sm:max-w-[240px] truncate">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900 dark:text-white max-w-[220px] truncate">
                           {m.title || 'Untitled'}
                         </div>
-                        <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[140px] sm:max-w-[240px]">
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[220px]">
                           {m.course || m.category || '—'}
                         </div>
                       </td>
-                      <td className="px-1.5 sm:px-3 py-3 text-right text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
                         {m.views?.toLocaleString() || '0'}
                       </td>
-                      <td className="px-1.5 sm:px-3 py-3 text-right text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
                         {m.downloads?.toLocaleString() || '0'}
                       </td>
-                      <td className="px-1.5 sm:px-3 py-3 text-right text-xs sm:text-sm font-semibold text-violet-600 dark:text-violet-400">
+                      <td className="px-3 py-3 text-right font-semibold text-violet-600 dark:text-violet-400">
                         {(m.diamonds_earned || 0).toLocaleString()}
                       </td>
-                      <td className="px-2 sm:px-4 py-3 text-right text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                         ${(m.earnings ?? 0).toFixed(2)}
                       </td>
-                      <td className="px-1 sm:px-2 py-3 text-center w-12 sm:w-16">
+                      <td className="px-2 py-3 text-center">
                         <button
                           onClick={() => handleDelete(m.id)}
-                          className="inline-flex items-center justify-center p-2.5 sm:p-3 rounded-full text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors touch-manipulation active:scale-95 min-w-[44px] min-h-[44px]"
+                          className="p-2.5 rounded-full text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors touch-manipulation active:scale-95"
                           aria-label="Delete material"
                         >
-                          <Trash2 size={18} className="sm:size-20" />
+                          <Trash2 size={18} />
                         </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-
-            <div className="sm:hidden text-center text-xs text-slate-500 dark:text-slate-400 py-3 px-4 border-t border-slate-200/70 dark:border-slate-700/50 bg-slate-50/40 dark:bg-slate-900/30">
-              Swipe horizontally • Delete button always visible
             </div>
           </div>
         )}

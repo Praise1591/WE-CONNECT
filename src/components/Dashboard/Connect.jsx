@@ -1,17 +1,18 @@
 // Connect.jsx — Social network component with posts, connections, chat, and connection request notifications
+// Mobile-optimized version (better experience on ~360–420px screens)
 
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
   Image as ImageIcon, Video as VideoIcon, X, Trash2, UserPlus, 
   ChevronLeft, Loader2, Moon, Sun, UserCircle,
-  Check, UserCheck, UserX, UserMinus, Share2
+  Check, UserCheck, UserX, UserMinus, Share2, Home, Users, Inbox
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Firebase ────────────────────────────────────────────────────────────────
-import { auth, db, storage } from '@/firebase'; // adjust path to your config
+import { auth, db, storage } from '@/firebase';
 import {
   collection,
   query,
@@ -28,7 +29,7 @@ import {
   increment,
   runTransaction,
   arrayUnion,
-  getDocs    // ← added
+  getDocs
 } from 'firebase/firestore';
 import {
   ref as storageRef,
@@ -37,9 +38,9 @@ import {
 } from 'firebase/storage';
 
 const tabVariants = {
-  initial: { opacity: 0, x: -15 },
-  animate: { opacity: 1, x: 0, transition: { duration: 0.3, ease: "easeOut" } },
-  exit: { opacity: 0, x: 15, transition: { duration: 0.2 } }
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.25 } },
+  exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
 };
 
 function Connect() {
@@ -69,7 +70,16 @@ function Connect() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ── Auth listener ──────────────────────────────────────────────────────────
+  const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 640);
+
+  // ── Resize listener for mobile detection ────────────────────────────────
+  useEffect(() => {
+    const handleResize = () => setIsNarrowScreen(window.innerWidth < 640);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // ── Auth listener ───────────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (!firebaseUser) {
@@ -104,72 +114,155 @@ function Connect() {
     return unsubscribe;
   }, []);
 
-  // ── Real-time data listeners ───────────────────────────────────────────────
+  // ── Real-time data listeners ────────────────────────────────────────────
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!currentUser?.id) {
+      console.log("[Connect] No current user ID → skipping all real-time listeners");
+      return;
+    }
+
+    console.log("[Connect] Attaching real-time listeners for user:", currentUser.id);
 
     const unsubs = [];
 
-    unsubs.push(onSnapshot(collection(db, 'users'), snap => {
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }));
+    // ── Users (all) ───────────────────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(
+        collection(db, 'users'),
+        (snap) => {
+          console.log("[users] Snapshot received — count:", snap.size);
+          setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+        (err) => console.error("[users listener error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(query(collection(db, 'posts'), orderBy('createdAt', 'desc')), snap => {
-      setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }));
+    // ── Posts (feed) ──────────────────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(
+        query(collection(db, 'posts'), orderBy('createdAt', 'desc')),
+        (snap) => {
+          console.log("[posts] Snapshot received — count:", snap.size);
+          setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+        (err) => console.error("[posts listener error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(
-      query(collection(db, 'notifications'), 
-        where('toUserId', '==', currentUser.id),
-        where('type', '==', 'activity'),
-        orderBy('createdAt', 'desc')),
-      snap => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    ));
+    // ── Activity notifications ────────────────────────────────────────────
+    // Note: requires composite index on toUserId + type + createdAt
+    unsubs.push(
+      onSnapshot(
+        query(
+          collection(db, 'notifications'),
+          where('toUserId', '==', currentUser.id),
+          where('type', '==', 'activity'),
+          orderBy('createdAt', 'desc')
+        ),
+        (snap) => {
+          console.log("[activity notifications] count:", snap.size);
+          setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+        (err) => console.error("[activity notifications error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(
-      query(collection(db, 'notifications'), 
-        where('toUserId', '==', currentUser.id),
-        where('type', '==', 'connection_request'),
-        orderBy('createdAt', 'desc')),
-      snap => setRequestNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    ));
+    // ── Connection request notifications ──────────────────────────────────
+    // Note: requires composite index on toUserId + type + createdAt
+    unsubs.push(
+      onSnapshot(
+        query(
+          collection(db, 'notifications'),
+          where('toUserId', '==', currentUser.id),
+          where('type', '==', 'connection_request'),
+          orderBy('createdAt', 'desc')
+        ),
+        (snap) => {
+          console.log("[connection request notifs] count:", snap.size);
+          setRequestNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+        (err) => console.error("[conn request notifs error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(collection(db, `users/${currentUser.id}/connections`), snap => {
-      setConnections(snap.docs.map(d => d.id));
-    }));
+    // ── Connections subcollection ─────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(
+        collection(db, `users/${currentUser.id}/connections`),
+        (snap) => {
+          console.log("[connections] count:", snap.size);
+          setConnections(snap.docs.map(d => d.id));
+        },
+        (err) => console.error("[connections error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(collection(db, `users/${currentUser.id}/connectionRequestsReceived`), snap => {
-      setConnectionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }));
+    // ── Received connection requests ──────────────────────────────────────
+    unsubs.push(
+      onSnapshot(
+        collection(db, `users/${currentUser.id}/connectionRequestsReceived`),
+        (snap) => {
+          console.log("[received requests] count:", snap.size);
+          setConnectionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+        (err) => console.error("[received requests error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(collection(db, `users/${currentUser.id}/connectionRequestsSent`), snap => {
-      setSentConnectionRequests(snap.docs.map(d => d.id));
-    }));
+    // ── Sent connection requests ──────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(
+        collection(db, `users/${currentUser.id}/connectionRequestsSent`),
+        (snap) => {
+          console.log("[sent requests] count:", snap.size);
+          setSentConnectionRequests(snap.docs.map(d => d.id));
+        },
+        (err) => console.error("[sent requests error]", err)
+      )
+    );
 
-    unsubs.push(onSnapshot(collection(db, `users/${currentUser.id}/blocked`), snap => {
-      setBlockedUsers(snap.docs.map(d => d.id));
-    }));
+    // ── Blocked users ─────────────────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(
+        collection(db, `users/${currentUser.id}/blocked`),
+        (snap) => {
+          console.log("[blocked] count:", snap.size);
+          setBlockedUsers(snap.docs.map(d => d.id));
+        },
+        (err) => console.error("[blocked error]", err)
+      )
+    );
 
-    return () => unsubs.forEach(u => u());
+    return () => {
+      console.log("[Connect] Cleaning up all listeners");
+      unsubs.forEach(u => u());
+    };
   }, [currentUser?.id]);
 
-  // Chat messages
+  // ── Chat messages ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (!currentUser?.id || !selectedChat) return;
+    if (!currentUser?.id || !selectedChat) {
+      console.log("[chat] No user or no selected chat → skipping chat listener");
+      return;
+    }
 
     const chatId = [currentUser.id, selectedChat].sort().join('_');
+    console.log("[chat] Attaching listener for chat:", chatId);
+
     const q = query(collection(db, `chats/${chatId}/messages`), orderBy('createdAt'));
 
     return onSnapshot(q, snap => {
+      console.log(`[chat:${chatId}] messages received:`, snap.size);
       setMessages(prev => ({
         ...prev,
         [chatId]: snap.docs.map(d => d.data())
       }));
-    });
+    }, err => console.error(`[chat:${chatId}] error:`, err));
   }, [currentUser?.id, selectedChat]);
 
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
+  // ── Handlers ────────────────────────────────────────────────────────────
   const handleNewPost = async () => {
     if (!newPost.trim() && !mediaFile) return toast.error('Post cannot be empty');
 
@@ -285,7 +378,6 @@ function Connect() {
         t.delete(doc(db, `users/${targetUserId}/connectionRequestsReceived`, currentUser.id));
       });
 
-      // Clean up notification
       const notifQuery = query(
         collection(db, 'notifications'),
         where('toUserId', '==', targetUserId),
@@ -312,7 +404,6 @@ function Connect() {
         t.set(doc(db, `users/${senderId}/connections`, currentUser.id), { addedAt: serverTimestamp() });
       });
 
-      // Clean up notification
       const notifQuery = query(
         collection(db, 'notifications'),
         where('toUserId', '==', currentUser.id),
@@ -371,51 +462,71 @@ function Connect() {
 
   const getUserById = (id) => users.find(u => u.id === id) || { name: 'Unknown', photoURL: null };
 
+  // ── Bottom Navigation (mobile only) ─────────────────────────────────────
+  const BottomNav = () => (
+    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 md:hidden safe-area-inset-bottom">
+      <div className="flex items-center justify-around py-2">
+        {[
+          { icon: Home, label: 'Feed', value: 'feed' },
+          { icon: Users, label: 'Network', value: 'network' },
+          { icon: MessageCircle, label: 'Messages', value: 'messages' },
+          { icon: Bell, label: 'Alerts', value: 'notifications' },
+        ].map(({ icon: Icon, label, value }) => (
+          <button
+            key={value}
+            onClick={() => setActiveTab(value)}
+            className={`flex flex-col items-center gap-1 p-2 flex-1 touch-manipulation active:scale-95 transition ${
+              activeTab === value 
+                ? 'text-indigo-600 dark:text-indigo-400' 
+                : 'text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <Icon size={24} />
+            <span className="text-[10px] sm:text-xs font-medium">{label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
       </div>
     );
   }
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-xl">Please sign in to use Connect</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4 text-center">
+        <p className="text-lg font-medium text-slate-700 dark:text-slate-300">
+          Please sign in to use Connect
+        </p>
       </div>
     );
   }
 
-  // ── UI ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 pb-20 md:pb-0">
+      <div className="p-4 sm:p-5 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
 
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Connect</h1>
-          <div className="flex items-center gap-4">
-            <button onClick={toggleDarkMode}>
-              {isDarkMode ? <Sun /> : <Moon />}
-            </button>
-            <Bell onClick={() => setActiveTab('notifications')} className="cursor-pointer" />
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-4">
-          {['feed', 'network', 'messages', 'notifications'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 rounded-full ${
-                activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700'
-              }`}
+        {/* Header - visible only on larger screens */}
+        <div className="flex justify-between items-center md:mb-6 hidden md:flex">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white">Connect</h1>
+          <div className="flex items-center gap-5">
+            <button 
+              onClick={toggleDarkMode}
+              className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition"
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-          ))}
+            <Bell 
+              onClick={() => setActiveTab('notifications')} 
+              className="cursor-pointer text-slate-700 dark:text-slate-300 hover:text-indigo-600"
+              size={24}
+            />
+          </div>
         </div>
 
         <AnimatePresence mode="wait">
@@ -425,253 +536,333 @@ function Connect() {
             initial="initial"
             animate="animate"
             exit="exit"
+            className="space-y-5 md:space-y-6"
           >
-            {/* Feed */}
+            {/* FEED */}
             {activeTab === 'feed' && (
-              <div className="space-y-6">
-                {/* Post form */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow">
+              <div className="space-y-5">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 sm:p-5">
                   <textarea
                     value={newPost}
                     onChange={e => setNewPost(e.target.value)}
                     placeholder={`What's on your mind, ${currentUser.name}?`}
-                    className="w-full p-3 bg-transparent border rounded-xl focus:outline-none min-h-[90px]"
+                    className="w-full p-3 bg-transparent border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:border-indigo-500 resize-none min-h-[80px] sm:min-h-[100px] text-sm sm:text-base"
+                    rows={3}
                   />
                   {mediaPreview && (
-                    <div className="mt-3">
+                    <div className="mt-3 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 max-h-56 sm:max-h-80">
                       {mediaType === 'video' ? (
-                        <video src={mediaPreview} controls className="max-h-64 rounded" />
+                        <video src={mediaPreview} controls className="w-full h-auto" />
                       ) : (
-                        <img src={mediaPreview} alt="preview" className="max-h-64 rounded" />
+                        <img src={mediaPreview} alt="preview" className="w-full h-auto object-contain" />
                       )}
                     </div>
                   )}
-                  <div className="flex justify-between mt-4">
-                    <div className="flex gap-4">
-                      <label className="cursor-pointer"><ImageIcon /><input type="file" accept="image/*" hidden onChange={handleMediaUpload} /></label>
-                      <label className="cursor-pointer"><VideoIcon /><input type="file" accept="video/*" hidden onChange={handleMediaUpload} /></label>
+                  <div className="flex justify-between items-center mt-4">
+                    <div className="flex gap-5">
+                      <label className="cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
+                        <ImageIcon size={22} className="text-slate-600 dark:text-slate-400" />
+                        <input type="file" accept="image/*" hidden onChange={handleMediaUpload} />
+                      </label>
+                      <label className="cursor-pointer p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
+                        <VideoIcon size={22} className="text-slate-600 dark:text-slate-400" />
+                        <input type="file" accept="video/*" hidden onChange={handleMediaUpload} />
+                      </label>
                     </div>
-                    <button onClick={handleNewPost} className="px-6 py-2 bg-indigo-600 text-white rounded-full">
+                    <button 
+                      onClick={handleNewPost}
+                      disabled={!newPost.trim() && !mediaFile}
+                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full text-sm sm:text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+                    >
                       Post
                     </button>
                   </div>
                 </div>
 
-                {/* Posts list */}
-                {posts.map(post => (
-                  <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow">
-                    <p>{post.content}</p>
-                    {post.media && <img src={post.media} alt="" className="mt-2 rounded" />}
-                    <div className="flex gap-4 mt-4">
-                      <button onClick={() => handleLike(post.id)}><Heart /> {post.likes}</button>
-                      <button><MessageSquare /> {post.comments?.length || 0}</button>
-                    </div>
+                {posts.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                    No posts yet. Be the first to share!
                   </div>
-                ))}
+                ) : (
+                  posts.map(post => (
+                    <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 sm:p-5">
+                      <div className="flex items-center gap-3 mb-3">
+                        <UserCircle size={40} className="text-slate-400" />
+                        <div>
+                          <p className="font-medium">{post.user.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {/* Add timestamp formatting here if needed */}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-slate-800 dark:text-slate-200 leading-relaxed text-[15px] sm:text-base whitespace-pre-wrap">
+                        {post.content}
+                      </p>
+                      {post.media && (
+                        <div className="mt-3 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                          <img src={post.media} alt="" className="w-full h-auto object-cover max-h-80" />
+                        </div>
+                      )}
+                      <div className="flex gap-6 mt-4 text-slate-600 dark:text-slate-400">
+                        <button 
+                          onClick={() => handleLike(post.id)}
+                          className="flex items-center gap-1.5 hover:text-red-500 transition min-h-[44px]"
+                        >
+                          <Heart size={20} /> {post.likes}
+                        </button>
+                        <button className="flex items-center gap-1.5 hover:text-indigo-500 transition min-h-[44px]">
+                          <MessageSquare size={20} /> {post.comments?.length || 0}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
-            {/* Network - user discovery */}
+            {/* NETWORK */}
             {activeTab === 'network' && (
-              <div className="space-y-6">
-                <input
-                  value={networkSearch}
-                  onChange={e => setNetworkSearch(e.target.value)}
-                  placeholder="Search users..."
-                  className="w-full p-3 rounded-xl border dark:bg-slate-800 dark:border-slate-600"
-                />
-                
-                {users
-                  .filter(u => 
-                    u.id !== currentUser.id &&
-                    u.name?.toLowerCase().includes(networkSearch.toLowerCase())
-                  )
-                  .map(user => {
-                    const isConnected = connections.includes(user.id);
-                    const hasSentRequest = sentConnectionRequests.includes(user.id);
-                    const isBlocked = blockedUsers.includes(user.id);
+              <div className="space-y-5">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    value={networkSearch}
+                    onChange={e => setNetworkSearch(e.target.value)}
+                    placeholder="Search users..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-500 text-sm sm:text-base"
+                  />
+                </div>
 
-                    let button;
+                <div className="space-y-3">
+                  {users
+                    .filter(u => 
+                      u.id !== currentUser.id &&
+                      u.name?.toLowerCase().includes(networkSearch.toLowerCase())
+                    )
+                    .map(user => {
+                      const isConnected = connections.includes(user.id);
+                      const hasSentRequest = sentConnectionRequests.includes(user.id);
+                      const isBlocked = blockedUsers.includes(user.id);
 
-                    if (isConnected) {
-                      button = (
-                        <span className="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 rounded-full flex items-center gap-2">
-                          <UserCheck size={16} /> Connected
-                        </span>
-                      );
-                    } else if (hasSentRequest) {
-                      button = (
-                        <button
-                          onClick={() => handleCancelSentRequest(user.id)}
-                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-full flex items-center gap-2 transition"
+                      let button;
+
+                      if (isConnected) {
+                        button = (
+                          <span className="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 rounded-full flex items-center gap-2 text-sm">
+                            <UserCheck size={16} /> Connected
+                          </span>
+                        );
+                      } else if (hasSentRequest) {
+                        button = (
+                          <button
+                            onClick={() => handleCancelSentRequest(user.id)}
+                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-full flex items-center gap-2 transition text-sm min-h-[44px]"
+                          >
+                            <X size={16} /> Cancel
+                          </button>
+                        );
+                      } else if (isBlocked) {
+                        button = (
+                          <span className="px-4 py-2 bg-gray-500 text-white rounded-full text-sm">
+                            Blocked
+                          </span>
+                        );
+                      } else {
+                        button = (
+                          <button
+                            onClick={() => handleSendConnectionRequest(user.id)}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition flex items-center gap-2 text-sm min-h-[44px]"
+                          >
+                            <UserPlus size={16} /> Connect
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <div 
+                          key={user.id}
+                          className="flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm"
                         >
-                          <X size={16} /> Cancel Request
-                        </button>
+                          <div className="flex items-center gap-3 min-w-0">
+                            {user.photoURL ? (
+                              <img src={user.photoURL} alt="" className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover flex-shrink-0" />
+                            ) : (
+                              <UserCircle size={44} className="text-slate-400 flex-shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium truncate text-sm sm:text-base">{user.name}</p>
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 ml-3">
+                            {button}
+                          </div>
+                        </div>
                       );
-                    } else if (isBlocked) {
-                      button = (
-                        <span className="px-4 py-2 bg-gray-500 text-white rounded-full">
-                          Blocked
-                        </span>
-                      );
-                    } else {
-                      button = (
-                        <button
-                          onClick={() => handleSendConnectionRequest(user.id)}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition flex items-center gap-2"
-                        >
-                          <UserPlus size={16} /> Connect
-                        </button>
-                      );
-                    }
+                    })}
+                </div>
+              </div>
+            )}
 
-                    return (
-                      <div 
-                        key={user.id} 
-                        className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm"
-                      >
-                        <div className="flex items-center gap-3">
-                          {user.photoURL ? (
-                            <img 
-                              src={user.photoURL} 
-                              alt={user.name} 
-                              className="w-10 h-10 rounded-full object-cover" 
-                            />
+            {/* MESSAGES */}
+            {activeTab === 'messages' && (
+              <div className={isNarrowScreen ? "space-y-4" : "grid lg:grid-cols-3 gap-6"}>
+                {(!isNarrowScreen || !selectedChat) && (
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm">
+                    <h3 className="font-semibold mb-4 text-lg">Conversations</h3>
+                    {connections.length === 0 ? (
+                      <p className="text-slate-500 dark:text-slate-400 text-center py-8">
+                        No connections yet
+                      </p>
+                    ) : (
+                      connections.map(id => {
+                        const user = getUserById(id);
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setSelectedChat(id)}
+                            className={`w-full p-3 text-left rounded-xl mb-2 flex items-center gap-3 transition ${
+                              selectedChat === id 
+                                ? 'bg-indigo-50 dark:bg-indigo-900/40' 
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {user.photoURL ? (
+                              <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                            ) : (
+                              <UserCircle size={40} className="text-slate-400 flex-shrink-0" />
+                            )}
+                            <span className="font-medium truncate text-sm sm:text-base">{user.name}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {(!isNarrowScreen || selectedChat) && (
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm flex flex-col h-[70vh] sm:h-[75vh] lg:col-span-2">
+                    {selectedChat ? (
+                      <>
+                        <div className="p-4 border-b dark:border-slate-700 flex items-center gap-3">
+                          {isNarrowScreen && (
+                            <button 
+                              onClick={() => setSelectedChat(null)}
+                              className="p-2 -ml-2"
+                            >
+                              <ChevronLeft size={24} />
+                            </button>
+                          )}
+                          {getUserById(selectedChat).photoURL ? (
+                            <img src={getUserById(selectedChat).photoURL} alt="" className="w-10 h-10 rounded-full" />
                           ) : (
                             <UserCircle size={40} className="text-slate-400" />
                           )}
-                          <span className="font-medium">{user.name}</span>
+                          <h3 className="font-semibold truncate">{getUserById(selectedChat).name}</h3>
                         </div>
-                        {button}
+                        <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50 dark:bg-slate-950/30">
+                          {(messages[[currentUser.id, selectedChat].sort().join('_')] || []).map((msg, i) => (
+                            <div 
+                              key={i} 
+                              className={`flex ${msg.sender === currentUser.id ? 'justify-end' : 'justify-start'}`}
+                            >
+                              <span 
+                                className={`inline-block px-4 py-2.5 rounded-2xl max-w-[80%] sm:max-w-[70%] text-sm ${
+                                  msg.sender === currentUser.id 
+                                    ? 'bg-indigo-600 text-white' 
+                                    : 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
+                                }`}
+                              >
+                                {msg.content}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="p-4 border-t dark:border-slate-700 flex gap-2">
+                          <input
+                            value={newMessage}
+                            onChange={e => setNewMessage(e.target.value)}
+                            placeholder="Type a message..."
+                            className="flex-1 px-4 py-3 rounded-full bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base"
+                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                          />
+                          <button 
+                            onClick={handleSendMessage}
+                            className="p-3 bg-indigo-600 text-white rounded-full min-w-[48px] min-h-[48px] flex items-center justify-center"
+                          >
+                            <Send size={20} />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center text-slate-500 dark:text-slate-400">
+                        Select a conversation to start chatting
                       </div>
-                    );
-                  })}
-              </div>
-            )}
-
-            {/* Messages tab */}
-            {activeTab === 'messages' && (
-              <div className="grid lg:grid-cols-3 gap-6">
-                {/* Chat list */}
-                <div className="lg:col-span-1 bg-white dark:bg-slate-800 rounded-2xl p-4">
-                  <h3 className="font-bold mb-4">Messages</h3>
-                  {connections.map(id => {
-                    const user = getUserById(id);
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => setSelectedChat(id)}
-                        className={`w-full p-3 text-left rounded-xl mb-2 flex items-center gap-3 ${
-                          selectedChat === id ? 'bg-indigo-100 dark:bg-indigo-900' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {user.photoURL ? (
-                          <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
-                        ) : (
-                          <UserCircle size={32} className="text-slate-400" />
-                        )}
-                        <span>{user.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Chat window */}
-                <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl flex flex-col">
-                  {selectedChat ? (
-                    <>
-                      <div className="p-4 border-b dark:border-slate-700 flex items-center gap-3">
-                        {getUserById(selectedChat).photoURL ? (
-                          <img src={getUserById(selectedChat).photoURL} alt="" className="w-10 h-10 rounded-full" />
-                        ) : (
-                          <UserCircle size={40} className="text-slate-400" />
-                        )}
-                        <h3>{getUserById(selectedChat).name}</h3>
-                      </div>
-                      <div className="flex-1 p-4 overflow-y-auto">
-                        {(messages[[currentUser.id, selectedChat].sort().join('_')] || []).map((msg, i) => (
-                          <div key={i} className={`mb-3 ${msg.sender === currentUser.id ? 'text-right' : 'text-left'}`}>
-                            <span className={`inline-block p-3 rounded-2xl max-w-[75%] ${
-                              msg.sender === currentUser.id ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700'
-                            }`}>
-                              {msg.content}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="p-4 border-t dark:border-slate-700 flex gap-2">
-                        <input
-                          value={newMessage}
-                          onChange={e => setNewMessage(e.target.value)}
-                          placeholder="Type a message..."
-                          className="flex-1 p-3 rounded-full bg-slate-100 dark:bg-slate-700 focus:outline-none"
-                          onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                        />
-                        <button onClick={handleSendMessage} className="p-3 bg-indigo-600 text-white rounded-full">
-                          <Send size={20} />
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-slate-500">
-                      Select a conversation
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Notifications */}
-            {activeTab === 'notifications' && (
-              <div className="space-y-6">
-                <h3 className="text-xl font-bold">Notifications</h3>
-
-                {requestNotifications.length === 0 && notifications.length === 0 && (
-                  <p className="text-slate-500 dark:text-slate-400">No notifications yet</p>
-                )}
-
-                {requestNotifications.map(notif => {
-                  const sender = getUserById(notif.fromUserId);
-                  return (
-                    <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow">
-                      <div className="flex items-center gap-3 mb-3">
-                        {sender.photoURL ? (
-                          <img src={sender.photoURL} alt="" className="w-10 h-10 rounded-full" />
-                        ) : (
-                          <UserCircle size={40} className="text-slate-400" />
-                        )}
-                        <p className="font-medium">
-                          {sender.name} wants to connect with you
-                        </p>
-                      </div>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleAcceptRequest(notif.fromUserId)}
-                          className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => handleRejectRequest(notif.fromUserId)}
-                          className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {notifications.map(notif => (
-                  <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow">
-                    <p>{notif.title}: {notif.message}</p>
+                    )}
                   </div>
-                ))}
+                )}
+              </div>
+            )}
+
+            {/* NOTIFICATIONS */}
+            {activeTab === 'notifications' && (
+              <div className="space-y-4">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white">Notifications</h3>
+
+                {requestNotifications.length === 0 && notifications.length === 0 ? (
+                  <p className="text-slate-500 dark:text-slate-400 py-8 text-center">
+                    No notifications yet
+                  </p>
+                ) : (
+                  <>
+                    {requestNotifications.map(notif => {
+                      const sender = getUserById(notif.fromUserId);
+                      return (
+                        <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
+                          <div className="flex items-start gap-4">
+                            {sender.photoURL ? (
+                              <img src={sender.photoURL} alt="" className="w-12 h-12 rounded-full object-cover" />
+                            ) : (
+                              <UserCircle size={48} className="text-slate-400" />
+                            )}
+                            <div className="flex-1">
+                              <p className="font-medium">
+                                {sender.name} wants to connect with you
+                              </p>
+                              <div className="flex gap-3 mt-4">
+                                <button
+                                  onClick={() => handleAcceptRequest(notif.fromUserId)}
+                                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg min-h-[44px]"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => handleRejectRequest(notif.fromUserId)}
+                                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg min-h-[44px]"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {notifications.map(notif => (
+                      <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
+                        <p className="font-medium">{notif.title}</p>
+                        <p className="text-slate-600 dark:text-slate-300 mt-1">{notif.message}</p>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <BottomNav />
     </div>
   );
 }
