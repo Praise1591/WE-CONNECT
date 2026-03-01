@@ -37,6 +37,8 @@ import {
   getDownloadURL
 } from 'firebase/storage';
 
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.25 } },
@@ -71,6 +73,8 @@ function Connect() {
   const [error, setError] = useState(null);
 
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 640);
+
+  const functions = getFunctions();
 
   // ── Resize listener for mobile detection ────────────────────────────────
   useEffect(() => {
@@ -205,7 +209,7 @@ function Connect() {
 
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  // ── Handlers (unchanged) ────────────────────────────────────────────────
+  // ── Handlers ────────────────────────────────────────────────────────────
   const handleNewPost = async () => {
     if (!newPost.trim() && !mediaFile) return toast.error('Post cannot be empty');
 
@@ -337,37 +341,49 @@ function Connect() {
   };
 
   const handleAcceptRequest = async (senderId) => {
+    if (!senderId) return;
+
     try {
-      await runTransaction(db, async (t) => {
-        t.delete(doc(db, `users/${currentUser.id}/connectionRequestsReceived`, senderId));
-        t.delete(doc(db, `users/${senderId}/connectionRequestsSent`, currentUser.id));
-
-        t.set(doc(db, `users/${currentUser.id}/connections`, senderId), { addedAt: serverTimestamp() });
-        t.set(doc(db, `users/${senderId}/connections`, currentUser.id), { addedAt: serverTimestamp() });
-      });
-
-      const notifQuery = query(
-        collection(db, 'notifications'),
-        where('toUserId', '==', currentUser.id),
-        where('fromUserId', '==', senderId),
-        where('type', '==', 'connection_request')
-      );
-      const snap = await getDocs(notifQuery);
-      snap.forEach(d => deleteDoc(d.ref));
-
-      toast.success('Connection accepted!');
-      setSelectedChat(senderId);
-      setActiveTab('messages');
+      const acceptConnection = httpsCallable(functions, 'acceptConnectionRequest');
+      
+      const result = await acceptConnection({ senderId });
+      
+      if (result.data?.success) {
+        toast.success('Connection accepted!');
+        setSelectedChat(senderId);
+        setActiveTab('messages');
+      } else {
+        toast.error('Unexpected response from server');
+      }
     } catch (err) {
-      toast.error('Failed to accept request');
+      console.error('Accept connection failed:', err);
+      
+      if (err.code === 'unauthenticated') {
+        toast.error('Please sign in again');
+      } else if (err.code === 'invalid-argument') {
+        toast.error(err.message || 'Invalid request');
+      } else if (err.code === 'not-found' || err.message?.includes('No pending request')) {
+        toast.info('Connection request no longer exists');
+      } else {
+        toast.error('Failed to accept connection. Try again.');
+      }
     }
   };
 
   const handleRejectRequest = async (senderId) => {
+    if (!window.confirm('Reject this connection request?')) return;
+
     try {
       await deleteDoc(doc(db, `users/${currentUser.id}/connectionRequestsReceived`, senderId));
-      await deleteDoc(doc(db, `users/${senderId}/connectionRequestsSent`, currentUser.id));
 
+      // Best effort cleanup of the other side
+      try {
+        await deleteDoc(doc(db, `users/${senderId}/connectionRequestsSent`, currentUser.id));
+      } catch (e) {
+        console.warn('Could not delete sender-side request document', e);
+      }
+
+      // Clean up notifications
       const notifQuery = query(
         collection(db, 'notifications'),
         where('toUserId', '==', currentUser.id),
@@ -379,7 +395,8 @@ function Connect() {
 
       toast.info('Request rejected');
     } catch (err) {
-      toast.error('Failed to reject');
+      console.error(err);
+      toast.error('Failed to reject request');
     }
   };
 
@@ -666,7 +683,7 @@ function Connect() {
               </div>
             )}
 
-            {/* MESSAGES – improved desktop layout */}
+            {/* MESSAGES */}
             {activeTab === 'messages' && (
               <div className={isNarrowScreen ? "space-y-4" : "grid md:grid-cols-12 gap-6"}>
                 {(!isNarrowScreen || !selectedChat) && (
