@@ -14,14 +14,17 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { db, auth } from '@/firebase';
+import { db, auth, storage } from '@/firebase';
 import {
   collection,
   query,
   where,
   orderBy,
   onSnapshot,
+  doc,
+  deleteDoc,
 } from 'firebase/firestore';
+import { ref, deleteObject } from 'firebase/storage';
 import { toast } from 'react-toastify';
 import { format, subDays, isSameDay } from 'date-fns';
 import {
@@ -32,6 +35,8 @@ import {
   Eye,
   Download,
   FileText,
+  Loader2,
+  X,
 } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
@@ -40,14 +45,14 @@ function AnalyticsDashboard() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id of material awaiting confirmation
 
-  // Simple client-side width check (you can also use useMediaQuery from tailwind or lib)
+  // Simple client-side width check
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 480);
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsNarrowScreen(window.innerWidth < 480);
-    };
+    const handleResize = () => setIsNarrowScreen(window.innerWidth < 480);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -173,7 +178,7 @@ function AnalyticsDashboard() {
           maxRotation: 50,
           minRotation: 50,
           font: { size: isNarrowScreen ? 10 : 11 },
-          maxTicksLimit: isNarrowScreen ? 6 : 12, // prevents label overcrowding
+          maxTicksLimit: isNarrowScreen ? 6 : 12,
         },
       },
       'y-diamonds': {
@@ -192,6 +197,50 @@ function AnalyticsDashboard() {
     layout: {
       padding: { top: 6, bottom: isNarrowScreen ? 12 : 16, left: 4, right: 10 }
     }
+  };
+
+  const requestDelete = (id, filePath) => {
+    setConfirmDeleteId({ id, filePath });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDeleteId) return;
+    const { id, filePath } = confirmDeleteId;
+
+    setConfirmDeleteId(null);
+    setDeletingId(id);
+
+    try {
+      if (filePath) {
+        const fileRef = ref(storage, filePath);
+        try {
+          await deleteObject(fileRef);
+        } catch (storageErr) {
+          if (storageErr.code !== 'storage/object-not-found') {
+            console.warn('Storage deletion issue:', storageErr);
+          }
+        }
+      }
+
+      await deleteDoc(doc(db, 'materials', id));
+
+      setMaterials(prev => prev.filter(m => m.id !== id));
+
+      toast.success('Material deleted successfully');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      let message = 'Failed to delete material';
+      if (err.code === 'permission-denied') {
+        message = 'You can only delete your own materials';
+      }
+      toast.error(message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setConfirmDeleteId(null);
   };
 
   const exportToCSV = () => {
@@ -217,7 +266,7 @@ function AnalyticsDashboard() {
       (m.earnings ?? 0).toFixed(2),
     ]);
 
-    const csv = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -236,7 +285,7 @@ function AnalyticsDashboard() {
       return;
     }
 
-    const data = filteredMaterials.map((m) => ({
+    const data = filteredMaterials.map(m => ({
       title: m.title || 'Untitled',
       category: m.category || '',
       school: m.school || '',
@@ -257,17 +306,6 @@ function AnalyticsDashboard() {
     URL.revokeObjectURL(url);
 
     toast.success('JSON exported');
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this material permanently?')) return;
-    try {
-      // await deleteDoc(doc(db, 'materials', id));  // ← uncomment when ready
-      toast.success('Material deleted');
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to delete');
-    }
   };
 
   if (loading) {
@@ -310,6 +348,7 @@ function AnalyticsDashboard() {
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        {/* ... your stats cards remain unchanged ... */}
         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/70 dark:from-indigo-950/50 dark:to-indigo-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
@@ -415,55 +454,65 @@ function AnalyticsDashboard() {
             </p>
           </div>
         ) : isNarrowScreen ? (
-          // ── Mobile-friendly card list ──
           <div className="divide-y divide-slate-200/60 dark:divide-slate-700/50">
-            {filteredMaterials.map((m) => (
-              <div
-                key={m.id}
-                className="p-4 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors"
-              >
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
-                      {m.title || 'Untitled'}
+            {filteredMaterials.map((m) => {
+              const isDeleting = deletingId === m.id;
+              return (
+                <div
+                  key={m.id}
+                  className="p-4 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors"
+                >
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
+                        {m.title || 'Untitled'}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {m.course || m.category || '—'}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-300">Views:</span>{' '}
+                          {m.views?.toLocaleString() || 0}
+                        </div>
+                        <div>
+                          <span className="text-slate-600 dark:text-slate-300">Downloads:</span>{' '}
+                          {m.downloads?.toLocaleString() || 0}
+                        </div>
+                        <div>
+                          <span className="text-violet-600 dark:text-violet-400">Diamonds:</span>{' '}
+                          {(m.diamonds_earned || 0).toLocaleString()}
+                        </div>
+                        <div>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                            Earnings: ${(m.earnings ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {m.course || m.category || '—'}
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-slate-600 dark:text-slate-300">Views:</span>{' '}
-                        {m.views?.toLocaleString() || 0}
-                      </div>
-                      <div>
-                        <span className="text-slate-600 dark:text-slate-300">Downloads:</span>{' '}
-                        {m.downloads?.toLocaleString() || 0}
-                      </div>
-                      <div>
-                        <span className="text-violet-600 dark:text-violet-400">Diamonds:</span>{' '}
-                        {(m.diamonds_earned || 0).toLocaleString()}
-                      </div>
-                      <div>
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                          Earnings: ${(m.earnings ?? 0).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
 
-                  <button
-                    onClick={() => handleDelete(m.id)}
-                    className="p-3 -mr-2 -mt-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors active:scale-95 min-w-[48px] min-h-[48px] flex items-center justify-center"
-                    aria-label="Delete material"
-                  >
-                    <Trash2 size={20} />
-                  </button>
+                    <button
+                      onClick={() => requestDelete(m.id, m.file_path)}
+                      disabled={isDeleting}
+                      className={`p-3 -mr-2 -mt-1 rounded-full transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center ${
+                        isDeleting
+                          ? 'text-slate-400 cursor-wait'
+                          : 'text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30'
+                      }`}
+                      aria-label="Delete material"
+                    >
+                      {isDeleting ? (
+                        <Loader2 size={20} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={20} />
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          // ── Desktop / wider mobile table (your original, slightly tweaked) ──
           <div className="relative">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-400/60 dark:scrollbar-thumb-slate-600/70 scrollbar-track-transparent pb-3">
               <table className="min-w-[680px] w-full divide-y divide-slate-200/60 dark:divide-slate-700/50 text-sm">
@@ -490,48 +539,103 @@ function AnalyticsDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
-                  {filteredMaterials.map((m) => (
-                    <tr
-                      key={m.id}
-                      className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors even:bg-slate-50/30 dark:even:bg-slate-800/10"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900 dark:text-white max-w-[220px] truncate">
-                          {m.title || 'Untitled'}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[220px]">
-                          {m.course || m.category || '—'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
-                        {m.views?.toLocaleString() || '0'}
-                      </td>
-                      <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
-                        {m.downloads?.toLocaleString() || '0'}
-                      </td>
-                      <td className="px-3 py-3 text-right font-semibold text-violet-600 dark:text-violet-400">
-                        {(m.diamonds_earned || 0).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                        ${(m.earnings ?? 0).toFixed(2)}
-                      </td>
-                      <td className="px-2 py-3 text-center">
-                        <button
-                          onClick={() => handleDelete(m.id)}
-                          className="p-2.5 rounded-full text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors touch-manipulation active:scale-95"
-                          aria-label="Delete material"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredMaterials.map((m) => {
+                    const isDeleting = deletingId === m.id;
+                    return (
+                      <tr
+                        key={m.id}
+                        className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors even:bg-slate-50/30 dark:even:bg-slate-800/10"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-900 dark:text-white max-w-[220px] truncate">
+                            {m.title || 'Untitled'}
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[220px]">
+                            {m.course || m.category || '—'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
+                          {m.views?.toLocaleString() || '0'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-700 dark:text-slate-300">
+                          {m.downloads?.toLocaleString() || '0'}
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold text-violet-600 dark:text-violet-400">
+                          {(m.diamonds_earned || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          ${(m.earnings ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <button
+                            onClick={() => requestDelete(m.id, m.file_path)}
+                            disabled={isDeleting}
+                            className={`p-2.5 rounded-full transition-colors ${
+                              isDeleting
+                                ? 'text-slate-400 cursor-wait'
+                                : 'text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30'
+                            }`}
+                            aria-label="Delete material"
+                          >
+                            {isDeleting ? (
+                              <Loader2 size={18} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={18} />
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
       </div>
+
+      {/* Modern Delete Confirmation Modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="fixed inset-0 bg-black/65 backdrop-blur-sm"
+            onClick={cancelDelete}
+          />
+          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 space-y-5">
+              <div className="flex items-start gap-4">
+                <div className="mt-1 p-3 rounded-full bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400">
+                  <AlertCircle size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                    Delete this material?
+                  </h3>
+                  <p className="mt-2 text-slate-600 dark:text-slate-300">
+                    This will permanently remove the material and its associated file. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={cancelDelete}
+                  className="px-5 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors min-w-[100px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeDelete}
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-medium rounded-lg shadow-md transition-colors min-w-[100px] flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={18} />
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

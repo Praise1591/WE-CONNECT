@@ -26,7 +26,7 @@ const menuItems = [
   { id: "materials",     path: "/materials",    icon: BookAIcon,       label: "Materials" },
   { id: "upload",        path: "/upload",       icon: Upload,          label: "Upload Material" },
   { id: "analytics",     path: "/analytics",    icon: ChartBarIcon,    label: "Analytics",    badge: "Live" },
-  { id: "downloads",     path: "/downloads",    icon: DownloadIcon,    label: "Downloads" },
+  //{ id: "downloads",     path: "/downloads",    icon: DownloadIcon,    label: "Downloads" },//
   { id: "favorites",     path: "/favorites",    icon: HeartIcon,       label: "Favourites" },
   { id: "notifications", path: "/notifications",icon: MessageSquare,  label: "Notifications", badge: "12" },
   { id: "connect",       path: "/connect",      icon: Users,           label: "Connect",      count: "2.4k" },
