@@ -56,16 +56,30 @@ function AuthForm({ initialMode = 'login', onClose }) {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
+      console.log("[Google] Signed in user:", user.uid, user.email);
+
+      if (!auth.currentUser) {
+        throw new Error("No authenticated user found after Google sign-in");
+      }
+
       const profileRef = doc(db, 'profiles', user.uid);
+
+      // Small delay to help with potential auth token settlement
+      await new Promise(r => setTimeout(r, 300));
+
+      console.log("[Google] Writing profile document for:", user.uid);
+
       await setDoc(profileRef, {
         name: user.displayName || 'User',
         email: user.email,
         role: 'student',
         photoURL: user.photoURL || null,
-        createdAt: serverTimestamp(),   // ← using the correct import
+        createdAt: serverTimestamp(),
         coins: 0,
         diamonds: 0,
       }, { merge: true });
+
+      console.log("[Google] Profile write appeared successful");
 
       const basicProfile = {
         id: user.uid,
@@ -94,6 +108,8 @@ function AuthForm({ initialMode = 'login', onClose }) {
         message = 'Sign-in cancelled.';
       } else if (error.code === 'auth/account-exists-with-different-credential') {
         message = 'An account with this email already exists.';
+      } else if (error.code === 'permission-denied') {
+        message = 'Permission denied – most likely Firestore security rules issue on /profiles';
       }
       toast.error(message);
     } finally {
@@ -125,6 +141,12 @@ function AuthForm({ initialMode = 'login', onClose }) {
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
+        console.log("[Email Signup] Account created:", user.uid, user.email);
+
+        if (!auth.currentUser) {
+          throw new Error("No authenticated user after createUserWithEmailAndPassword");
+        }
+
         const profileData = {
           id: user.uid,
           email: user.email,
@@ -133,7 +155,7 @@ function AuthForm({ initialMode = 'login', onClose }) {
           gender: gender?.value || null,
           phone: formData.phone.trim() || null,
           address: formData.address.trim() || null,
-          createdAt: serverTimestamp(),   // ← using the correct import
+          createdAt: serverTimestamp(),
           coins: 0,
           diamonds: 0,
           photoURL: user.photoURL || null,
@@ -154,7 +176,16 @@ function AuthForm({ initialMode = 'login', onClose }) {
           profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
         }
 
-        await setDoc(doc(db, 'profiles', user.uid), profileData);
+        const profileRef = doc(db, 'profiles', user.uid);
+
+        // Small delay after account creation
+        await new Promise(r => setTimeout(r, 300));
+
+        console.log("[Email Signup] Writing profile document for:", user.uid);
+
+        await setDoc(profileRef, profileData);
+
+        console.log("[Email Signup] Profile write appeared successful");
 
         toast.success('Account created successfully! Welcome to WE CONNECT.');
       } else {
@@ -187,6 +218,9 @@ function AuthForm({ initialMode = 'login', onClose }) {
       console.error("[AUTH ERROR]", error);
       let message = 'An error occurred. Please try again.';
       switch (error.code) {
+        case 'permission-denied':
+          message = 'Permission denied – check Firestore security rules for /profiles collection';
+          break;
         case 'auth/email-already-in-use':
           message = 'This email is already in use. Please sign in or use a different email.';
           break;
