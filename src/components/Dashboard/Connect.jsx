@@ -1,12 +1,13 @@
 // Connect.jsx — Social network component with posts, connections, chat, and connection request notifications
-// Mobile-optimized version (better experience on ~360–420px screens)
+// Mobile-optimized version with dedicated "Requests" tab
 
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
   Image as ImageIcon, Video as VideoIcon, X, Trash2, UserPlus, 
   ChevronLeft, Loader2, Moon, Sun, UserCircle,
-  Check, UserCheck, UserX, UserMinus, Share2, Home, Users, Inbox
+  UserCheck,               // ← added here to fix ReferenceError
+  Home, Users
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -46,11 +47,11 @@ const tabVariants = {
 function Connect() {
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
   const [posts, setPosts] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [requestNotifications, setRequestNotifications] = useState([]);
+  const [notifications, setNotifications] = useState([]);               // general notifications
+  const [requestNotifications, setRequestNotifications] = useState([]); // connection requests only
   const [connections, setConnections] = useState([]);
-  const [connectionRequests, setConnectionRequests] = useState([]);
   const [sentConnectionRequests, setSentConnectionRequests] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [messages, setMessages] = useState({});
@@ -122,7 +123,9 @@ function Connect() {
 
     unsubs.push(
       onSnapshot(collection(db, 'users'), (snap) => {
-        setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const userList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setUsers(userList);
+        setTotalUsers(snap.size);
       })
     );
 
@@ -133,18 +136,20 @@ function Connect() {
       )
     );
 
+    // General notifications (exclude connection requests)
     unsubs.push(
       onSnapshot(
         query(
           collection(db, 'notifications'),
           where('toUserId', '==', currentUser.id),
-          where('type', '==', 'activity'),
+          where('type', '!=', 'connection_request'),
           orderBy('createdAt', 'desc')
         ),
         (snap) => setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       )
     );
 
+    // Connection request notifications only
     unsubs.push(
       onSnapshot(
         query(
@@ -161,13 +166,6 @@ function Connect() {
       onSnapshot(
         collection(db, `users/${currentUser.id}/connections`),
         (snap) => setConnections(snap.docs.map(d => d.id))
-      )
-    );
-
-    unsubs.push(
-      onSnapshot(
-        collection(db, `users/${currentUser.id}/connectionRequestsReceived`),
-        (snap) => setConnectionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       )
     );
 
@@ -205,7 +203,7 @@ function Connect() {
 
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  // ── Handlers (unchanged) ────────────────────────────────────────────────
+  // ── Handlers ────────────────────────────────────────────────────────────
   const handleNewPost = async () => {
     if (!newPost.trim() && !mediaFile) return toast.error('Post cannot be empty');
 
@@ -235,6 +233,7 @@ function Connect() {
       setMediaFile(null);
       toast.success('Posted!');
     } catch (err) {
+      console.error("Post creation failed:", err);
       toast.error('Failed to post');
     }
   };
@@ -308,7 +307,8 @@ function Connect() {
 
       toast.success('Connection request sent!');
     } catch (err) {
-      toast.error('Failed to send request');
+      console.error("Send connection request failed:", err);
+      toast.error(err.code === 'permission-denied' ? "Permission denied – check Firestore rules" : "Failed to send request");
     }
   };
 
@@ -332,6 +332,7 @@ function Connect() {
 
       toast.success("Connection request cancelled");
     } catch (err) {
+      console.error("Cancel request failed:", err);
       toast.error("Failed to cancel request");
     }
   };
@@ -359,7 +360,12 @@ function Connect() {
       setSelectedChat(senderId);
       setActiveTab('messages');
     } catch (err) {
-      toast.error('Failed to accept request');
+      console.error("Accept request transaction failed:", err);
+      toast.error(
+        err.code === 'permission-denied'
+          ? "Permission denied – check Firestore security rules (cross-write issue)"
+          : "Failed to accept request"
+      );
     }
   };
 
@@ -409,13 +415,19 @@ function Connect() {
         {[
           { icon: Home, label: 'Feed', value: 'feed' },
           { icon: Users, label: 'Network', value: 'network' },
+          { 
+            icon: UserPlus, 
+            label: 'Requests', 
+            value: 'requests',
+            badge: requestNotifications.length || null 
+          },
           { icon: MessageCircle, label: 'Messages', value: 'messages' },
           { icon: Bell, label: 'Alerts', value: 'notifications' },
-        ].map(({ icon: Icon, label, value }) => (
+        ].map(({ icon: Icon, label, value, badge }) => (
           <button
             key={value}
             onClick={() => setActiveTab(value)}
-            className={`flex flex-col items-center gap-1 p-2 flex-1 touch-manipulation active:scale-95 transition ${
+            className={`relative flex flex-col items-center gap-1 p-2 flex-1 touch-manipulation active:scale-95 transition ${
               activeTab === value 
                 ? 'text-indigo-600 dark:text-indigo-400' 
                 : 'text-slate-600 dark:text-slate-400'
@@ -423,6 +435,11 @@ function Connect() {
           >
             <Icon size={24} />
             <span className="text-[10px] sm:text-xs font-medium">{label}</span>
+            {badge && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-5 flex items-center justify-center px-1">
+                {badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -451,7 +468,7 @@ function Connect() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 pb-20 md:pb-0">
       <div className="p-4 sm:p-5 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
 
-        {/* Header - visible on desktop */}
+        {/* Header - desktop only */}
         <div className="hidden md:flex justify-between items-center mb-6">
           <h1 className="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-white">Connect</h1>
           <div className="flex items-center gap-6">
@@ -469,18 +486,24 @@ function Connect() {
           </div>
         </div>
 
-        {/* Desktop Tab Navigation – visible on md+ */}
+        {/* Desktop sidebar navigation */}
         <div className="hidden md:flex items-center justify-center gap-2 lg:gap-4 mb-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl p-2 shadow-sm sticky top-4 z-40 border border-slate-200/60 dark:border-slate-700/60">
           {[
             { label: 'Feed',        value: 'feed',         icon: Home },
             { label: 'Network',     value: 'network',      icon: Users },
+            { 
+              label: 'Requests', 
+              value: 'requests', 
+              icon: UserPlus, 
+              badge: requestNotifications.length 
+            },
             { label: 'Messages',    value: 'messages',     icon: MessageCircle },
             { label: 'Notifications', value: 'notifications', icon: Bell },
-          ].map(({ label, value, icon: Icon }) => (
+          ].map(({ label, value, icon: Icon, badge }) => (
             <button
               key={value}
               onClick={() => setActiveTab(value)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all min-w-[110px] justify-center
+              className={`relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all min-w-[110px] justify-center
                 ${activeTab === value 
                   ? 'bg-indigo-600 text-white shadow-md' 
                   : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -488,6 +511,11 @@ function Connect() {
             >
               <Icon size={18} />
               {label}
+              {badge > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px]">
+                  {badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -554,7 +582,7 @@ function Connect() {
                         <div>
                           <p className="font-medium">{post.user.name}</p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {/* Add timestamp formatting here if needed */}
+                            {/* Timestamp can be added here */}
                           </p>
                         </div>
                       </div>
@@ -586,14 +614,19 @@ function Connect() {
             {/* NETWORK */}
             {activeTab === 'network' && (
               <div className="space-y-5">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input
-                    value={networkSearch}
-                    onChange={e => setNetworkSearch(e.target.value)}
-                    placeholder="Search users..."
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-500 text-sm sm:text-base"
-                  />
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input
+                      value={networkSearch}
+                      onChange={e => setNetworkSearch(e.target.value)}
+                      placeholder="Search users..."
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:outline-none focus:border-indigo-500 text-sm sm:text-base"
+                    />
+                  </div>
+                  <div className="text-sm font-medium text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-800/80 px-4 py-2 rounded-lg shadow-sm whitespace-nowrap">
+                    {totalUsers.toLocaleString()} members
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -608,7 +641,6 @@ function Connect() {
                       const isBlocked = blockedUsers.includes(user.id);
 
                       let button;
-
                       if (isConnected) {
                         button = (
                           <span className="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 rounded-full flex items-center gap-2 text-sm">
@@ -666,7 +698,108 @@ function Connect() {
               </div>
             )}
 
-            {/* MESSAGES – improved desktop layout */}
+            {/* REQUESTS - dedicated tab */}
+            {activeTab === 'requests' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
+                  Connection Requests
+                  {requestNotifications.length > 0 && (
+                    <span className="bg-red-500 text-white text-sm px-3 py-1 rounded-full">
+                      {requestNotifications.length}
+                    </span>
+                  )}
+                </h2>
+
+                {requestNotifications.length === 0 ? (
+                  <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm">
+                    <UserPlus className="mx-auto h-12 w-12 text-slate-400 mb-4" />
+                    <p className="text-lg font-medium text-slate-600 dark:text-slate-300">
+                      No pending connection requests
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                      When someone wants to connect, they'll appear here
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {requestNotifications.map(notif => {
+                      const sender = getUserById(notif.fromUserId);
+                      return (
+                        <div 
+                          key={notif.id} 
+                          className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 border border-slate-100 dark:border-slate-700"
+                        >
+                          <div className="flex items-start gap-4">
+                            {sender.photoURL ? (
+                              <img src={sender.photoURL} alt="" className="w-14 h-14 rounded-full object-cover" />
+                            ) : (
+                              <UserCircle size={56} className="text-slate-400" />
+                            )}
+                            <div className="flex-1">
+                              <p className="font-semibold text-lg">{sender.name}</p>
+                              <p className="text-slate-600 dark:text-slate-400 mt-1">
+                                wants to connect with you
+                              </p>
+                              <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                                <button
+                                  onClick={() => handleAcceptRequest(notif.fromUserId)}
+                                  className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl transition min-h-[52px]"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => handleRejectRequest(notif.fromUserId)}
+                                  className="flex-1 py-3 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 font-medium rounded-xl transition min-h-[52px]"
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Sent requests */}
+                {sentConnectionRequests.length > 0 && (
+                  <div className="mt-10">
+                    <h3 className="text-lg font-semibold mb-4 text-slate-700 dark:text-slate-300">
+                      Sent Requests ({sentConnectionRequests.length})
+                    </h3>
+                    <div className="space-y-3">
+                      {sentConnectionRequests.map(id => {
+                        const user = getUserById(id);
+                        return (
+                          <div 
+                            key={id}
+                            className="flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm"
+                          >
+                            <div className="flex items-center gap-3">
+                              {user.photoURL ? (
+                                <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />
+                              ) : (
+                                <UserCircle size={40} className="text-slate-400" />
+                              )}
+                              <span className="font-medium truncate">{user.name}</span>
+                            </div>
+                            <button
+                              onClick={() => handleCancelSentRequest(id)}
+                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MESSAGES */}
             {activeTab === 'messages' && (
               <div className={isNarrowScreen ? "space-y-4" : "grid md:grid-cols-12 gap-6"}>
                 {(!isNarrowScreen || !selectedChat) && (
@@ -771,53 +904,17 @@ function Connect() {
               <div className="space-y-4">
                 <h3 className="text-xl font-bold text-slate-800 dark:text-white">Notifications</h3>
 
-                {requestNotifications.length === 0 && notifications.length === 0 ? (
+                {notifications.length === 0 ? (
                   <p className="text-slate-500 dark:text-slate-400 py-8 text-center">
                     No notifications yet
                   </p>
                 ) : (
-                  <>
-                    {requestNotifications.map(notif => {
-                      const sender = getUserById(notif.fromUserId);
-                      return (
-                        <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
-                          <div className="flex items-start gap-4">
-                            {sender.photoURL ? (
-                              <img src={sender.photoURL} alt="" className="w-12 h-12 rounded-full object-cover" />
-                            ) : (
-                              <UserCircle size={48} className="text-slate-400" />
-                            )}
-                            <div className="flex-1">
-                              <p className="font-medium">
-                                {sender.name} wants to connect with you
-                              </p>
-                              <div className="flex gap-3 mt-4">
-                                <button
-                                  onClick={() => handleAcceptRequest(notif.fromUserId)}
-                                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg min-h-[44px]"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() => handleRejectRequest(notif.fromUserId)}
-                                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg min-h-[44px]"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {notifications.map(notif => (
-                      <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
-                        <p className="font-medium">{notif.title}</p>
-                        <p className="text-slate-600 dark:text-slate-300 mt-1">{notif.message}</p>
-                      </div>
-                    ))}
-                  </>
+                  notifications.map(notif => (
+                    <div key={notif.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
+                      <p className="font-medium">{notif.title}</p>
+                      <p className="text-slate-600 dark:text-slate-300 mt-1">{notif.message}</p>
+                    </div>
+                  ))
                 )}
               </div>
             )}

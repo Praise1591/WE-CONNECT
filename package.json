@@ -48,6 +48,7 @@
     "react-select": "^5.10.2",
     "react-toastify": "^11.0.5",
     "recharts": "^3.3.0",
+    "sonner": "^2.0.7",
     "tailwindcss": "^4.1.16",
     "three": "^0.182.0",
     "tsparticles": "^3.9.1",
