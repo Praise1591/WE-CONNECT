@@ -6,7 +6,7 @@ import {
   Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
   Image as ImageIcon, Video as VideoIcon, X, Trash2, UserPlus, 
   ChevronLeft, Loader2, Moon, Sun, UserCircle,
-  UserCheck,               // ← added here to fix ReferenceError
+  UserCheck,
   Home, Users
 } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -49,8 +49,8 @@ function Connect() {
   const [users, setUsers] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [posts, setPosts] = useState([]);
-  const [notifications, setNotifications] = useState([]);               // general notifications
-  const [requestNotifications, setRequestNotifications] = useState([]); // connection requests only
+  const [notifications, setNotifications] = useState([]);
+  const [requestNotifications, setRequestNotifications] = useState([]);
   const [connections, setConnections] = useState([]);
   const [sentConnectionRequests, setSentConnectionRequests] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
@@ -73,14 +73,13 @@ function Connect() {
 
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 640);
 
-  // ── Resize listener for mobile detection ────────────────────────────────
   useEffect(() => {
     const handleResize = () => setIsNarrowScreen(window.innerWidth < 640);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ── Auth listener ───────────────────────────────────────────────────────
+  // ── Auth listener with name normalization ───────────────────────────────
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (!firebaseUser) {
@@ -93,14 +92,33 @@ function Connect() {
         const userRef = doc(db, 'users', firebaseUser.uid);
         const snap = await getDoc(userRef);
 
-        let profile = snap.exists() ? snap.data() : {
-          name: firebaseUser.displayName || 'User',
-          photoURL: firebaseUser.photoURL || null,
-          createdAt: serverTimestamp()
-        };
+        let profile;
 
         if (!snap.exists()) {
+          const safeName = 
+            firebaseUser.displayName?.trim() ||
+            firebaseUser.email?.split('@')[0] ||
+            'User';
+
+          profile = {
+            name: safeName,
+            photoURL: firebaseUser.photoURL || null,
+            createdAt: serverTimestamp(),
+            email: firebaseUser.email || null,
+          };
           await setDoc(userRef, profile);
+        } else {
+          profile = snap.data();
+          // Fix documents that are missing name field
+          if (!profile.name || profile.name.trim() === '') {
+            const fallbackName = 
+              firebaseUser.displayName?.trim() ||
+              firebaseUser.email?.split('@')[0] ||
+              'User';
+
+            await updateDoc(userRef, { name: fallbackName });
+            profile.name = fallbackName;
+          }
         }
 
         setCurrentUser({ id: firebaseUser.uid, ...profile });
@@ -115,7 +133,6 @@ function Connect() {
     return unsubscribe;
   }, []);
 
-  // ── Real-time data listeners ────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
 
@@ -136,7 +153,6 @@ function Connect() {
       )
     );
 
-    // General notifications (exclude connection requests)
     unsubs.push(
       onSnapshot(
         query(
@@ -149,7 +165,6 @@ function Connect() {
       )
     );
 
-    // Connection request notifications only
     unsubs.push(
       onSnapshot(
         query(
@@ -186,7 +201,6 @@ function Connect() {
     return () => unsubs.forEach(u => u());
   }, [currentUser?.id]);
 
-  // ── Chat messages ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id || !selectedChat) return;
 
@@ -203,7 +217,6 @@ function Connect() {
 
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  // ── Handlers ────────────────────────────────────────────────────────────
   const handleNewPost = async () => {
     if (!newPost.trim() && !mediaFile) return toast.error('Post cannot be empty');
 
@@ -219,7 +232,7 @@ function Connect() {
 
     try {
       await addDoc(collection(db, 'posts'), {
-        user: { id: currentUser.id, name: currentUser.name },
+        user: { id: currentUser.id, name: currentUser.name || 'User' },
         content: newPost.trim(),
         media: mediaUrl,
         mediaType: mType,
@@ -253,7 +266,7 @@ function Connect() {
     try {
       await updateDoc(doc(db, 'posts', postId), {
         comments: arrayUnion({
-          user: currentUser.name,
+          user: currentUser.name || 'User',
           content: comment,
           timestamp: serverTimestamp()
         })
@@ -283,6 +296,12 @@ function Connect() {
     if (sentConnectionRequests.includes(userId)) return toast.error('Request already sent');
     if (blockedUsers.includes(userId)) return toast.error('Cannot send request to blocked user');
 
+    // Guard against missing name
+    if (!currentUser?.name) {
+      console.warn("Cannot send connection request: current user name is missing");
+      return toast.error("Profile not fully loaded. Please try again.");
+    }
+
     try {
       await setDoc(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userId), {
         status: 'pending',
@@ -291,7 +310,7 @@ function Connect() {
 
       await setDoc(doc(db, `users/${userId}/connectionRequestsReceived`, currentUser.id), {
         status: 'pending',
-        fromName: currentUser.name,
+        fromName: currentUser.name,  // now guarded above
         sentAt: serverTimestamp()
       });
 
@@ -308,7 +327,11 @@ function Connect() {
       toast.success('Connection request sent!');
     } catch (err) {
       console.error("Send connection request failed:", err);
-      toast.error(err.code === 'permission-denied' ? "Permission denied – check Firestore rules" : "Failed to send request");
+      toast.error(
+        err.code === 'permission-denied'
+          ? "Permission denied – check Firestore rules"
+          : "Failed to send request"
+      );
     }
   };
 
@@ -363,7 +386,7 @@ function Connect() {
       console.error("Accept request transaction failed:", err);
       toast.error(
         err.code === 'permission-denied'
-          ? "Permission denied – check Firestore security rules (cross-write issue)"
+          ? "Permission denied – check Firestore security rules"
           : "Failed to accept request"
       );
     }
@@ -408,7 +431,6 @@ function Connect() {
 
   const getUserById = (id) => users.find(u => u.id === id) || { name: 'Unknown', photoURL: null };
 
-  // ── Bottom Navigation (mobile only) ─────────────────────────────────────
   const BottomNav = () => (
     <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t dark:border-slate-800 z-50 md:hidden safe-area-inset-bottom">
       <div className="flex items-center justify-around py-2">
@@ -446,26 +468,46 @@ function Connect() {
     </div>
   );
 
-  if (isLoading) {
+  if (isLoading || !currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+        {isLoading ? (
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+        ) : (
+          <p className="text-lg font-medium text-slate-700 dark:text-slate-300 p-4 text-center">
+            Please sign in to use Connect
+          </p>
+        )}
       </div>
     );
   }
 
-  if (!currentUser) {
+  // Extra safety: if name is still somehow missing after all fixes
+  if (!currentUser.name) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4 text-center">
-        <p className="text-lg font-medium text-slate-700 dark:text-slate-300">
-          Please sign in to use Connect
-        </p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 text-center">
+        <div>
+          <p className="text-xl font-medium mb-4 text-slate-800 dark:text-slate-200">
+            Profile issue detected
+          </p>
+          <p className="text-slate-600 dark:text-slate-400 mb-6">
+            Your account is missing a display name. Please try signing out and back in.
+          </p>
+          <button
+            onClick={() => auth.signOut()}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-xl"
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 pb-20 md:pb-0">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 pb-20 md:pb-0 z-10 isolate"
+    >
       <div className="p-4 sm:p-5 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-5 md:space-y-6">
 
         {/* Header - desktop only */}
@@ -611,7 +653,7 @@ function Connect() {
               </div>
             )}
 
-            {/* NETWORK */}
+            {/* NETWORK - unchanged except safer name usage */}
             {activeTab === 'network' && (
               <div className="space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -685,7 +727,7 @@ function Connect() {
                               <UserCircle size={44} className="text-slate-400 flex-shrink-0" />
                             )}
                             <div className="min-w-0">
-                              <p className="font-medium truncate text-sm sm:text-base">{user.name}</p>
+                              <p className="font-medium truncate text-sm sm:text-base">{user.name || 'Unknown'}</p>
                             </div>
                           </div>
                           <div className="flex-shrink-0 ml-3">
@@ -698,7 +740,7 @@ function Connect() {
               </div>
             )}
 
-            {/* REQUESTS - dedicated tab */}
+            {/* REQUESTS - unchanged */}
             {activeTab === 'requests' && (
               <div className="space-y-6">
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
@@ -736,7 +778,7 @@ function Connect() {
                               <UserCircle size={56} className="text-slate-400" />
                             )}
                             <div className="flex-1">
-                              <p className="font-semibold text-lg">{sender.name}</p>
+                              <p className="font-semibold text-lg">{sender.name || 'Unknown User'}</p>
                               <p className="text-slate-600 dark:text-slate-400 mt-1">
                                 wants to connect with you
                               </p>
@@ -762,7 +804,6 @@ function Connect() {
                   </div>
                 )}
 
-                {/* Sent requests */}
                 {sentConnectionRequests.length > 0 && (
                   <div className="mt-10">
                     <h3 className="text-lg font-semibold mb-4 text-slate-700 dark:text-slate-300">
@@ -782,7 +823,7 @@ function Connect() {
                               ) : (
                                 <UserCircle size={40} className="text-slate-400" />
                               )}
-                              <span className="font-medium truncate">{user.name}</span>
+                              <span className="font-medium truncate">{user.name || 'Unknown'}</span>
                             </div>
                             <button
                               onClick={() => handleCancelSentRequest(id)}
@@ -799,7 +840,7 @@ function Connect() {
               </div>
             )}
 
-            {/* MESSAGES */}
+            {/* MESSAGES - unchanged */}
             {activeTab === 'messages' && (
               <div className={isNarrowScreen ? "space-y-4" : "grid md:grid-cols-12 gap-6"}>
                 {(!isNarrowScreen || !selectedChat) && (
@@ -827,7 +868,7 @@ function Connect() {
                             ) : (
                               <UserCircle size={40} className="text-slate-400 flex-shrink-0" />
                             )}
-                            <span className="font-medium truncate text-sm sm:text-base">{user.name}</span>
+                            <span className="font-medium truncate text-sm sm:text-base">{user.name || 'Unknown'}</span>
                           </button>
                         );
                       })
@@ -853,7 +894,7 @@ function Connect() {
                           ) : (
                             <UserCircle size={40} className="text-slate-400" />
                           )}
-                          <h3 className="font-semibold truncate">{getUserById(selectedChat).name}</h3>
+                          <h3 className="font-semibold truncate">{getUserById(selectedChat).name || 'Unknown'}</h3>
                         </div>
                         <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50 dark:bg-slate-950/30">
                           {(messages[[currentUser.id, selectedChat].sort().join('_')] || []).map((msg, i) => (
