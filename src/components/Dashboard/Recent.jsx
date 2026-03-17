@@ -1,3 +1,5 @@
+// Recent.jsx
+
 import React, { useState, useEffect } from 'react';
 import {
   PersonStanding,
@@ -14,6 +16,7 @@ import {
   Eye,
   Loader2,
   X,
+  Star,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -31,6 +34,7 @@ import {
   getDoc,
   runTransaction,
   increment,
+  getDocs,
 } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 
@@ -49,6 +53,15 @@ function Recent() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
 
+  // ── Reviews state ──────────────────────────────────────────────────────────
+  const [reviews, setReviews] = useState([]);
+  const [userRating, setUserRating] = useState(0);
+  const [userComment, setUserComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [averageRating, setAverageRating] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [hoveredStar, setHoveredStar] = useState(0);
+
   // ── Auth & Profile ─────────────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(setCurrentUser);
@@ -62,12 +75,10 @@ function Recent() {
       return;
     }
 
-    // Favorites
     const favUnsub = onSnapshot(collection(db, `users/${currentUser.uid}/favorites`), (snap) => {
       setFavoritedIds(new Set(snap.docs.map((d) => d.id)));
     }, console.error);
 
-    // Profile (coins, diamonds)
     const profileUnsub = onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
       setProfile(snap.exists() ? snap.data() : { coins: 0, diamonds: 0 });
     }, console.error);
@@ -101,6 +112,41 @@ function Recent() {
 
     return unsubscribe;
   }, []);
+
+  // ── Reviews listener ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!previewMaterial?.id) {
+      setReviews([]);
+      setAverageRating(0);
+      setReviewCount(0);
+      setUserRating(0);
+      setUserComment("");
+      return;
+    }
+
+    const reviewsCol = collection(db, `materials/${previewMaterial.id}/reviews`);
+    const q = query(reviewsCol, orderBy("createdAt", "desc"));
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setReviews(list);
+
+      if (list.length > 0) {
+        const sum = list.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+        setAverageRating((sum / list.length).toFixed(1));
+        setReviewCount(list.length);
+      } else {
+        setAverageRating(0);
+        setReviewCount(0);
+      }
+
+      const myReview = list.find(r => r.userId === currentUser?.uid);
+      setUserRating(myReview ? Number(myReview.rating) : 0);
+      setUserComment(myReview?.comment || "");
+    }, console.error);
+
+    return unsubscribe;
+  }, [previewMaterial?.id, currentUser?.uid]);
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -356,6 +402,66 @@ function Recent() {
     }
   };
 
+  const handleSubmitReview = async () => {
+    if (!currentUser) {
+      toast.info("Please sign in to leave a review");
+      return;
+    }
+    if (userRating === 0) {
+      toast.warn("Please select a rating");
+      return;
+    }
+
+    setSubmittingReview(true);
+
+    try {
+      const reviewRef = doc(collection(db, `materials/${previewMaterial.id}/reviews`));
+      const materialRef = doc(db, "materials", previewMaterial.id);
+
+      await runTransaction(db, async (t) => {
+        const materialSnap = await t.get(materialRef);
+        if (!materialSnap.exists()) throw new Error("Material not found");
+
+        const existingReviews = await getDocs(collection(db, `materials/${previewMaterial.id}/reviews`));
+        let currentTotal = 0;
+        let count = existingReviews.size;
+
+        const oldReview = existingReviews.docs.find(d => d.data().userId === currentUser.uid);
+        if (oldReview) {
+          currentTotal -= oldReview.data().rating;
+          count -= 1;
+          await t.delete(oldReview.ref);
+        }
+
+        currentTotal += userRating;
+        count += 1;
+
+        const newAvg = count > 0 ? currentTotal / count : 0;
+
+        t.set(reviewRef, {
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email?.split('@')[0] || "Anonymous",
+          rating: userRating,
+          comment: userComment.trim() || null,
+          createdAt: serverTimestamp(),
+        });
+
+        t.update(materialRef, {
+          averageRating: newAvg,
+          reviewCount: count,
+        });
+      });
+
+      toast.success("Review submitted! Thank you.");
+      setUserComment("");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to submit review");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -441,6 +547,24 @@ function Recent() {
                   <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
                     {item.course} • {item.school || '—'}
                   </p>
+
+                  <div className="mt-3 flex items-center gap-2 text-sm">
+                    <div className="flex">
+                      {[1,2,3,4,5].map(n => (
+                        <Star
+                          key={n}
+                          size={16}
+                          className={n <= (item.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300 dark:text-slate-600"}
+                        />
+                      ))}
+                    </div>
+                    <span className="font-medium text-amber-600 dark:text-amber-400">
+                      {item.averageRating ? Number(item.averageRating).toFixed(1) : "—"}
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-400 text-xs">
+                      ({item.reviewCount || 0})
+                    </span>
+                  </div>
 
                   <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                     <div className="flex items-center gap-1.5">
@@ -555,7 +679,9 @@ function Recent() {
               ) : previewError ? (
                 <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-12 px-6">
                   <Eye size={80} className="text-slate-400 dark:text-slate-500 opacity-60 mb-4" />
-                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">{previewError}</p>
+                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
+                    {previewError}
+                  </p>
                   <p className="text-slate-600 dark:text-slate-400">
                     Preview is free, but the file might be unavailable, deleted, or restricted.
                   </p>
@@ -571,22 +697,120 @@ function Recent() {
                   </button>
                 </div>
               ) : previewUrl ? (
-                previewMaterial.category?.toLowerCase().includes('video') ? (
-                  <video
-                    src={previewUrl}
-                    controls
-                    autoPlay
-                    className="w-full max-h-[75vh] rounded-lg shadow-md mx-auto"
+                <div className="relative w-full h-[70vh] md:h-[80vh] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                  {previewMaterial.category?.toLowerCase().includes('video') ? (
+                    <video
+                      src={previewUrl}
+                      controls
+                      autoPlay
+                      className="absolute inset-0 w-full h-full object-contain"
+                      onContextMenu={(e) => e.preventDefault()}
+                      onDragStart={(e) => e.preventDefault()}
+                    />
+                  ) : (
+                    <iframe
+                      src={previewUrl}
+                      className="absolute inset-0 w-full h-full"
+                      title="Material Preview"
+                      allowFullScreen
+                      sandbox="allow-scripts allow-same-origin allow-popups"
+                      onContextMenu={(e) => e.preventDefault()}
+                    />
+                  )}
+
+                  {/* Thin overlay — only catches context menu & drag events */}
+                  <div
+                    className="absolute inset-0 z-10"
+                    onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
                   />
-                ) : (
-                  <iframe
-                    src={previewUrl}
-                    className="w-full h-[70vh] md:h-[80vh] rounded-lg border border-slate-200 dark:border-slate-700"
-                    title="Material Preview"
-                    allowFullScreen
-                  />
-                )
+
+                  {/* Visual indication — does not block interaction */}
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/65 text-white text-sm px-5 py-2.5 rounded-full z-20 backdrop-blur-sm pointer-events-none border border-white/20 shadow-lg">
+                    Preview Mode – Download Disabled
+                  </div>
+                </div>
               ) : null}
+
+              {/* ── Reviews section ── */}
+              <div className="mt-8 border-t dark:border-slate-700 pt-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center justify-between">
+                  <span>Reviews • {reviewCount} {reviewCount === 1 ? "review" : "reviews"}</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-bold">
+                    {averageRating > 0 ? `★ ${averageRating}` : "No ratings yet"}
+                  </span>
+                </h3>
+
+                <div className="mb-6 p-5 bg-slate-100/70 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <p className="text-sm font-medium mb-3">Your Rating</p>
+                  <div className="flex gap-1 mb-4" onMouseLeave={() => setHoveredStar(0)}>
+                    {[1,2,3,4,5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setUserRating(star)}
+                        onMouseEnter={() => setHoveredStar(star)}
+                        className={`text-3xl transition-transform hover:scale-110 ${
+                          star <= (hoveredStar || userRating)
+                            ? "text-amber-500"
+                            : "text-slate-300 dark:text-slate-600"
+                        }`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    value={userComment}
+                    onChange={e => setUserComment(e.target.value)}
+                    placeholder="Share your thoughts about this material... (optional)"
+                    className="w-full h-28 p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                  />
+
+                  <button
+                    onClick={handleSubmitReview}
+                    disabled={submittingReview || userRating === 0}
+                    className="mt-4 px-6 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {submittingReview && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {userRating > 0 ? "Submit Review" : "Select Rating"}
+                  </button>
+                </div>
+
+                {reviews.length > 0 ? (
+                  <div className="space-y-6 max-h-72 overflow-y-auto pr-2">
+                    {reviews.map(review => (
+                      <div key={review.id} className="border-b dark:border-slate-700 pb-5 last:border-b-0">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-medium text-slate-900 dark:text-slate-100">
+                              {review.userName}
+                            </p>
+                            <div className="flex gap-0.5 text-amber-500 mt-0.5">
+                              {"★".repeat(review.rating || 0)}{"☆".repeat(5 - (review.rating || 0))}
+                            </div>
+                          </div>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {review.createdAt?.toDate?.()
+                              ? review.createdAt.toDate().toLocaleDateString()
+                              : "—"}
+                          </span>
+                        </div>
+                        {review.comment && (
+                          <p className="text-sm text-slate-700 dark:text-slate-300 mt-2 leading-relaxed">
+                            {review.comment}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">
+                    No reviews yet. Be the first to share your opinion!
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-4 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400 bg-slate-100/50 dark:bg-slate-900/30">

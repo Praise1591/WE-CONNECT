@@ -13,13 +13,14 @@ import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Firebase imports
-import { auth, db, storage } from '@/firebase';
+import { auth, db, storage, functions } from '@/firebase';
 import {
   collection, query, where, orderBy, onSnapshot, doc, getDoc, setDoc,
-  updateDoc, deleteDoc, addDoc, serverTimestamp, increment, runTransaction,
+  updateDoc, deleteDoc, addDoc, serverTimestamp, increment,
   arrayUnion, getDocs
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 
 const tabVariants = {
   initial: { opacity: 0, y: 10 },
@@ -60,6 +61,12 @@ function Connect() {
   const [editedName, setEditedName] = useState('');
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState(null);
+
+  // Loading state for accept action
+  const [acceptingId, setAcceptingId] = useState(null);
+
+  // Cloud Function callable
+  const acceptConnectionRequest = httpsCallable(functions, 'acceptConnectionRequest');
 
   useEffect(() => {
     const handleResize = () => setIsNarrowScreen(window.innerWidth < 640);
@@ -314,7 +321,6 @@ function Connect() {
       });
 
       await runTransaction(db, async (t) => {
-        console.log("Inside block transaction - deleting connections and requests");
         t.delete(doc(db, `users/${currentUser.id}/connections`, userId));
         t.delete(doc(db, `users/${userId}/connections`, currentUser.id));
         t.delete(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userId));
@@ -382,19 +388,12 @@ function Connect() {
       currentUid: currentUser.id,
       targetUid: targetUserId,
       authUid: auth.currentUser?.uid,
-      action: "cancel_request",
-      paths: {
-        sent: `users/${currentUser.id}/connectionRequestsSent/${targetUserId}`,
-        received: `users/${targetUserId}/connectionRequestsReceived/${currentUser.id}`
-      }
+      action: "cancel_request"
     });
 
     try {
       await runTransaction(db, async (t) => {
-        console.log("Deleting sent request document (own folder)");
         t.delete(doc(db, `users/${currentUser.id}/connectionRequestsSent`, targetUserId));
-
-        console.log("Deleting received request document (cross-user write)");
         t.delete(doc(db, `users/${targetUserId}/connectionRequestsReceived`, currentUser.id));
       });
 
@@ -415,52 +414,80 @@ function Connect() {
   };
 
   const handleAcceptRequest = async (senderId) => {
-    if (!auth.currentUser) return toast.error('Please sign in');
-    if (!currentUser?.id) return toast.error('Profile not loaded');
-    if (senderId === currentUser.id) return toast.error('Cannot connect to yourself');
+    if (!auth.currentUser) {
+      toast.error('Please sign in');
+      return;
+    }
+    if (!currentUser?.id) {
+      toast.error('Profile not loaded');
+      return;
+    }
+    if (senderId === currentUser.id) {
+      toast.error('Cannot connect to yourself');
+      return;
+    }
+    if (acceptingId === senderId) return; // prevent double-click
 
-    console.log("Starting accept request transaction", {
-      currentUid: currentUser.id,
-      senderId,
-      authUid: auth.currentUser?.uid,
-      action: "accept_request",
-      paths: {
-        received: `users/${currentUser.id}/connectionRequestsReceived/${senderId}`,
-        sent: `users/${senderId}/connectionRequestsSent/${currentUser.id}`,
-        connection1: `users/${currentUser.id}/connections/${senderId}`,
-        connection2: `users/${senderId}/connections/${currentUser.id}`
-      }
-    });
+    setAcceptingId(senderId);
+
+    console.groupCollapsed("[ACCEPT REQUEST] Starting");
+    console.log("Sender:", senderId);
+    console.log("Current user:", currentUser.id);
+    console.log("Callable function:", 'acceptConnectionRequest');
+    console.groupEnd();
 
     try {
-      await runTransaction(db, async (t) => {
-        console.log("Deleting received request (own folder)");
-        t.delete(doc(db, `users/${currentUser.id}/connectionRequestsReceived`, senderId));
-        
-        console.log("Deleting sent request (cross-user delete)");
-        t.delete(doc(db, `users/${senderId}/connectionRequestsSent`, currentUser.id));
-        
-        console.log("Creating connection for current user");
-        t.set(doc(db, `users/${currentUser.id}/connections`, senderId), { addedAt: serverTimestamp() });
-        
-        console.log("Creating connection for other user");
-        t.set(doc(db, `users/${senderId}/connections`, currentUser.id), { addedAt: serverTimestamp() });
-      });
+      console.log("[ACCEPT] → Calling cloud function...");
+      const result = await acceptConnectionRequest({ senderId });
 
+      console.log("[ACCEPT] ← Cloud function responded");
+      console.log("Result data:", result.data);
+
+      if (!result.data?.success) {
+        throw new Error(result.data?.message || 'Function reported failure');
+      }
+
+      // Clean up notifications
+      console.log("[ACCEPT] Cleaning notifications...");
       const q = query(
         collection(db, 'notifications'),
         where('toUserId', '==', currentUser.id),
         where('fromUserId', '==', senderId),
         where('type', '==', 'connection_request')
       );
-      (await getDocs(q)).forEach(d => deleteDoc(d.ref));
+      const snap = await getDocs(q);
+      console.log(`Found ${snap.size} notifications to delete`);
+      await Promise.all(snap.docs.map(docSnap => deleteDoc(docSnap.ref)));
 
-      toast.success('Connected!');
+      toast.success('Connected successfully!');
       setSelectedChat(senderId);
       setActiveTab('messages');
     } catch (err) {
-      console.error("Accept request transaction failed:", err.code, err.message, err.details || "");
-      toast.error('Failed to accept connection');
+      console.group("[ACCEPT REQUEST] ERROR");
+      console.error("Error object:", err);
+      console.error("Error code:", err.code);
+      console.error("Error message:", err.message);
+      console.error("Error details:", err.details);
+      console.error("Full stack:", err.stack);
+      console.groupEnd();
+
+      let userMessage = 'Failed to accept connection request';
+
+      if (err.code === 'functions/internal') {
+        userMessage = 'Server error — check Firebase Functions logs for details';
+      } else if (err.code === 'functions/not-found') {
+        userMessage = 'Function "acceptConnectionRequest" not found — check deployment & name';
+      } else if (err.code === 'functions/unauthenticated') {
+        userMessage = 'Session expired — please sign in again';
+      } else if (err.code === 'functions/permission-denied') {
+        userMessage = 'Permission denied — check function security rules';
+      } else if (err.code?.startsWith('functions/')) {
+        userMessage = `Cloud function error: ${err.message || 'Unknown'}`;
+      }
+
+      toast.error(userMessage);
+    } finally {
+      setAcceptingId(null);
     }
   };
 
@@ -641,42 +668,34 @@ function Connect() {
                       </span>
                     </div>
 
-                    {/* Comments */}
-                    <div className="space-y-3 mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
-                      {post.comments?.map((c, idx) => (
-                        <div key={idx} className="text-sm">
-                          <span className="font-medium text-slate-800 dark:text-slate-200">{c.user}</span>
-                          <span className="text-slate-600 dark:text-slate-400 ml-2">{c.content}</span>
+                    <div className="space-y-3 mt-4">
+                      {post.comments?.map((c, i) => (
+                        <div key={i} className="text-sm text-slate-700 dark:text-slate-300">
+                          <span className="font-medium">{c.user}: </span>
+                          {c.content}
                         </div>
                       ))}
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-3">
                         <input
-                          type="text"
                           value={commentInputs[post.id] || ''}
                           onChange={e => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
                           placeholder="Add a comment..."
-                          className="flex-1 px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 focus:outline-none focus:border-indigo-500 text-sm"
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleComment(post.id);
-                            }
-                          }}
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-transparent focus:outline-none focus:border-indigo-500"
+                          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleComment(post.id))}
                         />
                         <button
                           onClick={() => handleComment(post.id)}
-                          disabled={!commentInputs[post.id]?.trim()}
-                          className="p-2 bg-indigo-600 text-white rounded-full disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                          className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
                         >
-                          <Send size={16} />
+                          <Send size={20} />
                         </button>
                       </div>
                     </div>
 
                     {post.user.id === currentUser.id && (
                       <button 
-                        onClick={() => handleDeletePost(post.id)}
-                        className="absolute top-5 right-5 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                        onClick={() => handleDeletePost(post.id)} 
+                        className="absolute top-4 right-4 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                       >
                         <Trash2 size={20} />
                       </button>
@@ -691,7 +710,7 @@ function Connect() {
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
                     <input
                       value={networkSearch}
                       onChange={e => setNetworkSearch(e.target.value)}
@@ -780,6 +799,8 @@ function Connect() {
                   </div>
                 ) : requestNotifications.map(notif => {
                   const sender = getUserById(notif.fromUserId);
+                  const isAccepting = acceptingId === notif.fromUserId;
+
                   return (
                     <div key={notif.id} className="bg-white/90 dark:bg-slate-900/70 rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/40 p-6 flex flex-col sm:flex-row gap-5">
                       <div className="flex-shrink-0">
@@ -794,13 +815,21 @@ function Connect() {
                         <p className="text-slate-600 dark:text-slate-400 mt-1">wants to connect with you</p>
                         <div className="flex flex-col sm:flex-row gap-4 mt-6">
                           <button 
-                            onClick={() => handleAcceptRequest(notif.fromUserId)} 
-                            className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-sm transition-colors font-medium"
+                            onClick={() => handleAcceptRequest(notif.fromUserId)}
+                            disabled={isAccepting}
+                            className={`flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-sm transition-colors font-medium flex items-center justify-center gap-2
+                              ${isAccepting ? 'opacity-70 cursor-not-allowed' : ''}`}
                           >
-                            Accept
+                            {isAccepting ? (
+                              <>
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                Accepting...
+                              </>
+                            ) : 'Accept'}
                           </button>
                           <button 
-                            onClick={() => handleRejectRequest(notif.fromUserId)} 
+                            onClick={() => handleRejectRequest(notif.fromUserId)}
+                            disabled={isAccepting}
                             className="flex-1 py-3 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-900/40 dark:hover:bg-red-800/50 dark:text-red-300 rounded-xl shadow-sm transition-colors font-medium"
                           >
                             Decline
@@ -824,7 +853,7 @@ function Connect() {
                               <span className="font-medium truncate text-slate-900 dark:text-white">{u.name || 'Unknown'}</span>
                             </div>
                             <button 
-                              onClick={() => handleCancelSentRequest(id)} 
+                              onClick={() => handleCancelSentRequest(id)}
                               className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors"
                             >
                               Cancel

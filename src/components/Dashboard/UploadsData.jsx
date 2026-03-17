@@ -1,6 +1,7 @@
 // UploadsData.jsx
 // Multi-step upload form with Firebase Storage (resumable), progress, pause/resume/cancel
 // All input fields in Step 2 now fully implemented
+// ── ADDED: Debug logging + auth check before addDoc to help diagnose permissions error
 
 import React, { useState, useRef } from 'react';
 import { 
@@ -110,6 +111,19 @@ function UploadsData() {
         try {
           const publicUrl = await getDownloadURL(storageRef);
 
+          // ── Debug logging to confirm auth state right before Firestore write ──
+          console.log("Saving to Firestore — current user:", auth.currentUser?.uid || "(no user!)");
+          console.log("Document data preview:", {
+            title: formData.title,
+            course: formData.course,
+            school: formData.school,
+            uid: auth.currentUser?.uid,
+          });
+
+          if (!auth.currentUser) {
+            throw new Error("User no longer authenticated at save time");
+          }
+
           await addDoc(collection(db, 'materials'), {
             name: formData.title.trim(),
             title: formData.title.trim(),
@@ -132,7 +146,10 @@ function UploadsData() {
           setStep(4);
         } catch (err) {
           console.error("Metadata save error:", err);
-          toast.error("Failed to save material info");
+          const msg = err.code === 'permission-denied'
+            ? "Firestore permission denied — check your security rules"
+            : err.message || "Failed to save material info";
+          toast.error(msg);
         } finally {
           cleanupUpload();
         }
@@ -223,7 +240,7 @@ function UploadsData() {
           </div>
         )}
 
-        {/* STEP 2 – Material Details (ALL FIELDS NOW INCLUDED) */}
+        {/* STEP 2 – Material Details */}
         {step === 2 && (
           <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-4 sm:mb-6">

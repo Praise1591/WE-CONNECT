@@ -1,0 +1,59 @@
+type User @table {
+  displayName: String!
+  email: String!
+  role: String!
+  createdAt: Timestamp!
+  photoUrl: String
+  bio: String
+  contactNumber: String
+}
+
+type Subject @table {
+  name: String!
+  createdAt: Timestamp!
+  description: String
+}
+
+type TutorProfile @table {
+  user: User!
+  hourlyRate: Float!
+  createdAt: Timestamp!
+  education: String
+  experience: String
+}
+
+type TutorSubject @table(key: ["tutorProfile", "subject"]) {
+  tutorProfile: TutorProfile!
+  subject: Subject!
+  createdAt: Timestamp!
+}
+
+type Lesson @table {
+  tutorProfile: TutorProfile!
+  student: User!
+  startTime: Timestamp!
+  endTime: Timestamp!
+  status: String!
+  createdAt: Timestamp!
+  notes: String
+  location: String
+}
+
+type Review @table {
+  lesson: Lesson!
+  student: User!
+  tutorProfile: TutorProfile!
+  rating: Int!
+  createdAt: Timestamp!
+  comment: String
+}
+
+type Resource @table {
+  tutor: User!
+  subject: Subject!
+  title: String!
+  fileUrl: String!
+  createdAt: Timestamp!
+  description: String
+  resourceType: String
+}
