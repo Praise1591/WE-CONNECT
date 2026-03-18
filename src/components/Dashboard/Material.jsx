@@ -11,11 +11,9 @@ import {
 // ── react-pdf imports ───────────────────────────────────────────────────────
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// Corrected paths for Vite (remove /esm/ from the CSS imports)
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// Worker setup – using .js version (more reliable in many Vite environments)
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 // ── Firebase ────────────────────────────────────────────────────────────────
@@ -610,7 +608,7 @@ function Material() {
           </div>
         )}
 
-        {/* ── Improved Preview Modal ─────────────────────────────────────────────── */}
+        {/* ── Improved Preview Modal with Download Protection ─────────────────────────────── */}
         {previewMaterial && (
           <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-900 w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden max-h-[96vh] flex flex-col">
@@ -638,8 +636,8 @@ function Material() {
 
               <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col lg:flex-row gap-8 md:gap-10">
                 
-                {/* Preview Area */}
-                <div className="flex-1 flex flex-col">
+                {/* Preview Area with protection */}
+                <div className="flex-1 flex flex-col relative">
                   {previewLoading ? (
                     <div className="flex-1 flex items-center justify-center rounded-3xl bg-white dark:bg-slate-800 min-h-[400px]">
                       <Loader2 className="h-14 w-14 animate-spin text-violet-600" />
@@ -653,77 +651,101 @@ function Material() {
                       </p>
                     </div>
                   ) : previewUrl ? (
-                    previewMaterial.category?.toLowerCase().includes('video') ? (
-                      <div className="rounded-3xl overflow-hidden shadow-2xl bg-black">
-                        <video
-                          src={previewUrl}
-                          controls
-                          autoPlay
-                          muted
-                          playsInline
-                          className="w-full max-h-[65vh] object-contain"
-                          onError={() => setPreviewError("Failed to load video — file may be unavailable")}
-                        />
-                      </div>
-                    ) : (
-                      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-inner overflow-hidden border border-slate-200 dark:border-slate-700 flex flex-col h-full">
-                        <div className="flex-1 overflow-auto p-4 flex items-start justify-center bg-slate-50 dark:bg-slate-950">
-                          <Document
-                            file={previewUrl}
-                            onLoadSuccess={({ numPages }) => {
-                              setNumPages(numPages);
-                              setCurrentPage(1);
-                            }}
-                            onLoadError={(err) => {
-                              console.error("PDF load error:", err);
-                              setPreviewError("Could not load PDF preview");
-                            }}
-                            loading={
-                              <div className="flex-1 flex items-center justify-center min-h-[400px]">
-                                <Loader2 className="h-12 w-12 animate-spin text-violet-600" />
-                              </div>
-                            }
-                            error={
-                              <div className="flex-1 flex items-center justify-center min-h-[400px] text-red-600">
-                                Failed to load document
-                              </div>
-                            }
-                          >
-                            <Page
-                              pageNumber={currentPage}
-                              width={Math.min(780, window.innerWidth - 140)}
-                              renderAnnotationLayer={false}
-                              renderTextLayer={true}
-                              className="shadow-lg mx-auto"
-                            />
-                          </Document>
-                        </div>
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl flex flex-col h-full bg-black/5 dark:bg-black/20">
+                      {previewMaterial.category?.toLowerCase().includes('video') ? (
+                        <>
+                          <video
+                            src={previewUrl}
+                            controls
+                            autoPlay
+                            muted
+                            playsInline
+                            className="w-full max-h-[65vh] object-contain"
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                            onError={() => setPreviewError("Failed to load video — file may be unavailable")}
+                          />
+                          <div 
+                            className="absolute inset-0 z-10"
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                          />
+                        </>
+                      ) : (
+                        <div className="flex flex-col h-full">
+                          <div className="flex-1 overflow-auto p-4 flex items-start justify-center bg-slate-50 dark:bg-slate-950">
+                            <div className="relative">
+                              <Document
+                                file={previewUrl}
+                                onLoadSuccess={({ numPages }) => {
+                                  setNumPages(numPages);
+                                  setCurrentPage(1);
+                                }}
+                                onLoadError={(err) => {
+                                  console.error("PDF load error:", err);
+                                  setPreviewError("Could not load PDF preview");
+                                }}
+                                loading={
+                                  <div className="flex-1 flex items-center justify-center min-h-[400px]">
+                                    <Loader2 className="h-12 w-12 animate-spin text-violet-600" />
+                                  </div>
+                                }
+                                error={
+                                  <div className="flex-1 flex items-center justify-center min-h-[400px] text-red-600">
+                                    Failed to load document
+                                  </div>
+                                }
+                              >
+                                <Page
+                                  pageNumber={currentPage}
+                                  width={Math.min(780, window.innerWidth - 140)}
+                                  renderAnnotationLayer={false}
+                                  renderTextLayer={true}
+                                  className="shadow-lg mx-auto"
+                                  onContextMenu={(e) => e.preventDefault()}
+                                />
+                              </Document>
 
-                        {numPages && numPages > 1 && (
-                          <div className="flex items-center justify-center gap-8 py-4 bg-slate-100 dark:bg-slate-900 border-t dark:border-slate-700">
-                            <button
-                              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                              disabled={currentPage <= 1}
-                              className="px-6 py-2.5 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950 dark:hover:bg-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-40 transition disabled:cursor-not-allowed font-medium"
-                            >
-                              Previous
-                            </button>
-                            
-                            <span className="font-medium text-slate-700 dark:text-slate-300">
-                              Page {currentPage} of {numPages}
-                            </span>
-                            
-                            <button
-                              onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
-                              disabled={currentPage >= numPages}
-                              className="px-6 py-2.5 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950 dark:hover:bg-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-40 transition disabled:cursor-not-allowed font-medium"
-                            >
-                              Next
-                            </button>
+                              {/* Overlay for right-click protection (non-blocking for normal interaction) */}
+                              <div 
+                                className="absolute inset-0 z-10"
+                                onContextMenu={(e) => e.preventDefault()}
+                                onDragStart={(e) => e.preventDefault()}
+                              />
+                            </div>
                           </div>
-                        )}
+
+                          {numPages && numPages > 1 && (
+                            <div className="flex items-center justify-center gap-8 py-4 bg-slate-100 dark:bg-slate-900 border-t dark:border-slate-700">
+                              <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage <= 1}
+                                className="px-6 py-2.5 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950 dark:hover:bg-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-40 transition disabled:cursor-not-allowed font-medium"
+                              >
+                                Previous
+                              </button>
+                              
+                              <span className="font-medium text-slate-700 dark:text-slate-300">
+                                Page {currentPage} of {numPages}
+                              </span>
+                              
+                              <button
+                                onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
+                                disabled={currentPage >= numPages}
+                                className="px-6 py-2.5 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950 dark:hover:bg-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-40 transition disabled:cursor-not-allowed font-medium"
+                              >
+                                Next
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Visual indication – non-interactive */}
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/65 text-white text-sm px-5 py-2.5 rounded-full z-20 backdrop-blur-sm pointer-events-none border border-white/20 shadow-lg">
+                        Preview Mode – Download Disabled
                       </div>
-                    )
+                    </div>
                   ) : null}
                 </div>
 

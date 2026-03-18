@@ -61,7 +61,7 @@ export const db       = getFirestore(app);
 export const storage  = getStorage(app);
 
 // Added: Cloud Functions service
-export const functions = getFunctions(app);
+export const functions = getFunctions(app, "europe-west1");  // ← use the real region here
 
 // ────────────────────────────────────────────────────────────────
 // Auth methods & providers
