@@ -1,7 +1,5 @@
-// Connect.jsx — FULL COMPLETE VERSION (one-sided messaging enabled)
-// March 2025 style — all tabs filled in, no placeholders
-// Updated: better error handling + debug hints for permission issues
-// Fixed: Accept request flow now handles notification deletion errors gracefully
+// Connect.jsx — FULL COMPLETE VERSION with fixed real-time chat
+// Fixed: Chat room creation and real-time messaging between connected users
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -51,6 +49,8 @@ function Connect() {
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 640);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatRooms, setChatRooms] = useState({});
 
   const messagesEndRef = useRef(null);
 
@@ -160,16 +160,73 @@ function Connect() {
     return () => unsubs.forEach(u => u());
   }, [currentUser?.id]);
 
+  // Initialize chat rooms for connections
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const initializeChatRooms = async () => {
+      for (const connectionId of connections) {
+        const chatId = [currentUser.id, connectionId].sort().join('_');
+        if (!chatRooms[chatId]) {
+          // Ensure chat room document exists
+          const chatRoomRef = doc(db, 'chats', chatId);
+          const chatRoomSnap = await getDoc(chatRoomRef);
+          
+          if (!chatRoomSnap.exists()) {
+            await setDoc(chatRoomRef, {
+              participants: [currentUser.id, connectionId],
+              createdAt: serverTimestamp(),
+              lastMessage: null,
+              lastMessageTime: null
+            });
+          }
+          
+          setChatRooms(prev => ({ ...prev, [chatId]: true }));
+        }
+      }
+    };
+
+    initializeChatRooms();
+  }, [currentUser?.id, connections]);
+
   // Chat listener + auto-scroll
   useEffect(() => {
     if (!currentUser?.id || !selectedChat) return;
 
     const chatId = [currentUser.id, selectedChat].sort().join('_');
-    const q = query(collection(db, `chats/${chatId}/messages`), orderBy('createdAt'));
+    
+    // First, ensure chat room exists
+    const setupChatRoom = async () => {
+      const chatRoomRef = doc(db, 'chats', chatId);
+      const chatRoomSnap = await getDoc(chatRoomRef);
+      
+      if (!chatRoomSnap.exists()) {
+        await setDoc(chatRoomRef, {
+          participants: [currentUser.id, selectedChat],
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastMessageTime: null
+        });
+      }
+    };
+    
+    setupChatRoom();
+
+    const q = query(collection(db, `chats/${chatId}/messages`), orderBy('createdAt', 'asc'));
 
     const unsubscribe = onSnapshot(q, snap => {
       const newMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setMessages(prev => ({ ...prev, [chatId]: newMsgs }));
+      
+      // Update last message in chat room
+      if (newMsgs.length > 0) {
+        const lastMsg = newMsgs[newMsgs.length - 1];
+        updateDoc(doc(db, 'chats', chatId), {
+          lastMessage: lastMsg.content,
+          lastMessageTime: lastMsg.createdAt,
+          lastMessageSender: lastMsg.sender
+        }).catch(err => console.warn('Could not update last message:', err));
+      }
     }, err => {
       console.error(`Chat listener failed for chat ${chatId}:`, err.code, err.message);
       toast.error(
@@ -404,7 +461,31 @@ function Connect() {
       });
       console.log(`[ACCEPT] Connection doc created for ${currentUser.id} → ${senderId}`);
 
-      // 2. Try to clean up notifications - handle permission errors gracefully
+      // 2. Create connection document for the other user (bidirectional)
+      await setDoc(doc(db, `users/${senderId}/connections`, currentUser.id), {
+        connectedAt: serverTimestamp(),
+        userId: currentUser.id,
+        status: 'accepted_by_them'
+      });
+      console.log(`[ACCEPT] Connection doc created for ${senderId} → ${currentUser.id}`);
+
+      // 3. Create chat room for both users
+      const chatId = [currentUser.id, senderId].sort().join('_');
+      const chatRoomRef = doc(db, 'chats', chatId);
+      const chatRoomSnap = await getDoc(chatRoomRef);
+      
+      if (!chatRoomSnap.exists()) {
+        await setDoc(chatRoomRef, {
+          participants: [currentUser.id, senderId],
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastMessageTime: null,
+          createdBy: currentUser.id
+        });
+        console.log(`[ACCEPT] Chat room created: ${chatId}`);
+      }
+
+      // 4. Try to clean up notifications - handle permission errors gracefully
       try {
         const notifQuery = query(
           collection(db, 'notifications'),
@@ -460,7 +541,7 @@ function Connect() {
         // Don't show error to user since main operation succeeded
       }
 
-      toast.success('Accepted! You can now chat.');
+      toast.success('Connected! You can now chat.');
       setSelectedChat(senderId);
       setActiveTab('messages');
     } catch (err) {
@@ -503,23 +584,51 @@ function Connect() {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedChat) return;
-
+    if (!newMessage.trim() || !selectedChat || isSendingMessage) return;
+    
+    setIsSendingMessage(true);
     const chatId = [currentUser.id, selectedChat].sort().join('_');
 
     try {
+      // Ensure chat room exists before sending message
+      const chatRoomRef = doc(db, 'chats', chatId);
+      const chatRoomSnap = await getDoc(chatRoomRef);
+      
+      if (!chatRoomSnap.exists()) {
+        await setDoc(chatRoomRef, {
+          participants: [currentUser.id, selectedChat],
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastMessageTime: null,
+          createdBy: currentUser.id
+        });
+      }
+      
+      // Send the message
       await addDoc(collection(db, `chats/${chatId}/messages`), {
         sender: currentUser.id,
         content: newMessage.trim(),
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        read: false
       });
+      
+      // Update last message in chat room
+      await updateDoc(chatRoomRef, {
+        lastMessage: newMessage.trim(),
+        lastMessageTime: serverTimestamp(),
+        lastMessageSender: currentUser.id
+      });
+      
       setNewMessage('');
     } catch (err) {
+      console.error("Send message error:", err);
       toast.error(
         err.code === 'permission-denied'
           ? "Cannot send — connection may be required or rules restrict this chat"
           : "Send failed"
       );
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -807,7 +916,7 @@ function Connect() {
                   <div className="md:col-span-4 lg:col-span-3 bg-white dark:bg-slate-800 rounded-2xl shadow p-5">
                     <h3 className="font-bold text-lg mb-4">Conversations</h3>
                     {connections.length === 0 ? (
-                      <div className="text-center py-12 text-slate-500">No connections yet</div>
+                      <div className="text-center py-12 text-slate-500">No connections yet. Connect with people to start chatting!</div>
                     ) : (
                       <div className="space-y-1">
                         {connections.map(id => {
@@ -819,15 +928,18 @@ function Connect() {
                             <button
                               key={id}
                               onClick={() => setSelectedChat(id)}
-                              className={`w-full p-3 rounded-xl flex items-center gap-3 ${selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all ${selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-4 border-indigo-600' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                             >
                               {u.photoURL ? <img src={u.photoURL} className="w-10 h-10 rounded-full" /> : <UserCircle size={40} className="text-slate-400" />}
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium truncate">{u.name}</div>
                                 <div className="text-xs text-slate-500 truncate">
-                                  {last ? (last.sender === currentUser.id ? 'You: ' : '') + last.content.slice(0, 30) + (last.content.length > 30 ? '...' : '') : 'No messages'}
+                                  {last ? (last.sender === currentUser.id ? 'You: ' : '') + last.content.slice(0, 30) + (last.content.length > 30 ? '...' : '') : 'Start a conversation'}
                                 </div>
                               </div>
+                              {last && !last.read && last.sender !== currentUser.id && (
+                                <div className="w-2 h-2 bg-indigo-600 rounded-full"></div>
+                              )}
                             </button>
                           );
                         })}
@@ -841,13 +953,13 @@ function Connect() {
                     {selectedChat ? (
                       <>
                         <div className="p-4 border-b flex items-center gap-3 bg-white/50 dark:bg-slate-900/50">
-                          {isNarrowScreen && <button onClick={() => setSelectedChat(null)}><ChevronLeft size={24} /></button>}
+                          {isNarrowScreen && <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronLeft size={24} /></button>}
                           {getUserById(selectedChat).photoURL ? <img src={getUserById(selectedChat).photoURL} className="w-10 h-10 rounded-full" /> : <UserCircle size={40} />}
-                          <div>
+                          <div className="flex-1">
                             <h3 className="font-bold truncate">{getUserById(selectedChat).name}</h3>
-                            {!connections.includes(selectedChat) && (
-                              <p className="text-xs text-amber-600 flex items-center gap-1">
-                                <AlertTriangle size={14} /> One-sided — they may not see messages
+                            {connections.includes(selectedChat) && (
+                              <p className="text-xs text-green-600 flex items-center gap-1">
+                                <UserCheck size={12} /> Connected
                               </p>
                             )}
                           </div>
@@ -858,20 +970,29 @@ function Connect() {
                             <div className="h-full flex flex-col items-center justify-center text-slate-500">
                               <MessageCircle size={48} className="mb-3 opacity-50" />
                               <p>No messages yet</p>
+                              <p className="text-sm">Start the conversation!</p>
                             </div>
                           ) : (
-                            messages[[currentUser.id, selectedChat].sort().join('_')].map((msg, i) => (
-                              <div key={msg.id || i} className={`flex ${msg.sender === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${
-                                  msg.sender === currentUser.id ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700'
-                                }`}>
-                                  {msg.content}
-                                  <div className="text-xs opacity-70 mt-1 text-right">
-                                    {formatMessageTime(msg.createdAt)}
+                            messages[[currentUser.id, selectedChat].sort().join('_')].map((msg, i) => {
+                              const isOwn = msg.sender === currentUser.id;
+                              return (
+                                <div key={msg.id || i} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-200`}>
+                                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${
+                                    isOwn ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700'
+                                  }`}>
+                                    {!isOwn && (
+                                      <div className="text-xs font-medium mb-1 text-indigo-600 dark:text-indigo-400">
+                                        {getUserById(selectedChat).name}
+                                      </div>
+                                    )}
+                                    {msg.content}
+                                    <div className={`text-xs mt-1 ${isOwn ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                      {formatMessageTime(msg.createdAt)}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))
+                              );
+                            })
                           )}
                           <div ref={messagesEndRef} />
                         </div>
@@ -880,18 +1001,25 @@ function Connect() {
                           <input
                             value={newMessage}
                             onChange={e => setNewMessage(e.target.value)}
-                            placeholder="Type a message..."
-                            className="flex-1 px-5 py-3 rounded-full bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+                            placeholder={connections.includes(selectedChat) ? "Type a message..." : "Connect first to send messages"}
+                            disabled={!connections.includes(selectedChat)}
+                            className="flex-1 px-5 py-3 rounded-full bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && connections.includes(selectedChat) && (e.preventDefault(), handleSendMessage())}
                           />
-                          <button onClick={handleSendMessage} disabled={!newMessage.trim()} className="p-3 bg-indigo-600 text-white rounded-full">
-                            <Send size={20} />
+                          <button 
+                            onClick={handleSendMessage} 
+                            disabled={!newMessage.trim() || !connections.includes(selectedChat) || isSendingMessage} 
+                            className="p-3 bg-indigo-600 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
+                          >
+                            {isSendingMessage ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                           </button>
                         </div>
                       </>
                     ) : (
-                      <div className="flex-1 flex items-center justify-center text-slate-500">
-                        Select someone to chat
+                      <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
+                        <MessageCircle size={64} className="mb-4 opacity-30" />
+                        <p className="text-lg">Select a conversation</p>
+                        <p className="text-sm">Choose someone from the list to start chatting</p>
                       </div>
                     )}
                   </div>
