@@ -1,5 +1,4 @@
-// AuthForm.jsx — Firebase version (fixed serverTimestamp import + navigation reliability)
-
+// components/Dashboard/AuthForm.jsx
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -10,7 +9,7 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-// Firebase imports - modular style
+// Firebase imports
 import { 
   auth, 
   db, 
@@ -19,10 +18,10 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   doc,
-  setDoc
+  setDoc,
+  getDoc,
+  serverTimestamp
 } from '../../firebase';
-
-import { serverTimestamp } from 'firebase/firestore';   // ← Correct modern import location
 
 function AuthForm({ initialMode = 'login', onClose }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
@@ -53,33 +52,27 @@ function AuthForm({ initialMode = 'login', onClose }) {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
+      console.log("Attempting Google sign in...");
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
-      console.log("[Google] Signed in user:", user.uid, user.email);
-
-      if (!auth.currentUser) {
-        throw new Error("No authenticated user found after Google sign-in");
-      }
+      console.log("[Google] Signed in:", user.uid);
 
       const profileRef = doc(db, 'profiles', user.uid);
+      const profileDoc = await getDoc(profileRef);
 
-      // Small delay to help with potential auth token settlement
-      await new Promise(r => setTimeout(r, 300));
-
-      console.log("[Google] Writing profile document for:", user.uid);
-
-      await setDoc(profileRef, {
-        name: user.displayName || 'User',
-        email: user.email,
-        role: 'student',
-        photoURL: user.photoURL || null,
-        createdAt: serverTimestamp(),
-        coins: 0,
-        diamonds: 0,
-      }, { merge: true });
-
-      console.log("[Google] Profile write appeared successful");
+      if (!profileDoc.exists()) {
+        await setDoc(profileRef, {
+          name: user.displayName || 'User',
+          email: user.email,
+          role: 'student',
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
+          coins: 0,
+          diamonds: 0,
+        });
+        console.log("[Google] Profile created");
+      }
 
       const basicProfile = {
         id: user.uid,
@@ -93,23 +86,20 @@ function AuthForm({ initialMode = 'login', onClose }) {
       localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
       toast.success('Welcome! Signed in with Google');
-
       onClose?.();
+      
       setTimeout(() => {
-        console.log('[Google] Navigating — UID:', auth.currentUser?.uid);
         navigate('/dashboard', { replace: true });
         window.dispatchEvent(new CustomEvent('userLoggedIn'));
-      }, 150);
+      }, 500);
 
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
-      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+      if (error.code === 'auth/network-request-failed') {
+        message = 'Network error. Please check your internet connection.';
+      } else if (error.code === 'auth/popup-closed-by-user') {
         message = 'Sign-in cancelled.';
-      } else if (error.code === 'auth/account-exists-with-different-credential') {
-        message = 'An account with this email already exists.';
-      } else if (error.code === 'permission-denied') {
-        message = 'Permission denied – most likely Firestore security rules issue on /profiles';
       }
       toast.error(message);
     } finally {
@@ -138,19 +128,16 @@ function AuthForm({ initialMode = 'login', onClose }) {
           throw new Error("Password must be at least 6 characters long");
         }
 
+        console.log("Attempting to create account...");
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        console.log("[Email Signup] Account created:", user.uid, user.email);
+        console.log("[Email Signup] Account created:", user.uid);
 
-        if (!auth.currentUser) {
-          throw new Error("No authenticated user after createUserWithEmailAndPassword");
-        }
-
+        // Create profile in 'profiles' collection
         const profileData = {
-          id: user.uid,
-          email: user.email,
           name: formData.name.trim() || 'User',
+          email: user.email,
           role: role,
           gender: gender?.value || null,
           phone: formData.phone.trim() || null,
@@ -177,71 +164,110 @@ function AuthForm({ initialMode = 'login', onClose }) {
         }
 
         const profileRef = doc(db, 'profiles', user.uid);
-
-        // Small delay after account creation
-        await new Promise(r => setTimeout(r, 300));
-
-        console.log("[Email Signup] Writing profile document for:", user.uid);
-
         await setDoc(profileRef, profileData);
 
-        console.log("[Email Signup] Profile write appeared successful");
+        console.log("[Email Signup] Profile created");
+
+        const basicProfile = {
+          id: user.uid,
+          email: user.email,
+          name: formData.name.trim() || 'User',
+          role: role,
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+        };
+        localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
         toast.success('Account created successfully! Welcome to WE CONNECT.');
       } else {
+        console.log("Attempting to sign in...");
         userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        
+        console.log("Signed in:", user.uid);
+        
+        // Fetch profile from Firestore
+        const profileRef = doc(db, 'profiles', user.uid);
+        const profileDoc = await getDoc(profileRef);
+        
+        if (profileDoc.exists()) {
+          const profileData = profileDoc.data();
+          const basicProfile = {
+            id: user.uid,
+            email: user.email,
+            name: profileData.name || user.displayName || 'User',
+            role: profileData.role || 'student',
+            photoURL: user.photoURL || profileData.photoURL,
+            coins: profileData.coins || 0,
+            diamonds: profileData.diamonds || 0,
+            school: profileData.school,
+            department: profileData.department,
+          };
+          localStorage.setItem('userProfile', JSON.stringify(basicProfile));
+        } else {
+          // Create profile if it doesn't exist
+          const defaultProfile = {
+            name: user.displayName || 'User',
+            email: user.email,
+            role: 'student',
+            createdAt: serverTimestamp(),
+            coins: 0,
+            diamonds: 0,
+            photoURL: user.photoURL || null,
+          };
+          await setDoc(profileRef, defaultProfile);
+          
+          localStorage.setItem('userProfile', JSON.stringify({
+            id: user.uid,
+            email: user.email,
+            name: defaultProfile.name,
+            role: defaultProfile.role,
+            coins: 0,
+            diamonds: 0,
+          }));
+        }
+        
         toast.success('Welcome back!');
       }
-
-      const user = userCredential.user;
-
-      const basicProfile = {
-        id: user.uid,
-        email: user.email,
-        name: formData.name.trim() || user.displayName || 'User',
-        role,
-        photoURL: user.photoURL || null,
-        coins: 0,
-        diamonds: 0,
-      };
-      localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
       onClose?.();
 
       setTimeout(() => {
-        console.log('[Email Auth] Navigating — UID:', auth.currentUser?.uid);
         navigate('/dashboard', { replace: true });
         window.dispatchEvent(new CustomEvent('userLoggedIn'));
-      }, 150);
+      }, 500);
 
     } catch (error) {
       console.error("[AUTH ERROR]", error);
       let message = 'An error occurred. Please try again.';
-      switch (error.code) {
-        case 'permission-denied':
-          message = 'Permission denied – check Firestore security rules for /profiles collection';
-          break;
-        case 'auth/email-already-in-use':
-          message = 'This email is already in use. Please sign in or use a different email.';
-          break;
-        case 'auth/invalid-email':
-          message = 'Please enter a valid email address.';
-          break;
-        case 'auth/weak-password':
-          message = 'Password should be at least 6 characters.';
-          break;
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-          message = 'Incorrect email or password.';
-          break;
-        case 'auth/too-many-requests':
-          message = 'Too many attempts. Please try again later.';
-          break;
-        case 'auth/operation-not-allowed':
-          message = 'This operation is not allowed at the moment.';
-          break;
-        default:
-          message = error.message || 'Network or server issue – please check your connection.';
+      
+      if (error.code === 'auth/network-request-failed') {
+        message = 'Network error. Please check your internet connection and try again.';
+      } else {
+        switch (error.code) {
+          case 'permission-denied':
+            message = 'Permission denied – check Firestore security rules';
+            break;
+          case 'auth/email-already-in-use':
+            message = 'This email is already in use. Please sign in or use a different email.';
+            break;
+          case 'auth/invalid-email':
+            message = 'Please enter a valid email address.';
+            break;
+          case 'auth/weak-password':
+            message = 'Password should be at least 6 characters.';
+            break;
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+            message = 'Incorrect email or password.';
+            break;
+          case 'auth/too-many-requests':
+            message = 'Too many attempts. Please try again later.';
+            break;
+          default:
+            message = error.message || 'Network or server issue – please check your connection.';
+        }
       }
       toast.error(message);
     } finally {

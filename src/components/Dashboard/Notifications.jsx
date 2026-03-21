@@ -1,9 +1,10 @@
-// Notification.jsx
+// components/Dashboard/Notifications.jsx
 import React, { useState, useEffect } from 'react';
-import { Bell, Heart, Download, MessageCircle, UserPlus, Users, X, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Heart, Download, MessageCircle, UserPlus, Users, X, Trash2, AlertTriangle, Loader2, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { toast } from 'react-hot-toast'; // or react-toastify
-import { db, auth } from '@/firebase';
+import { toast } from 'react-hot-toast';
+import { db, auth } from '../../firebase';
 import {
   collection,
   query,
@@ -14,7 +15,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 
-function Notification() {
+function Notifications() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [clearing, setClearing] = useState(false);
@@ -96,6 +98,21 @@ function Notification() {
     }
   };
 
+  const handleNotificationClick = async (notification) => {
+    await markAsRead(notification.id);
+    
+    // Navigate based on notification type
+    if (notification.type === 'new_material' && notification.materialId) {
+      navigate(`/materials/${notification.materialId}`);
+    } else if (notification.type === 'new_follower' && notification.userId) {
+      navigate(`/profile/${notification.userId}`);
+    } else if (notification.type === 'download' && notification.materialId) {
+      navigate(`/materials/${notification.materialId}`);
+    } else if (notification.type === 'favorite' && notification.materialId) {
+      navigate(`/materials/${notification.materialId}`);
+    }
+  };
+
   const getIcon = (type) => {
     switch (type) {
       case 'favorite':
@@ -110,6 +127,10 @@ function Notification() {
         return <UserPlus className="w-5 h-5 text-purple-600" />;
       case 'connection_accepted':
         return <Users className="w-5 h-5 text-emerald-600" />;
+      case 'new_follower':
+        return <UserPlus className="w-5 h-5 text-purple-600" />;
+      case 'new_material':
+        return <Upload className="w-5 h-5 text-indigo-600" />;
       default:
         return <Bell className="w-5 h-5 text-slate-500" />;
     }
@@ -184,11 +205,11 @@ function Notification() {
               No notifications yet
             </h3>
             <p className="mt-3 text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Your favorites, downloads and other activity will appear here.
+              Follow users to get notified when they upload new materials. Your activity will appear here.
             </p>
           </div>
         ) : (
-          <div className="grid gap-5 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 sm:gap-6 grid-cols-1">
             <AnimatePresence>
               {notifications.map((notif) => (
                 <motion.div
@@ -199,7 +220,7 @@ function Notification() {
                   className={`group bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200/70 dark:border-slate-700/60 overflow-hidden hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 cursor-pointer ${
                     !notif.read ? 'ring-2 ring-violet-500/40' : ''
                   }`}
-                  onClick={() => markAsRead(notif.id)}
+                  onClick={() => handleNotificationClick(notif)}
                 >
                   <div className="p-5 flex items-start gap-4">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center flex-shrink-0 ring-1 ring-slate-200 dark:ring-slate-700">
@@ -274,4 +295,4 @@ function Notification() {
   );
 }
 
-export default Notification;
+export default Notifications;

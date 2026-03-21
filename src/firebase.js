@@ -1,6 +1,4 @@
-// firebase.js (or firebaseConfig.js)
-// Updated to include Firebase Functions export
-
+// firebase.js
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
@@ -36,9 +34,7 @@ import {
   getDocs
 } from "firebase/firestore";
 
-// ────────────────────────────────────────────────────────────────
 // Firebase Configuration
-// ────────────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyBQlvzRyGTUS_2rh3dNbZ8BGy7E0tfODdI",
   authDomain: "we-connect-auth.firebaseapp.com",
@@ -53,19 +49,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 
-// ────────────────────────────────────────────────────────────────
 // Export core services
-// ────────────────────────────────────────────────────────────────
-export const auth     = getAuth(app);
-export const db       = getFirestore(app);
-export const storage  = getStorage(app);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+export const functions = getFunctions(app, "us-central1");
 
-// Added: Cloud Functions service
-export const functions = getFunctions(app, "europe-west1");  // ← use the real region here
-
-// ────────────────────────────────────────────────────────────────
 // Auth methods & providers
-// ────────────────────────────────────────────────────────────────
 export {
   GoogleAuthProvider,
   signInWithPopup,
@@ -75,9 +65,7 @@ export {
   signOut,
 };
 
-// ────────────────────────────────────────────────────────────────
-// Firestore helpers (most commonly used in your app)
-// ────────────────────────────────────────────────────────────────
+// Firestore helpers
 export {
   doc,
   setDoc,
@@ -94,21 +82,3 @@ export {
   runTransaction,
   getDocs,
 };
-
-// ────────────────────────────────────────────────────────────────
-// Emulator connections — COMMENTED OUT
-// (recommended to avoid assertion failures with onSnapshot + rapid writes)
-// ────────────────────────────────────────────────────────────────
-//
-// import { connectFirestoreEmulator } from "firebase/firestore";
-// import { connectAuthEmulator } from "firebase/auth";
-// import { connectStorageEmulator } from "firebase/storage";
-// import { connectFunctionsEmulator } from "firebase/functions";
-//
-// if (import.meta.env.DEV || import.meta.env.MODE === "development") {
-//   connectFirestoreEmulator(db, '127.0.0.1', 8080);
-//   connectAuthEmulator(auth, 'http://127.0.0.1:9099');
-//   connectStorageEmulator(storage, '127.0.0.1', 9199);
-//   connectFunctionsEmulator(functions, '127.0.0.1', 5001);
-//   console.log("Firebase emulators connected");
-// }

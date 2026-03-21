@@ -1,5 +1,5 @@
-// Connect.jsx — FULL COMPLETE VERSION with proper bidirectional connections
-// Fixed: Both users can see each other as connections and chat in real-time
+// Connect.jsx — FULL COMPLETE VERSION with proper positioning
+// Fixed: Component now flows naturally without overlaying other elements
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -150,7 +150,6 @@ function Connect() {
       snap => {
         const conns = snap.docs.map(doc => {
           const data = doc.data();
-          // Return the other user's ID
           return data.users.find(id => id !== currentUser.id);
         });
         setConnections(conns.filter(Boolean));
@@ -595,7 +594,7 @@ function Connect() {
   const getUserById = (id) => users.find(u => u.id === id) || { name: 'Unknown', photoURL: null };
 
   const BottomNav = () => (
-    <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 border-t z-50 md:hidden">
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 border-t z-40 md:hidden">
       <div className="flex justify-around py-2">
         {[
           { icon: Home, label: 'Feed', value: 'feed' },
@@ -623,12 +622,11 @@ function Connect() {
   if (!currentUser) return <div className="min-h-screen flex items-center justify-center">Please sign in</div>;
 
   return (
-    <div className="min-h-screen pb-20 md:pb-0 bg-gradient-to-br from-slate-50 to-violet-50/20 dark:from-slate-950 dark:to-slate-950">
-
+    <div className="w-full bg-gradient-to-br from-slate-50 to-violet-50/20 dark:from-slate-950 dark:to-slate-950">
       <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
-        {/* Desktop nav */}
-        <div className="hidden md:flex justify-center gap-3 mb-8 bg-white/90 dark:bg-slate-900/70 rounded-2xl p-2 shadow-lg sticky top-4 z-40">
+        {/* Desktop nav - removed sticky positioning */}
+        <div className="hidden md:flex justify-center gap-3 mb-8 bg-white/90 dark:bg-slate-900/70 rounded-2xl p-2 shadow-lg">
           {[
             { label: 'Feed', value: 'feed', icon: Home },
             { label: 'Network', value: 'network', icon: Users },
@@ -686,7 +684,7 @@ function Connect() {
                     <button
                       onClick={handleNewPost}
                       disabled={!newPost.trim() && !mediaFile}
-                      className="px-6 py-2 bg-indigo-600 text-white rounded-full disabled:opacity-50"
+                      className="px-6 py-2 bg-indigo-600 text-white rounded-full disabled:opacity-50 hover:bg-indigo-700 transition-colors"
                     >
                       Post
                     </button>
@@ -737,7 +735,7 @@ function Connect() {
                           className="flex-1 px-4 py-2 rounded-xl border bg-transparent focus:outline-none focus:border-indigo-500"
                           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleComment(post.id))}
                         />
-                        <button onClick={() => handleComment(post.id)} className="p-2 bg-indigo-600 text-white rounded-xl">
+                        <button onClick={() => handleComment(post.id)} className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
                           <Send size={20} />
                         </button>
                       </div>
@@ -909,10 +907,10 @@ function Connect() {
                             <button
                               key={id}
                               onClick={() => setSelectedChat(id)}
-                              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all ${selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-4 border-indigo-600' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-left ${selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-4 border-indigo-600' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                             >
                               {u.photoURL ? <img src={u.photoURL} className="w-10 h-10 rounded-full object-cover" /> : <UserCircle size={40} className="text-slate-400" />}
-                              <div className="flex-1 min-w-0 text-left">
+                              <div className="flex-1 min-w-0">
                                 <div className="font-medium truncate">{u.name}</div>
                                 <div className="text-xs text-slate-500 truncate">
                                   {last ? (last.sender === currentUser.id ? 'You: ' : '') + (last.content?.slice(0, 30) || '') + (last.content?.length > 30 ? '...' : '') : 'Start a conversation'}

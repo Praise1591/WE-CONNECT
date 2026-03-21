@@ -1,76 +1,173 @@
-// src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db } from '../firebase'; // ← your firebase.js file
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut 
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+// contexts/AuthContext.jsx
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import { auth, db } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext();
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Listen to auth state
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId;
+    
+    console.log("Setting up auth listener...");
+    
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-
+      console.log("Auth state changed:", firebaseUser?.uid || "No user");
+      
+      if (!isMounted) return;
+      
       if (firebaseUser) {
-        // Fetch or create profile
         try {
-          const profileRef = doc(db, 'users', firebaseUser.uid); // or 'profiles'
-          const profileSnap = await getDoc(profileRef);
-
-          if (profileSnap.exists()) {
-            setProfile(profileSnap.data());
-          } else {
-            // Auto-create minimal profile on first sign-in
-            const defaultProfile = {
-              uid: firebaseUser.uid,
+          // Try to get profile from 'profiles' collection
+          const profileRef = doc(db, 'profiles', firebaseUser.uid);
+          const profileDoc = await getDoc(profileRef);
+          
+          if (profileDoc.exists()) {
+            const profileData = profileDoc.data();
+            console.log("Profile found:", profileData);
+            setProfile({
+              id: firebaseUser.uid,
               email: firebaseUser.email,
-              displayName: firebaseUser.displayName || '',
-              photoURL: firebaseUser.photoURL || '',
-              createdAt: new Date().toISOString(),
-              // Add any other fields your app needs
+              name: profileData.name || firebaseUser.displayName || 'User',
+              role: profileData.role || 'student',
+              photoURL: firebaseUser.photoURL || profileData.photoURL || null,
+              coins: profileData.coins || 0,
+              diamonds: profileData.diamonds || 0,
+              school: profileData.school || '',
+              department: profileData.department || '',
+              specialization: profileData.specialization || '',
+              title: profileData.title || '',
+            });
+            
+            // Update localStorage for backup
+            localStorage.setItem('userProfile', JSON.stringify({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: profileData.name || firebaseUser.displayName || 'User',
+              role: profileData.role || 'student',
+              photoURL: firebaseUser.photoURL || profileData.photoURL,
+              coins: profileData.coins || 0,
+              diamonds: profileData.diamonds || 0,
+              school: profileData.school,
+              department: profileData.department,
+            }));
+          } else {
+            // Create default profile if it doesn't exist
+            console.log("Creating default profile for user:", firebaseUser.uid);
+            const defaultProfile = {
+              name: firebaseUser.displayName || 'User',
+              email: firebaseUser.email,
+              role: 'student',
+              photoURL: firebaseUser.photoURL || null,
+              createdAt: serverTimestamp(),
+              coins: 0,
+              diamonds: 0,
             };
+            
             await setDoc(profileRef, defaultProfile);
-            setProfile(defaultProfile);
+            
+            setProfile({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: defaultProfile.name,
+              role: defaultProfile.role,
+              photoURL: defaultProfile.photoURL,
+              coins: 0,
+              diamonds: 0,
+            });
+            
+            localStorage.setItem('userProfile', JSON.stringify({
+              id: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: defaultProfile.name,
+              role: defaultProfile.role,
+              photoURL: defaultProfile.photoURL,
+              coins: 0,
+              diamonds: 0,
+            }));
           }
+          setUser(firebaseUser);
+          setError(null);
         } catch (err) {
-          console.error("Profile init error:", err);
-          // You can show a toast here if desired
+          console.error("Error fetching profile:", err);
+          setError(err.message);
+          // Still set basic user info even if profile fetch fails
+          setUser(firebaseUser);
+          setProfile({
+            id: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || 'User',
+            role: 'student',
+            photoURL: firebaseUser.photoURL || null,
+            coins: 0,
+            diamonds: 0,
+          });
         }
       } else {
+        setUser(null);
         setProfile(null);
+        // Clear localStorage when logged out
+        localStorage.removeItem('userProfile');
       }
-
-      setLoading(false);
+      
+      if (isMounted) {
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error("Auth state error:", error);
+      setError(error.message);
+      if (isMounted) {
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    // Timeout fallback to prevent infinite loading
+    timeoutId = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn("Auth loading timeout - checking localStorage for cached user");
+        const cachedProfile = localStorage.getItem('userProfile');
+        if (cachedProfile) {
+          try {
+            const cached = JSON.parse(cachedProfile);
+            console.log("Using cached profile during timeout");
+            setProfile(cached);
+            setUser({ uid: cached.id, email: cached.email });
+            setLoading(false);
+          } catch (e) {
+            console.error("Error parsing cached profile:", e);
+            setLoading(false);
+          }
+        } else {
+          console.warn("No cached profile, setting loading to false");
+          setLoading(false);
+        }
+      }
+    }, 8000);
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const value = {
     user,
     profile,
     loading,
-    signInWithEmail: (email, password) => 
-      signInWithEmailAndPassword(auth, email, password),
-    signUpWithEmail: (email, password) => 
-      createUserWithEmailAndPassword(auth, email, password),
-    signInWithGoogle: () => {
-      const provider = new GoogleAuthProvider();
-      return signInWithPopup(auth, provider);
-    },
-    logout: () => signOut(auth),
+    error,
+    isAuthenticated: !!user,
   };
 
   return (
@@ -79,11 +176,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};

@@ -1,20 +1,13 @@
-// Material.jsx
-
-import React, { useState, useEffect, useMemo } from 'react';
+// Material.jsx - Updated with follow functionality
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 import Schools from './Schools';
 import {
   Download, Heart, FileText, Video, BookOpen, ScrollText,
-  PersonStanding, Loader2, Eye, X, Star
+  PersonStanding, Loader2, Eye, X, Star, Image as ImageIcon,
+  File, AlertCircle, Maximize2, FileArchive, UserPlus, UserCheck, Users
 } from 'lucide-react';
-
-// ── react-pdf imports ───────────────────────────────────────────────────────
-import { Document, Page, pdfjs } from 'react-pdf';
-
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
-
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 // ── Firebase ────────────────────────────────────────────────────────────────
 import { db, storage, auth } from '@/firebase';
@@ -32,6 +25,9 @@ import {
   getDocs,
   increment,
   addDoc,
+  writeBatch,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 
@@ -56,20 +52,26 @@ const recordTransaction = async (userId, type, amountNGN, description, status = 
 };
 
 function Material() {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({ category: [], school: [], department: [] });
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
   const [favoritedIds, setFavoritedIds] = useState(new Set());
+  const [followingStatus, setFollowingStatus] = useState({});
 
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [userProfiles, setUserProfiles] = useState({});
 
   // Preview & Reviews
   const [previewMaterial, setPreviewMaterial] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+  const [fileType, setFileType] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const pdfIframeRef = useRef(null);
 
   const [reviews, setReviews] = useState([]);
   const [userRating, setUserRating] = useState(0);
@@ -78,10 +80,6 @@ function Material() {
   const [averageRating, setAverageRating] = useState(0);
   const [reviewCount, setReviewCount] = useState(0);
   const [hoveredStar, setHoveredStar] = useState(0);
-
-  // PDF page navigation
-  const [numPages, setNumPages] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Confirmation modal for coin-spending downloads
   const [confirmDownload, setConfirmDownload] = useState(null);
@@ -119,7 +117,16 @@ function Material() {
   useEffect(() => {
     const q = query(collection(db, 'materials'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snap) => {
-      setMaterials(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const materialsData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMaterials(materialsData);
+      
+      // Load user profiles for all uploaders
+      materialsData.forEach(material => {
+        if (material.uid && !userProfiles[material.uid]) {
+          loadUserProfile(material.uid);
+        }
+      });
+      
       setLoading(false);
     }, (err) => {
       console.error(err);
@@ -128,6 +135,95 @@ function Material() {
     });
     return unsubscribe;
   }, []);
+
+  // Load user profiles and follow status
+  const loadUserProfile = async (userId) => {
+    try {
+      const profileRef = doc(db, 'profiles', userId);
+      const profileDoc = await getDoc(profileRef);
+      if (profileDoc.exists()) {
+        setUserProfiles(prev => ({ ...prev, [userId]: profileDoc.data() }));
+      }
+      
+      // Check follow status if current user exists
+      if (currentUser && userId !== currentUser.uid) {
+        const followRef = doc(db, 'users', currentUser.uid, 'following', userId);
+        const followDoc = await getDoc(followRef);
+        setFollowingStatus(prev => ({ ...prev, [userId]: followDoc.exists() }));
+      }
+    } catch (err) {
+      console.error("Error loading user profile:", err);
+    }
+  };
+
+  // Follow/Unfollow handler
+  const handleFollowUser = async (userId, userName) => {
+    if (!currentUser) {
+      toast.info("Please sign in to follow users");
+      return;
+    }
+    
+    if (userId === currentUser.uid) {
+      toast.error("You cannot follow yourself");
+      return;
+    }
+    
+    const isFollowing = followingStatus[userId];
+    
+    try {
+      const batch = writeBatch(db);
+      
+      if (!isFollowing) {
+        // Add to current user's following
+        const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
+        batch.set(followingRef, {
+          followedAt: serverTimestamp(),
+          userName: userName,
+          userPhoto: userProfiles[userId]?.photoURL || null
+        });
+        
+        // Add to target user's followers
+        const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
+        batch.set(followerRef, {
+          followedAt: serverTimestamp(),
+          userName: currentUser.displayName || 'Someone',
+          userPhoto: currentUser.photoURL || null
+        });
+        
+        // Create notification for the user being followed
+        const notificationRef = doc(collection(db, `users/${userId}/notifications`));
+        batch.set(notificationRef, {
+          type: 'new_follower',
+          message: `${currentUser.displayName || 'Someone'} started following you`,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || 'Someone',
+          read: false,
+          createdAt: new Date(),
+        });
+        
+        toast.success(`Now following ${userName}`);
+      } else {
+        // Remove from current user's following
+        const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
+        batch.delete(followingRef);
+        
+        // Remove from target user's followers
+        const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
+        batch.delete(followerRef);
+        
+        toast.success(`Unfollowed ${userName}`);
+      }
+      
+      await batch.commit();
+      setFollowingStatus(prev => ({ ...prev, [userId]: !isFollowing }));
+      
+      // Trigger notification update
+      window.dispatchEvent(new CustomEvent('notificationUpdate'));
+    } catch (err) {
+      console.error("Error following/unfollowing user:", err);
+      toast.error("Failed to update follow status");
+    }
+  };
 
   // Reviews listener
   useEffect(() => {
@@ -190,6 +286,7 @@ function Material() {
   };
 
   // ── Core Handlers ──────────────────────────────────────────────────────────
+  // (Keep all existing handlers - toggleFavorite, deductBuyerCoins, etc.)
 
   const toggleFavorite = async (material) => {
     if (!currentUser) return toast.info("Please sign in to save");
@@ -206,6 +303,8 @@ function Material() {
           course: material.course || '—',
           school: material.school || '—',
           category: material.category || 'Material',
+          uploaderId: material.uid,
+          uploaderName: userProfiles[material.uid]?.name || 'Uploader'
         });
         toast.success("Added to favorites ❤️");
         await createNotification(currentUser.uid, {
@@ -224,7 +323,6 @@ function Material() {
     }
   };
 
-  // Deduct coins from buyer + record transaction
   const deductBuyerCoins = async (material, priceInCoins) => {
     try {
       await runTransaction(db, async (t) => {
@@ -236,7 +334,6 @@ function Material() {
         t.update(buyerRef, { coins: coins - priceInCoins });
       });
 
-      // Optimistic UI update
       setProfile(p => ({ ...p, coins: Math.max(0, (p?.coins || 0) - priceInCoins) }));
 
       await recordTransaction(
@@ -248,7 +345,6 @@ function Material() {
         { materialId: material.id, coinsSpent: priceInCoins }
       );
 
-      // Record download history for buyer
       const dlRef = doc(db, `users/${currentUser.uid}/downloads`, material.id);
       await setDoc(dlRef, {
         downloadedAt: serverTimestamp(),
@@ -260,6 +356,8 @@ function Material() {
         coinsSpent: priceInCoins,
         amountNGN: priceInCoins * 100,
         isOwnerDownload: false,
+        uploaderId: material.uid,
+        uploaderName: userProfiles[material.uid]?.name || 'Uploader'
       }, { merge: true });
 
       await createNotification(currentUser.uid, {
@@ -282,17 +380,14 @@ function Material() {
     }
   };
 
-  // ────────────────────────────────────────────────────────────────
-  // FIXED: Now correctly awards diamonds to the UPLOADER's profile
-  // ────────────────────────────────────────────────────────────────
   const awardUploaderDiamondsAndUpdateStats = async (material, priceInCoins) => {
     const isOwner = currentUser?.uid === material.uid;
-    if (isOwner) return; // owners don't generate earnings
+    if (isOwner) return;
 
-    const diamondsAward = Math.floor(priceInCoins * 0.6); // 60%
+    const diamondsAward = Math.floor(priceInCoins * 0.6);
     if (diamondsAward <= 0) return;
 
-    const earningsNGN = diamondsAward * 60; // Consistent with wallet: ₦60 per diamond
+    const earningsNGN = diamondsAward * 60;
 
     try {
       await runTransaction(db, async (t) => {
@@ -311,7 +406,6 @@ function Material() {
           lastDownloadedAt: serverTimestamp(),
         });
 
-        // ─── Critical fix ───
         const ownerSnap = await t.get(ownerRef);
         if (ownerSnap.exists()) {
           const currentUserDiamonds = ownerSnap.data().diamonds || 0;
@@ -319,10 +413,8 @@ function Material() {
             diamonds: currentUserDiamonds + diamondsAward
           });
         }
-        // ─────────────────────
       });
 
-      // Record earning transaction for uploader
       await recordTransaction(
         material.uid,
         'earning',
@@ -339,7 +431,6 @@ function Material() {
       toast.success(`Uploader earned ${diamondsAward} diamonds (₦${earningsNGN.toLocaleString()})`);
     } catch (err) {
       console.error("Failed to award diamonds / update stats:", err);
-      // Don't show error to buyer — download already succeeded
     }
   };
 
@@ -353,12 +444,12 @@ function Material() {
     document.body.removeChild(a);
   };
 
-  const getFileUrl = async (material, isPreview = false) => {
+  const getFileUrl = async (material) => {
     if (!currentUser) return null;
 
     try {
-      let url = await getDownloadURL(ref(storage, material.file_path));
-      if (isPreview) url += '?alt=media';
+      const fileRef = ref(storage, material.file_path);
+      const url = await getDownloadURL(fileRef);
       return url;
     } catch (err) {
       console.error("Storage access error:", err);
@@ -371,7 +462,7 @@ function Material() {
 
     if (isOwner) {
       setDownloadingId(material.id);
-      getFileUrl(material, false).then(url => {
+      getFileUrl(material).then(url => {
         if (url) {
           const ext = material.file_path?.split('.').pop()?.toLowerCase() || 'pdf';
           const safeName = (material.title || `material-${material.id}`)
@@ -404,11 +495,9 @@ function Material() {
       return;
     }
 
-    // Award diamonds + update stats
     await awardUploaderDiamondsAndUpdateStats(material, priceInCoins);
 
-    // Finally give the file
-    const url = await getFileUrl(material, false);
+    const url = await getFileUrl(material);
     if (url) {
       const ext = material.file_path?.split('.').pop()?.toLowerCase() || 'pdf';
       const safeName = (material.title || `material-${material.id}`)
@@ -423,6 +512,15 @@ function Material() {
     setDownloadingId(null);
   };
 
+  const detectFileType = (filename) => {
+    const ext = filename?.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image';
+    if (['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
+    if (ext === 'pdf') return 'pdf';
+    if (['txt', 'md', 'json', 'xml', 'csv'].includes(ext)) return 'text';
+    return 'other';
+  };
+
   const openPreview = async (material) => {
     if (!currentUser) return toast.info("Sign in to preview");
     if (!material?.file_path) return toast.error("No file attached");
@@ -430,18 +528,24 @@ function Material() {
     setPreviewMaterial(material);
     setPreviewUrl(null);
     setPreviewError(null);
-    setNumPages(null);
-    setCurrentPage(1);
     setPreviewLoading(true);
+    
+    const type = detectFileType(material.file_path);
+    setFileType(type);
 
-    const url = await getFileUrl(material, true);
-    if (url) {
-      setPreviewUrl(url);
-    } else {
-      setPreviewError("Could not load preview — file may be missing or restricted");
+    try {
+      const url = await getFileUrl(material);
+      if (url) {
+        setPreviewUrl(url);
+      } else {
+        setPreviewError("Could not load preview — file may be missing or restricted");
+      }
+    } catch (err) {
+      console.error('Error in openPreview:', err);
+      setPreviewError(`Error loading preview: ${err.message}`);
+    } finally {
+      setPreviewLoading(false);
     }
-
-    setPreviewLoading(false);
   };
 
   const handleSubmitReview = async () => {
@@ -508,6 +612,113 @@ function Material() {
     return map[cat] ?? { icon: FileText, color: 'from-slate-500 to-slate-700' };
   };
 
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  const renderPreviewContent = () => {
+    if (previewLoading) {
+      return (
+        <div className="flex-1 flex items-center justify-center min-h-[500px]">
+          <Loader2 className="h-14 w-14 animate-spin text-violet-600" />
+        </div>
+      );
+    }
+
+    if (previewError) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+          <AlertCircle size={72} className="text-red-400 mb-6" />
+          <p className="text-xl font-medium text-slate-800 dark:text-slate-200">{previewError}</p>
+          <p className="mt-3 text-slate-500 dark:text-slate-400 mb-6">
+            The file may be missing or corrupted.
+          </p>
+          <button
+            onClick={() => openPreview(previewMaterial)}
+            className="px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl transition"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+
+    if (!previewUrl) return null;
+
+    switch (fileType) {
+      case 'video':
+        return (
+          <div className="relative flex-1">
+            <video
+              src={previewUrl}
+              controls
+              autoPlay
+              playsInline
+              className="w-full h-full max-h-[70vh] object-contain rounded-lg"
+              controlsList="nodownload"
+              onContextMenu={(e) => e.preventDefault()}
+            />
+          </div>
+        );
+
+      case 'image':
+        return (
+          <div className="relative flex-1 flex items-center justify-center">
+            <img
+              src={previewUrl}
+              alt="Preview"
+              className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
+              onContextMenu={(e) => e.preventDefault()}
+            />
+          </div>
+        );
+
+      case 'pdf':
+        return (
+          <div className="relative flex-1">
+            <iframe
+              ref={pdfIframeRef}
+              src={previewUrl}
+              className="w-full h-[70vh] rounded-lg border-0"
+              title="PDF Preview"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            />
+          </div>
+        );
+
+      case 'text':
+        return (
+          <div className="flex-1 flex flex-col">
+            <div className="bg-white dark:bg-slate-800 rounded-lg p-6 overflow-auto max-h-[70vh]">
+              <pre className="whitespace-pre-wrap font-mono text-sm text-slate-700 dark:text-slate-300">
+                Loading text content...
+              </pre>
+            </div>
+          </div>
+        );
+
+      default:
+        return (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <FileArchive size={72} className="text-slate-400 mb-6" />
+            <p className="text-xl font-medium text-slate-800 dark:text-slate-200">
+              Preview Not Available
+            </p>
+            <p className="mt-3 text-slate-500 dark:text-slate-400">
+              This file type cannot be previewed. Please download to view.
+            </p>
+            <button
+              onClick={() => handleDownload(previewMaterial)}
+              className="mt-6 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl transition flex items-center gap-2"
+            >
+              <Download size={18} />
+              Download to View
+            </button>
+          </div>
+        );
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-950 dark:to-indigo-950">
@@ -568,6 +779,8 @@ function Material() {
               const priceInCoins = getMaterialPriceInCoins(material.category);
               const isOwner = currentUser?.uid === material.uid;
               const canAfford = isOwner || (profile?.coins ?? 0) >= priceInCoins;
+              const uploaderProfile = userProfiles[material.uid];
+              const isFollowingUploader = followingStatus[material.uid];
 
               return (
                 <div
@@ -575,6 +788,45 @@ function Material() {
                   className="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full relative"
                 >
                   <div className="p-7 flex-1 flex flex-col">
+                    {/* Uploader Info with Follow Button */}
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        onClick={() => navigate(`/profile/${material.uid}`)}
+                        className="flex items-center gap-2 hover:opacity-80 transition group"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
+                          {uploaderProfile?.name?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 transition">
+                          {uploaderProfile?.name || 'Uploader'}
+                        </span>
+                      </button>
+                      
+                      {currentUser && !isOwner && (
+                        <button
+                          onClick={() => handleFollowUser(material.uid, uploaderProfile?.name || 'User')}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                            isFollowingUploader
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200'
+                              : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200'
+                          }`}
+                        >
+                          {isFollowingUploader ? (
+                            <>
+                              <UserCheck size={12} />
+                              <span>Following</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus size={12} />
+                              <span>Follow</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Material Info */}
                     <div className="flex items-start gap-4 mb-6">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center ring-1 ring-slate-200 dark:ring-slate-700">
                         <PersonStanding size={24} className="text-slate-500 dark:text-slate-400" />
@@ -640,6 +892,7 @@ function Material() {
           </div>
         )}
 
+        {/* Rest of the modals remain the same */}
         {/* Confirmation Modal for Paid Download */}
         {confirmDownload && (
           <div 
@@ -681,10 +934,10 @@ function Material() {
           </div>
         )}
 
-        {/* Preview Modal */}
+        {/* Preview Modal - Keep existing */}
         {previewMaterial && (
-          <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden max-h-[96vh] flex flex-col">
+          <div className={`fixed inset-0 z-[999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 transition-all ${isFullscreen ? 'p-0' : ''}`}>
+            <div className={`bg-white dark:bg-slate-900 w-full rounded-3xl shadow-2xl overflow-hidden flex flex-col ${isFullscreen ? 'h-screen w-screen rounded-none' : 'max-w-6xl max-h-[96vh]'}`}>
               
               {/* Header */}
               <div className="px-8 py-6 border-b dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900">
@@ -694,235 +947,145 @@ function Material() {
                   </h2>
                   <p className="text-sm text-slate-500 mt-1">{previewMaterial.course} • {previewMaterial.school}</p>
                 </div>
-                <button
-                  onClick={() => { 
-                    setPreviewMaterial(null); 
-                    setPreviewUrl(null); 
-                    setNumPages(null);
-                    setCurrentPage(1);
-                  }}
-                  className="p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <X size={26} />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={toggleFullscreen}
+                    className="p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  >
+                    <Maximize2 size={20} />
+                  </button>
+                  <button
+                    onClick={() => { 
+                      setPreviewMaterial(null); 
+                      setPreviewUrl(null);
+                      setFileType(null);
+                    }}
+                    className="p-3 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X size={26} />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col lg:flex-row gap-8 md:gap-10">
+              <div className={`flex-1 overflow-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col lg:flex-row gap-8 md:gap-10 ${isFullscreen ? 'p-4' : ''}`}>
                 
                 {/* Preview Area */}
-                <div className="flex-1 flex flex-col relative">
-                  {previewLoading ? (
-                    <div className="flex-1 flex items-center justify-center rounded-3xl bg-white dark:bg-slate-800 min-h-[400px]">
-                      <Loader2 className="h-14 w-14 animate-spin text-violet-600" />
-                    </div>
-                  ) : previewError ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center rounded-3xl bg-white dark:bg-slate-800 min-h-[400px] p-8">
-                      <Eye size={72} className="text-slate-300 mb-6" />
-                      <p className="text-xl font-medium text-slate-800 dark:text-slate-200">{previewError}</p>
-                      <p className="mt-3 text-slate-500 dark:text-slate-400">
-                        The file may be missing, corrupted, or restricted.
-                      </p>
-                    </div>
-                  ) : previewUrl ? (
-                    <div className="relative rounded-3xl overflow-hidden shadow-2xl flex flex-col h-full bg-black/5 dark:bg-black/20">
-                      {previewMaterial.category?.toLowerCase().includes('video') ? (
-                        <>
-                          <video
-                            src={previewUrl}
-                            controls
-                            autoPlay
-                            muted
-                            playsInline
-                            className="w-full max-h-[65vh] object-contain"
-                            onContextMenu={(e) => e.preventDefault()}
-                            onDragStart={(e) => e.preventDefault()}
-                            onError={() => setPreviewError("Failed to load video — file may be unavailable")}
-                          />
-                          <div 
-                            className="absolute inset-0 z-10"
-                            onContextMenu={(e) => e.preventDefault()}
-                            onDragStart={(e) => e.preventDefault()}
-                          />
-                        </>
-                      ) : (
-                        <div className="flex flex-col h-full">
-                          <div className="flex-1 overflow-auto p-4 flex items-start justify-center bg-slate-50 dark:bg-slate-950">
-                            <div className="relative">
-                              <Document
-                                file={previewUrl}
-                                onLoadSuccess={({ numPages }) => {
-                                  setNumPages(numPages);
-                                  setCurrentPage(1);
-                                }}
-                                onLoadError={(err) => {
-                                  console.error("PDF load error:", err);
-                                  setPreviewError("Could not load PDF preview");
-                                }}
-                                loading={
-                                  <div className="flex-1 flex items-center justify-center min-h-[400px]">
-                                    <Loader2 className="h-12 w-12 animate-spin text-violet-600" />
-                                  </div>
-                                }
-                                error={
-                                  <div className="flex-1 flex items-center justify-center min-h-[400px] text-red-600">
-                                    Failed to load document
-                                  </div>
-                                }
-                              >
-                                <Page
-                                  pageNumber={currentPage}
-                                  width={Math.min(780, window.innerWidth - 140)}
-                                  renderAnnotationLayer={false}
-                                  renderTextLayer={true}
-                                  className="shadow-lg mx-auto"
-                                  onContextMenu={(e) => e.preventDefault()}
-                                />
-                              </Document>
-
-                              <div 
-                                className="absolute inset-0 z-10"
-                                onContextMenu={(e) => e.preventDefault()}
-                                onDragStart={(e) => e.preventDefault()}
-                              />
-                            </div>
-                          </div>
-
-                          {numPages && numPages > 1 && (
-                            <div className="flex items-center justify-center gap-8 py-4 bg-slate-100 dark:bg-slate-900 border-t dark:border-slate-700">
-                              <button
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                disabled={currentPage <= 1}
-                                className="px-6 py-2.5 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950 dark:hover:bg-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-40 transition disabled:cursor-not-allowed font-medium"
-                              >
-                                Previous
-                              </button>
-                              
-                              <span className="font-medium text-slate-700 dark:text-slate-300">
-                                Page {currentPage} of {numPages}
-                              </span>
-                              
-                              <button
-                                onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))}
-                                disabled={currentPage >= numPages}
-                                className="px-6 py-2.5 rounded-xl bg-violet-100 hover:bg-violet-200 dark:bg-violet-950 dark:hover:bg-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-40 transition disabled:cursor-not-allowed font-medium"
-                              >
-                                Next
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/65 text-white text-sm px-5 py-2.5 rounded-full z-20 backdrop-blur-sm pointer-events-none border border-white/20 shadow-lg">
-                        Preview Mode – Full Download Requires Coins
-                      </div>
-                    </div>
-                  ) : null}
+                <div className={`${isFullscreen ? 'flex-1' : 'flex-1'} flex flex-col relative`}>
+                  {renderPreviewContent()}
+                  
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/65 text-white text-sm px-5 py-2.5 rounded-full z-20 backdrop-blur-sm pointer-events-none border border-white/20 shadow-lg whitespace-nowrap">
+                    Preview Mode – Full Download Requires Coins
+                  </div>
                 </div>
 
-                {/* Rating & Reviews */}
-                <div className="lg:w-5/12 flex flex-col">
-                  <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow border border-slate-100 dark:border-slate-700">
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-2xl font-semibold">Rate this material</h3>
-                      {reviewCount > 0 && (
-                        <div className="flex items-center gap-2 text-3xl font-bold text-amber-500">
-                          ★ {averageRating}
-                          <span className="text-base font-normal text-slate-400">/ 5</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-center gap-3 mb-8" onMouseLeave={() => setHoveredStar(0)}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          type="button"
-                          onClick={() => setUserRating(star)}
-                          onMouseEnter={() => setHoveredStar(star)}
-                          className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
-                        >
-                          <Star
-                            size={52}
-                            className={`transition-all duration-200 ${
-                              star <= (hoveredStar || userRating)
-                                ? "text-amber-500 fill-amber-500 drop-shadow"
-                                : "text-slate-200 dark:text-slate-700"
-                            }`}
-                          />
-                        </button>
-                      ))}
-                    </div>
-
-                    <textarea
-                      value={userComment}
-                      onChange={(e) => setUserComment(e.target.value)}
-                      placeholder="Share your honest feedback... (optional)"
-                      className="w-full h-32 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-transparent resize-y focus:outline-none focus:border-violet-500 text-base"
-                    />
-
-                    <button
-                      onClick={handleSubmitReview}
-                      disabled={submittingReview || userRating === 0}
-                      className="mt-6 w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg disabled:opacity-50 flex items-center justify-center gap-3 transition-all"
-                    >
-                      {submittingReview && <Loader2 className="animate-spin h-5 w-5" />}
-                      Submit Review
-                    </button>
-                  </div>
-
-                  <div className="mt-8 flex-1">
-                    <h4 className="font-semibold text-lg mb-5 flex items-center gap-3">
-                      Community Reviews <span className="text-xs bg-slate-200 dark:bg-slate-700 px-3 py-1 rounded-full">({reviewCount})</span>
-                    </h4>
-
-                    {reviews.length > 0 ? (
-                      <div className="space-y-7 overflow-y-auto max-h-[420px] pr-2 custom-scroll">
-                        {reviews.map((review) => (
-                          <div key={review.id} className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-100 dark:border-slate-700">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 font-bold flex items-center justify-center rounded-full">
-                                {review.userName?.charAt(0).toUpperCase()}
-                              </div>
-                              <div className="flex-1">
-                                <p className="font-medium">{review.userName}</p>
-                                <div className="flex gap-0.5 mt-1">
-                                  {[1,2,3,4,5].map((n) => (
-                                    <Star
-                                      key={n}
-                                      size={16}
-                                      className={n <= review.rating ? "text-amber-500 fill-amber-500" : "text-slate-200 dark:text-slate-700"}
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                              <span className="text-xs text-slate-500 whitespace-nowrap">
-                                {review.createdAt?.toDate?.()?.toLocaleDateString() || '—'}
-                              </span>
-                            </div>
-                            {review.comment && (
-                              <p className="mt-5 text-slate-700 dark:text-slate-300 leading-relaxed text-[15px]">
-                                {review.comment}
-                              </p>
-                            )}
+                {/* Rating & Reviews - Only show if not fullscreen */}
+                {!isFullscreen && (
+                  <div className="lg:w-5/12 flex flex-col">
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow border border-slate-100 dark:border-slate-700">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-semibold">Rate this material</h3>
+                        {reviewCount > 0 && (
+                          <div className="flex items-center gap-2 text-3xl font-bold text-amber-500">
+                            ★ {averageRating}
+                            <span className="text-base font-normal text-slate-400">/ 5</span>
                           </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-center gap-3 mb-8" onMouseLeave={() => setHoveredStar(0)}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setUserRating(star)}
+                            onMouseEnter={() => setHoveredStar(star)}
+                            className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                          >
+                            <Star
+                              size={52}
+                              className={`transition-all duration-200 ${
+                                star <= (hoveredStar || userRating)
+                                  ? "text-amber-500 fill-amber-500 drop-shadow"
+                                  : "text-slate-200 dark:text-slate-700"
+                              }`}
+                            />
+                          </button>
                         ))}
                       </div>
-                    ) : (
-                      <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center border border-slate-100 dark:border-slate-700">
-                        <p className="text-slate-500">No reviews yet. Be the first to rate!</p>
-                      </div>
-                    )}
+
+                      <textarea
+                        value={userComment}
+                        onChange={(e) => setUserComment(e.target.value)}
+                        placeholder="Share your honest feedback... (optional)"
+                        className="w-full h-32 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-transparent resize-y focus:outline-none focus:border-violet-500 text-base"
+                      />
+
+                      <button
+                        onClick={handleSubmitReview}
+                        disabled={submittingReview || userRating === 0}
+                        className="mt-6 w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg disabled:opacity-50 flex items-center justify-center gap-3 transition-all"
+                      >
+                        {submittingReview && <Loader2 className="animate-spin h-5 w-5" />}
+                        Submit Review
+                      </button>
+                    </div>
+
+                    <div className="mt-8 flex-1">
+                      <h4 className="font-semibold text-lg mb-5 flex items-center gap-3">
+                        Community Reviews <span className="text-xs bg-slate-200 dark:bg-slate-700 px-3 py-1 rounded-full">({reviewCount})</span>
+                      </h4>
+
+                      {reviews.length > 0 ? (
+                        <div className="space-y-7 overflow-y-auto max-h-[420px] pr-2 custom-scroll">
+                          {reviews.map((review) => (
+                            <div key={review.id} className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-100 dark:border-slate-700">
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 font-bold flex items-center justify-center rounded-full">
+                                  {review.userName?.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-medium">{review.userName}</p>
+                                  <div className="flex gap-0.5 mt-1">
+                                    {[1,2,3,4,5].map((n) => (
+                                      <Star
+                                        key={n}
+                                        size={16}
+                                        className={n <= review.rating ? "text-amber-500 fill-amber-500" : "text-slate-200 dark:text-slate-700"}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <span className="text-xs text-slate-500 whitespace-nowrap">
+                                  {review.createdAt?.toDate?.()?.toLocaleDateString() || '—'}
+                                </span>
+                              </div>
+                              {review.comment && (
+                                <p className="mt-5 text-slate-700 dark:text-slate-300 leading-relaxed text-[15px]">
+                                  {review.comment}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center border border-slate-100 dark:border-slate-700">
+                          <p className="text-slate-500">No reviews yet. Be the first to rate!</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Bottom Bar */}
-              <div className="px-8 py-5 bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-700 text-center text-sm text-slate-500 flex items-center justify-center gap-3">
-                Preview is free • Full version costs {getMaterialPriceInCoins(previewMaterial.category)} coin
-                {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} 
-                {previewMaterial.uid === currentUser?.uid && " (Free for owner)"}
-              </div>
+              {!isFullscreen && (
+                <div className="px-8 py-5 bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-700 text-center text-sm text-slate-500 flex items-center justify-center gap-3">
+                  Preview is free • Full version costs {getMaterialPriceInCoins(previewMaterial.category)} coin
+                  {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} 
+                  {previewMaterial.uid === currentUser?.uid && " (Free for owner)"}
+                </div>
+              )}
             </div>
           </div>
         )}
