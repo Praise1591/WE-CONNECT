@@ -54,6 +54,7 @@
     "three": "^0.182.0",
     "tsparticles": "^3.9.1",
     "tus-js-client": "^4.3.1",
+    "uuid": "^13.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

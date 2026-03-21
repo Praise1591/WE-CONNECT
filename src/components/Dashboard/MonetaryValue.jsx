@@ -1,4 +1,4 @@
-// MonetaryValue.jsx — Complete version with Buy Coins (Paystack) restored + nice withdrawal UI
+// MonetaryValue.jsx
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -31,7 +31,8 @@ function MonetaryValue() {
   const [loadingError, setLoadingError] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Nigerian Banks
+  const VALUE_PER_DIAMOND = 60;
+
   const nigerianBanks = [
     { name: 'Access Bank', color: '#0066CC' },
     { name: 'GTBank', color: '#00A651' },
@@ -43,7 +44,6 @@ function MonetaryValue() {
     { name: 'Union Bank', color: '#004B8D' },
   ];
 
-  // Popular Nigerian Fintech / Mobile Money
   const fintechOptions = [
     { name: 'OPay', color: '#FF6600' },
     { name: 'PalmPay', color: '#00C853' },
@@ -99,7 +99,6 @@ function MonetaryValue() {
           id: user.uid,
         });
 
-        // Load recent transactions
         const txRef = collection(db, 'users', user.uid, 'transactions');
         const txQuery = query(txRef, orderBy('timestamp', 'desc'), limit(50));
         const txSnap = await getDocs(txQuery);
@@ -123,13 +122,12 @@ function MonetaryValue() {
     return () => unsubscribe();
   }, []);
 
-  const coinPresets = [10, 50, 100, 200];
-  const pricePerCoin = 100; // ₦100 per coin
+  const coinPresets = [10, 50, 100, 200, 500];
+  const pricePerCoin = 100;
   const totalBuyAmount = Number(coinsToBuy) * pricePerCoin || 0;
 
-  const diamondPresets = [10, 20, 50, 100];
-  const valuePerDiamond = 100; // ₦100 per diamond
-  const totalWithdrawAmount = Number(diamondsToWithdraw) * valuePerDiamond || 0;
+  const diamondPresets = [10, 20, 50, 100, 200];
+  const totalWithdrawAmount = Number(diamondsToWithdraw) * VALUE_PER_DIAMOND || 0;
 
   const withdrawMethods = [
     { value: 'bank', label: 'Bank Transfer', icon: Banknote },
@@ -138,25 +136,6 @@ function MonetaryValue() {
 
   const handleInputChange = (e) => {
     setWithdrawDetails(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const addTransaction = async (type, amount, description, status = 'completed', extraData = {}) => {
-    if (!currentUser) return false;
-    try {
-      const txRef = collection(db, 'users', currentUser.uid, 'transactions');
-      await addDoc(txRef, {
-        type,
-        amount,
-        description,
-        status,
-        timestamp: serverTimestamp(),
-        ...extraData,
-      });
-      return true;
-    } catch (err) {
-      console.error('Transaction save failed:', err);
-      return false;
-    }
   };
 
   const handleBuyCoins = async () => {
@@ -170,9 +149,9 @@ function MonetaryValue() {
     script.src = 'https://js.paystack.co/v2/inline.js';
     script.onload = () => {
       const handler = window.PaystackPop.setup({
-        key: 'pk_test_480d88a5cbfa09b6864e9796af08dd241de9d1a6', // ← your test key
+        key: 'pk_test_480d88a5cbfa09b6864e9796af08dd241de9d1a6',
         email: currentUser.email || 'test@example.com',
-        amount: totalBuyAmount * 100, // kobo
+        amount: totalBuyAmount * 100,
         currency: 'NGN',
         ref: 'WC_TEST_' + Math.floor(Math.random() * 1000000000 + 1).toString(),
         metadata: { coins: amount },
@@ -186,7 +165,14 @@ function MonetaryValue() {
               t.update(userRef, { coins: newCoins });
             });
 
-            await addTransaction('purchase', totalBuyAmount, `Bought ${amount} coins via Paystack`);
+            await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
+              type: 'purchase',
+              amountNGN: totalBuyAmount,
+              description: `Bought ${amount} coins via Paystack`,
+              status: 'completed',
+              timestamp: serverTimestamp(),
+            });
+
             toast.success(`Success! ${amount} coins added`);
             setProfile(prev => ({ ...prev, coins: (prev?.coins || 0) + amount }));
           } catch (err) {
@@ -210,7 +196,7 @@ function MonetaryValue() {
   const handleWithdraw = async () => {
     if (!currentUser) return toast.error('Please log in first');
     const amount = Number(diamondsToWithdraw);
-    if (isNaN(amount) || amount < 10) return toast.error('Minimum withdrawal is 10 diamonds (₦1,000)');
+    if (isNaN(amount) || amount < 10) return toast.error(`Minimum withdrawal is 10 diamonds (₦${(10 * VALUE_PER_DIAMOND).toLocaleString()})`);
     if ((profile?.diamonds || 0) < amount) return toast.error('Not enough diamonds');
 
     if (withdrawMethod === 'bank') {
@@ -245,40 +231,35 @@ function MonetaryValue() {
         ? withdrawDetails.bankName 
         : `${withdrawDetails.fintechName} Wallet`;
 
-      const success = await addTransaction(
-        'withdrawal',
-        totalWithdrawAmount,
-        `Withdraw ₦${totalWithdrawAmount.toLocaleString()} (${amount} diamonds) via ${methodLabel}`,
-        'pending',
-        {
-          diamondsUsed: amount,
-          method: withdrawMethod,
-          bankDetails: withdrawMethod === 'bank' ? {
-            bankName: withdrawDetails.bankName.trim(),
-            accountNumber: withdrawDetails.accountNumber.trim(),
-            accountName: withdrawDetails.accountName.trim(),
-          } : null,
-          mobileDetails: withdrawMethod === 'mobile' ? {
-            fintech: withdrawDetails.fintechName,
-            number: withdrawDetails.mobileNumber.trim(),
-          } : null,
-          userEmail: currentUser.email || null,
-        }
-      );
+      await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
+        type: 'withdrawal',
+        amountNGN: totalWithdrawAmount,
+        description: `Withdrawal request: ₦${totalWithdrawAmount.toLocaleString()} (${amount} diamonds) via ${methodLabel}`,
+        status: 'pending',
+        timestamp: serverTimestamp(),
+        diamondsUsed: amount,
+        method: withdrawMethod,
+        bankDetails: withdrawMethod === 'bank' ? {
+          bankName: withdrawDetails.bankName.trim(),
+          accountNumber: withdrawDetails.accountNumber.trim(),
+          accountName: withdrawDetails.accountName.trim(),
+        } : null,
+        mobileDetails: withdrawMethod === 'mobile' ? {
+          fintech: withdrawDetails.fintechName,
+          number: withdrawDetails.mobileNumber.trim(),
+        } : null,
+        userEmail: currentUser.email || null,
+      });
 
-      if (success) {
-        toast.success(`Withdrawal request of ₦${totalWithdrawAmount.toLocaleString()} submitted! Processing usually takes 5–60 minutes.`);
-        setDiamondsToWithdraw('');
-        setWithdrawDetails({
-          bankName: '',
-          accountNumber: '',
-          accountName: '',
-          mobileNumber: '',
-          fintechName: '',
-        });
-      } else {
-        throw new Error("Failed to save withdrawal request");
-      }
+      toast.success(`Withdrawal request of ₦${totalWithdrawAmount.toLocaleString()} submitted! Processing usually takes 5–60 minutes.`);
+      setDiamondsToWithdraw('');
+      setWithdrawDetails({
+        bankName: '',
+        accountNumber: '',
+        accountName: '',
+        mobileNumber: '',
+        fintechName: '',
+      });
     } catch (err) {
       console.error('Withdraw failed:', err);
       toast.error('Failed to process withdrawal request. Please try again.');
@@ -329,27 +310,37 @@ function MonetaryValue() {
               Wallet
             </h1>
           </div>
-          <p className="text-lg text-slate-600 dark:text-slate-400">Manage your Coins & Diamonds</p>
+          <p className="text-lg text-slate-600 dark:text-slate-400">Current balance & withdrawal options</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* Left + Center: Balances + Actions */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Balance Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="bg-white/80 dark:bg-slate-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/50 p-8 text-center hover:shadow-2xl transition-all">
                 <Coins className="w-12 h-12 text-amber-500 mx-auto mb-4" />
                 <p className="text-lg text-slate-600 dark:text-slate-400 font-medium">Coins</p>
-                <p className="text-5xl font-extrabold text-slate-900 dark:text-white mt-2">{profile.coins ?? 0}</p>
+                <p className="text-5xl font-extrabold text-slate-900 dark:text-white mt-2">
+                  {(profile?.coins ?? 0).toLocaleString()}
+                </p>
               </div>
-              <div className="bg-white/80 dark:bg-slate-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/50 p-8 text-center hover:shadow-2xl transition-all">
-                <Gem className="w-12 h-12 text-purple-500 mx-auto mb-4" />
-                <p className="text-lg text-slate-600 dark:text-slate-400 font-medium">Diamonds</p>
-                <p className="text-5xl font-extrabold text-slate-900 dark:text-white mt-2">{profile.diamonds ?? 0}</p>
+
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100/80 dark:from-purple-950/60 dark:to-purple-900/50 backdrop-blur-lg rounded-3xl shadow-2xl border border-purple-200/50 dark:border-purple-700/40 p-8 text-center hover:shadow-3xl transition-all relative overflow-hidden">
+                <div className="absolute -top-10 -right-10 opacity-20">
+                  <Gem className="w-40 h-40 text-purple-300" />
+                </div>
+                <Gem className="w-16 h-16 text-purple-700 dark:text-purple-400 mx-auto mb-5 animate-pulse-slow" />
+                <p className="text-2xl font-bold text-purple-800 dark:text-purple-300 mb-2 flex items-center justify-center gap-2">
+                  Diamonds
+                </p>
+                <p className="text-6xl sm:text-7xl font-black text-purple-800 dark:text-purple-300 tracking-tight drop-shadow-md">
+                  {(profile?.diamonds ?? 0).toLocaleString()}
+                </p>
+                <p className="text-xl font-semibold text-purple-700 dark:text-purple-400 mt-4">
+                  Withdrawable now: ₦{((profile?.diamonds ?? 0) * VALUE_PER_DIAMOND).toLocaleString()}
+                </p>
               </div>
             </div>
 
-            {/* Buy Coins */}
             <div className="bg-white/85 dark:bg-slate-800/75 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-10">
               <div className="flex items-center gap-4 mb-6">
                 <ArrowUpFromLine className="w-8 h-8 text-amber-600 dark:text-amber-400" />
@@ -357,7 +348,7 @@ function MonetaryValue() {
               </div>
               <p className="text-slate-600 dark:text-slate-400 mb-6">₦100 = 1 Coin • Instant addition after payment</p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
                 {coinPresets.map(amount => (
                   <button
                     key={amount}
@@ -395,18 +386,16 @@ function MonetaryValue() {
               </button>
             </div>
 
-            {/* Withdraw Diamonds - with bank/fintech selection */}
             <div className="bg-white/85 dark:bg-slate-800/75 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-10">
               <div className="flex items-center gap-4 mb-6">
                 <ArrowDownToLine className="w-8 h-8 text-purple-600 dark:text-purple-400" />
                 <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Withdraw Diamonds</h2>
               </div>
               <p className="text-slate-600 dark:text-slate-400 mb-6">
-                ₦100 = 1 Diamond • Minimum 10 diamonds • Processing: 5–60 mins
+                ₦{VALUE_PER_DIAMOND.toLocaleString()} = 1 Diamond • Minimum 10 diamonds (₦{(10 * VALUE_PER_DIAMOND).toLocaleString()})
               </p>
 
-              {/* Presets */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
                 {diamondPresets.map(amount => (
                   <button
                     key={amount}
@@ -418,12 +407,13 @@ function MonetaryValue() {
                     }`}
                   >
                     <div className="text-2xl font-bold">{amount}</div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400">₦{(amount * valuePerDiamond).toLocaleString()}</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">
+                      ₦{(amount * VALUE_PER_DIAMOND).toLocaleString()}
+                    </div>
                   </button>
                 ))}
               </div>
 
-              {/* Custom amount */}
               <div className="mb-8">
                 <input
                   type="number"
@@ -435,7 +425,6 @@ function MonetaryValue() {
                 />
               </div>
 
-              {/* Method selection */}
               <div className="mb-8">
                 <label className="block text-lg font-medium text-slate-700 dark:text-slate-300 mb-3">
                   Choose Withdrawal Method
@@ -458,12 +447,9 @@ function MonetaryValue() {
                 </div>
               </div>
 
-              {/* Bank Selection */}
               {withdrawMethod === 'bank' && (
-                <div className="mb-8">
-                  <label className="block text-lg font-medium text-slate-700 dark:text-slate-300 mb-3">
-                    Select Bank
-                  </label>
+                <div className="mb-8 space-y-4">
+                  <label className="block text-lg font-medium text-slate-700 dark:text-slate-300">Select Bank</label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
                     {nigerianBanks.map(bank => {
                       const selected = withdrawDetails.bankName === bank.name;
@@ -483,7 +469,7 @@ function MonetaryValue() {
                     })}
                   </div>
 
-                  <div className="grid gap-4 mt-8">
+                  <div className="grid gap-4 mt-6">
                     <input
                       name="accountNumber"
                       value={withdrawDetails.accountNumber}
@@ -504,12 +490,9 @@ function MonetaryValue() {
                 </div>
               )}
 
-              {/* Fintech / Mobile Money */}
               {withdrawMethod === 'mobile' && (
-                <div className="mb-8">
-                  <label className="block text-lg font-medium text-slate-700 dark:text-slate-300 mb-3">
-                    Select Wallet / Fintech
-                  </label>
+                <div className="mb-8 space-y-4">
+                  <label className="block text-lg font-medium text-slate-700 dark:text-slate-300">Select Wallet / Fintech</label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
                     {fintechOptions.map(ft => {
                       const selected = withdrawDetails.fintechName === ft.name;
@@ -529,7 +512,7 @@ function MonetaryValue() {
                     })}
                   </div>
 
-                  <div className="mt-8">
+                  <div className="mt-6">
                     <input
                       name="mobileNumber"
                       value={withdrawDetails.mobileNumber}
@@ -553,7 +536,6 @@ function MonetaryValue() {
             </div>
           </div>
 
-          {/* Transaction History */}
           <div className="lg:col-span-1">
             <div className="bg-white/85 dark:bg-slate-800/75 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/40 dark:border-slate-700/40 p-6 sm:p-8 sticky top-8">
               <div className="flex items-center gap-4 mb-6">
@@ -568,12 +550,13 @@ function MonetaryValue() {
               ) : (
                 <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-indigo-300 dark:scrollbar-thumb-indigo-600">
                   {transactions.map(tx => {
-                    const isPurchase = tx.type === 'purchase';
-                    const isSpend    = tx.type === 'spend' || tx.type === 'material_purchase';
-                    const isWithdraw = tx.type === 'withdrawal';
-
-                    let colorClass = isPurchase ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
-                    let iconBg = isPurchase ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-red-100 dark:bg-red-900/30';
+                    const isPositive = tx.type === 'purchase' || tx.type === 'earning';
+                    const colorClass = isPositive 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400';
+                    const iconBg = isPositive 
+                      ? 'bg-green-100 dark:bg-green-900/30' 
+                      : 'bg-red-100 dark:bg-red-900/30';
 
                     return (
                       <div 
@@ -582,7 +565,7 @@ function MonetaryValue() {
                       >
                         <div className="flex items-start gap-4">
                           <div className={`p-4 rounded-full ${iconBg}`}>
-                            {isPurchase ? <ArrowUpFromLine size={24} /> : <ArrowDownToLine size={24} />}
+                            {isPositive ? <ArrowUpFromLine size={24} /> : <ArrowDownToLine size={24} />}
                           </div>
                           <div>
                             <p className="font-semibold text-slate-800 dark:text-slate-100 text-base">{tx.description}</p>
@@ -593,7 +576,7 @@ function MonetaryValue() {
                         </div>
                         <div className="text-right">
                           <p className={`font-bold text-lg ${colorClass}`}>
-                            {isPurchase ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                            {isPositive ? '+' : '-'}₦{tx.amountNGN?.toLocaleString() || '—'}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 capitalize">{tx.status}</p>
                         </div>

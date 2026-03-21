@@ -1,5 +1,5 @@
 // src/components/Dashboard/AnalyticsDashboard.jsx
-// Enhanced mobile experience — card view on narrow screens, better chart scaling
+// Consistent ₦60 per diamond • Shows lifetime earned value
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
@@ -37,18 +37,22 @@ import {
   FileText,
   Loader2,
   X,
+  Banknote,
 } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+
+// ─── Global constant ────────────────────────────────────────────────
+const VALUE_PER_DIAMOND = 60;
+// ──────────────────────────────────────────────────────────────────────
 
 function AnalyticsDashboard() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
   const [deletingId, setDeletingId] = useState(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id of material awaiting confirmation
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  // Simple client-side width check
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 480);
 
   useEffect(() => {
@@ -91,16 +95,20 @@ function AnalyticsDashboard() {
     return materials.filter((m) => new Date(m.created_at) >= cutoff);
   }, [materials, timeRange]);
 
-  const stats = useMemo(
-    () => ({
+  const stats = useMemo(() => {
+    const totalDiamondsEarned = filteredMaterials.reduce(
+      (sum, m) => sum + (Number(m.diamonds_earned) || 0),
+      0
+    );
+
+    return {
       totalMaterials: filteredMaterials.length,
-      totalDiamonds: filteredMaterials.reduce((sum, m) => sum + (m.diamonds_earned ?? 0), 0),
-      totalEarnings: filteredMaterials.reduce((sum, m) => sum + (m.earnings ?? 0), 0),
-      totalViews: filteredMaterials.reduce((sum, m) => sum + (m.views ?? 0), 0),
-      totalDownloads: filteredMaterials.reduce((sum, m) => sum + (m.downloads ?? 0), 0),
-    }),
-    [filteredMaterials]
-  );
+      totalDiamondsEarned,
+      totalAvailableValue: totalDiamondsEarned * VALUE_PER_DIAMOND,
+      totalViews: filteredMaterials.reduce((sum, m) => sum + (Number(m.views) || 0), 0),
+      totalDownloads: filteredMaterials.reduce((sum, m) => sum + (Number(m.downloads) || 0), 0),
+    };
+  }, [filteredMaterials]);
 
   const chartData = useMemo(() => {
     const days = { '7d': 7, '30d': 30, '90d': 90, 'all': 90 }[timeRange] || 30;
@@ -114,15 +122,15 @@ function AnalyticsDashboard() {
 
       const dayItems = filteredMaterials.filter((m) => isSameDay(new Date(m.created_at), date));
 
-      diamondsData.push(dayItems.reduce((sum, m) => sum + (m.diamonds_earned ?? 0), 0));
-      earningsData.push(dayItems.reduce((sum, m) => sum + (m.earnings ?? 0), 0));
+      diamondsData.push(dayItems.reduce((sum, m) => sum + (Number(m.diamonds_earned) || 0), 0));
+      earningsData.push(dayItems.reduce((sum, m) => sum + (Number(m.diamonds_earned || 0) * VALUE_PER_DIAMOND), 0));
     }
 
     return {
       labels,
       datasets: [
         {
-          label: 'Diamonds',
+          label: 'Diamonds Earned',
           data: diamondsData,
           borderColor: '#a78bfa',
           backgroundColor: 'rgba(167, 139, 250, 0.16)',
@@ -133,7 +141,7 @@ function AnalyticsDashboard() {
           yAxisID: 'y-diamonds',
         },
         {
-          label: 'Earnings ($)',
+          label: `Value Earned (₦${VALUE_PER_DIAMOND}/diamond)`,
           data: earningsData,
           borderColor: '#34d399',
           backgroundColor: 'rgba(52, 211, 153, 0.16)',
@@ -189,7 +197,11 @@ function AnalyticsDashboard() {
       },
       'y-earnings': {
         position: 'right',
-        ticks: { font: { size: isNarrowScreen ? 10 : 11 }, precision: 2 },
+        ticks: {
+          font: { size: isNarrowScreen ? 10 : 11 },
+          precision: 0,
+          callback: (value) => `₦${value.toLocaleString()}`,
+        },
         grid: { drawOnChartArea: false },
         beginAtZero: true,
       },
@@ -239,9 +251,7 @@ function AnalyticsDashboard() {
     }
   };
 
-  const cancelDelete = () => {
-    setConfirmDeleteId(null);
-  };
+  const cancelDelete = () => setConfirmDeleteId(null);
 
   const exportToCSV = () => {
     if (!filteredMaterials.length) {
@@ -251,7 +261,7 @@ function AnalyticsDashboard() {
 
     const headers = [
       'Title', 'Category', 'School', 'Course', 'Uploaded At',
-      'Views', 'Downloads', 'Diamonds Earned', 'Earnings ($)',
+      'Views', 'Downloads', 'Diamonds Earned', 'Total Value Earned (₦)',
     ];
 
     const rows = filteredMaterials.map((m) => [
@@ -263,7 +273,7 @@ function AnalyticsDashboard() {
       m.views || 0,
       m.downloads || 0,
       m.diamonds_earned || 0,
-      (m.earnings ?? 0).toFixed(2),
+      ((m.diamonds_earned || 0) * VALUE_PER_DIAMOND).toLocaleString(),
     ]);
 
     const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
@@ -294,7 +304,7 @@ function AnalyticsDashboard() {
       views: m.views || 0,
       downloads: m.downloads || 0,
       diamonds_earned: m.diamonds_earned || 0,
-      earnings: m.earnings ?? 0,
+      total_value_earned_naira: (m.diamonds_earned || 0) * VALUE_PER_DIAMOND,
     }));
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -328,16 +338,14 @@ function AnalyticsDashboard() {
             Content Analytics
           </h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Track earnings, views & student engagement
+            Lifetime performance and total value earned
           </p>
         </div>
 
         <select
           value={timeRange}
           onChange={(e) => setTimeRange(e.target.value)}
-          className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 
-                     rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
-                     w-full sm:w-auto min-w-[140px] h-10 touch-manipulation"
+          className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-auto min-w-[140px] h-10 touch-manipulation"
         >
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -347,8 +355,7 @@ function AnalyticsDashboard() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {/* ... your stats cards remain unchanged ... */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/70 dark:from-indigo-950/50 dark:to-indigo-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
@@ -397,9 +404,29 @@ function AnalyticsDashboard() {
               <Gem className="h-6 w-6 text-violet-600 dark:text-violet-400" />
             </div>
             <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Diamonds</p>
-              <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
-                {stats.totalDiamonds.toLocaleString()}
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Diamonds Earned</p>
+              <p className="text-2xl font-extrabold text-violet-800 dark:text-violet-300 mt-1">
+                {stats.totalDiamondsEarned.toLocaleString()}
+              </p>
+              <p className="text-sm text-violet-600/90 dark:text-violet-400/80 mt-1">
+                Lifetime total
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-50 to-green-100/70 dark:from-green-950/50 dark:to-green-900/40 rounded-xl p-4 shadow-md border border-slate-200/60 dark:border-slate-700/50 min-h-[94px] flex items-center col-span-2 sm:col-span-1 lg:col-span-1">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+              <Banknote className="h-6 w-6 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Value Earned</p>
+              <p className="text-2xl font-extrabold text-green-700 dark:text-green-400 mt-1">
+                ₦{stats.totalAvailableValue.toLocaleString()}
+              </p>
+              <p className="text-sm text-green-600/90 dark:text-green-400/80 mt-1">
+                {stats.totalDiamondsEarned.toLocaleString()} diamonds × ₦60
               </p>
             </div>
           </div>
@@ -485,7 +512,7 @@ function AnalyticsDashboard() {
                         </div>
                         <div>
                           <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                            Earnings: ${(m.earnings ?? 0).toFixed(2)}
+                            Value: ₦{((m.diamonds_earned || 0) * VALUE_PER_DIAMOND).toLocaleString()}
                           </span>
                         </div>
                       </div>
@@ -531,7 +558,7 @@ function AnalyticsDashboard() {
                       Diamonds
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                      Earnings
+                      Total Value (₦)
                     </th>
                     <th className="px-2 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-16">
                       Action
@@ -564,7 +591,7 @@ function AnalyticsDashboard() {
                           {(m.diamonds_earned || 0).toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          ${(m.earnings ?? 0).toFixed(2)}
+                          ₦{((m.diamonds_earned || 0) * VALUE_PER_DIAMOND).toLocaleString()}
                         </td>
                         <td className="px-2 py-3 text-center">
                           <button
@@ -594,13 +621,10 @@ function AnalyticsDashboard() {
         )}
       </div>
 
-      {/* Modern Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       {confirmDeleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div
-            className="fixed inset-0 bg-black/65 backdrop-blur-sm"
-            onClick={cancelDelete}
-          />
+          <div className="fixed inset-0 bg-black/65 backdrop-blur-sm" onClick={cancelDelete} />
           <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 space-y-5">
               <div className="flex items-start gap-4">

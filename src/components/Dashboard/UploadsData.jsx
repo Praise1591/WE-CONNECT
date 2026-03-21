@@ -2,6 +2,7 @@
 // Multi-step upload form with Firebase Storage (resumable), progress, pause/resume/cancel
 // All input fields in Step 2 now fully implemented
 // ── ADDED: Debug logging + auth check before addDoc to help diagnose permissions error
+// ── ADDED: preview screenshots upload (3-5 images required for non-video)
 
 import React, { useState, useRef } from 'react';
 import { 
@@ -14,6 +15,7 @@ import { toast } from 'react-toastify';
 import { db, storage, auth } from '@/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { v4 as uuidv4 } from 'uuid';
 
 function UploadsData() {
   const [step, setStep] = useState(1);
@@ -27,6 +29,8 @@ function UploadsData() {
     file: null,
     preview: null,
   });
+  const [previewImages, setPreviewImages] = useState([]);             // File[]
+  const [previewImagePreviews, setPreviewImagePreviews] = useState([]); // string[] data urls
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -65,13 +69,40 @@ function UploadsData() {
     reader.readAsDataURL(file);
   };
 
-  const startUpload = () => {
+  const handlePreviewImagesChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const validFiles = files.filter(f => f.type.startsWith('image/'));
+    if (validFiles.length !== files.length) {
+      toast.error("Only image files (.jpg, .png, .webp) allowed for previews");
+      return;
+    }
+
+    const previews = validFiles.map(file => URL.createObjectURL(file));
+
+    setPreviewImages(prev => [...prev, ...validFiles].slice(0, 5));
+    setPreviewImagePreviews(prev => [...prev, ...previews].slice(0, 5));
+  };
+
+  const removePreviewImage = (index) => {
+    setPreviewImages(prev => prev.filter((_, i) => i !== index));
+    setPreviewImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const startUpload = async () => {
     if (!auth.currentUser) {
       toast.error("You must be signed in to upload materials");
       return;
     }
     if (!formData.file || !selectedCategory) {
       toast.error("Please select a file and category");
+      return;
+    }
+
+    const isVideo = selectedCategory.value === 'Video Tutorials';
+    if (!isVideo && previewImages.length < 3) {
+      toast.error("Please upload at least 3 preview screenshots for this category");
       return;
     }
 
@@ -105,11 +136,26 @@ function UploadsData() {
             ? "Upload cancelled"
             : "Upload failed";
         toast.error(msg);
-        cleanupUpload();
+        setUploading(false);
+        uploadTaskRef.current = null;
       },
       async () => {
         try {
           const publicUrl = await getDownloadURL(storageRef);
+
+          // Upload preview images
+          let previewUrls = [];
+          if (previewImages.length > 0) {
+            previewUrls = await Promise.all(
+              previewImages.map(async (imgFile, idx) => {
+                const imgName = `preview-${idx + 1}_${uuidv4().slice(0,8)}.${imgFile.name.split('.').pop()}`;
+                const imgPath = `users/${auth.currentUser.uid}/materials/previews/${uniqueName}/${imgName}`;
+                const imgRef = ref(storage, imgPath);
+                await uploadBytesResumable(imgRef, imgFile);
+                return getDownloadURL(imgRef);
+              })
+            );
+          }
 
           // ── Debug logging to confirm auth state right before Firestore write ──
           console.log("Saving to Firestore — current user:", auth.currentUser?.uid || "(no user!)");
@@ -137,6 +183,7 @@ function UploadsData() {
             file_size: file.size,
             mime_type: file.type,
             public_url: publicUrl,
+            previewImages: previewUrls, // added field
             uid: auth.currentUser.uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -151,7 +198,8 @@ function UploadsData() {
             : err.message || "Failed to save material info";
           toast.error(msg);
         } finally {
-          cleanupUpload();
+          setUploading(false);
+          uploadTaskRef.current = null;
         }
       }
     );
@@ -164,15 +212,11 @@ function UploadsData() {
 
   const cancelUpload = () => {
     if (uploadTaskRef.current) uploadTaskRef.current.cancel();
-    cleanupUpload();
-    toast.info("Upload cancelled");
-  };
-
-  const cleanupUpload = () => {
     setUploading(false);
     setIsPaused(false);
     setProgress(0);
     uploadTaskRef.current = null;
+    toast.info("Upload cancelled");
   };
 
   const resetForm = () => {
@@ -183,6 +227,8 @@ function UploadsData() {
       title: '', course: '', school: '', department: '', description: '',
       file: null, preview: null,
     });
+    setPreviewImages([]);
+    setPreviewImagePreviews([]);
   };
 
   // ────────────────────────────────────────────────
@@ -406,6 +452,43 @@ function UploadsData() {
                   </button>
                 </div>
               )}
+
+              {/* ── Added: Preview screenshots upload UI ── */}
+              <div className="mt-8">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  {selectedCategory?.value === 'Video Tutorials' ? 'Optional' : 'Required'}: Upload 3–5 preview screenshots
+                  {selectedCategory?.value !== 'Video Tutorials' && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  onChange={handlePreviewImagesChange}
+                  className="hidden"
+                  id="preview-images"
+                />
+                <label htmlFor="preview-images" className="cursor-pointer block border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                  <Upload size={32} className="mx-auto text-slate-500 mb-2" />
+                  <p className="text-slate-600 dark:text-slate-300">Click to select screenshots or drag & drop</p>
+                  <p className="text-xs text-slate-500 mt-1">JPEG, PNG, WebP • max 5</p>
+                </label>
+
+                {previewImagePreviews.length > 0 && (
+                  <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    {previewImagePreviews.map((src, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={src} alt={`preview ${idx + 1}`} className="w-full h-24 object-cover rounded border border-slate-200 dark:border-slate-700" />
+                        <button
+                          onClick={() => removePreviewImage(idx)}
+                          className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6 mt-8 sm:mt-12">
@@ -452,7 +535,7 @@ function UploadsData() {
               ) : (
                 <button
                   onClick={startUpload}
-                  disabled={!formData.file}
+                  disabled={!formData.file || (selectedCategory?.value !== 'Video Tutorials' && previewImages.length < 3)}
                   className="px-8 py-3 sm:px-10 sm:py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
                   Start Upload <Upload size={18} />

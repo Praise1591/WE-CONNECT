@@ -1,5 +1,7 @@
 // Connect.jsx — FULL COMPLETE VERSION (one-sided messaging enabled)
 // March 2025 style — all tabs filled in, no placeholders
+// Updated: better error handling + debug hints for permission issues
+// Fixed: Accept request flow now handles notification deletion errors gracefully
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -169,8 +171,12 @@ function Connect() {
       const newMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setMessages(prev => ({ ...prev, [chatId]: newMsgs }));
     }, err => {
-      console.error("Chat listener error:", err);
-      toast.error("Cannot load messages — check connection");
+      console.error(`Chat listener failed for chat ${chatId}:`, err.code, err.message);
+      toast.error(
+        err.code === 'permission-denied'
+          ? "Cannot load messages — check your connection or security rules"
+          : "Cannot load messages — check connection"
+      );
     });
 
     return unsubscribe;
@@ -388,30 +394,91 @@ function Connect() {
     setAcceptingId(senderId);
 
     try {
+      console.log(`[ACCEPT] Starting accept flow for sender: ${senderId}`);
+
+      // 1. Create connection document for current user
       await setDoc(doc(db, `users/${currentUser.id}/connections`, senderId), {
         connectedAt: serverTimestamp(),
         userId: senderId,
         status: 'accepted_by_me'
       });
+      console.log(`[ACCEPT] Connection doc created for ${currentUser.id} → ${senderId}`);
 
-      const notifQuery = query(
-        collection(db, 'notifications'),
-        where('toUserId', '==', currentUser.id),
-        where('fromUserId', '==', senderId),
-        where('type', '==', 'connection_request')
-      );
-      const notifSnap = await getDocs(notifQuery);
-      if (!notifSnap.empty) {
-        const batch = writeBatch(db);
-        notifSnap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
+      // 2. Try to clean up notifications - handle permission errors gracefully
+      try {
+        const notifQuery = query(
+          collection(db, 'notifications'),
+          where('toUserId', '==', currentUser.id),
+          where('fromUserId', '==', senderId),
+          where('type', '==', 'connection_request')
+        );
+        const notifSnap = await getDocs(notifQuery);
+
+        if (!notifSnap.empty) {
+          console.log(`[ACCEPT] Found ${notifSnap.size} notification(s) to clean up`);
+          
+          // Try batch delete first
+          try {
+            const batch = writeBatch(db);
+            notifSnap.docs.forEach(d => {
+              console.log(`[ACCEPT] Adding notification to batch delete: ${d.id}`);
+              batch.delete(d.ref);
+            });
+            await batch.commit();
+            console.log(`[ACCEPT] Successfully deleted ${notifSnap.size} notification(s) via batch`);
+          } catch (batchError) {
+            // If batch fails, try individual deletes
+            console.log('[ACCEPT] Batch delete failed, trying individual deletes...', batchError.message);
+            let deletedCount = 0;
+            let failedCount = 0;
+            
+            for (const docRef of notifSnap.docs) {
+              try {
+                await deleteDoc(docRef.ref);
+                deletedCount++;
+                console.log(`[ACCEPT] Deleted notification: ${docRef.id}`);
+              } catch (deleteError) {
+                failedCount++;
+                console.warn(`[ACCEPT] Could not delete notification ${docRef.id}:`, deleteError.message);
+                // Continue even if individual delete fails
+              }
+            }
+            
+            if (deletedCount > 0) {
+              console.log(`[ACCEPT] Successfully deleted ${deletedCount} notification(s) individually`);
+            }
+            if (failedCount > 0) {
+              console.log(`[ACCEPT] Failed to delete ${failedCount} notification(s) - will be cleaned up later`);
+            }
+          }
+        } else {
+          console.log('[ACCEPT] No notifications found to clean up');
+        }
+      } catch (notifError) {
+        // Log but don't fail the whole operation - connection was already created successfully
+        console.warn('[ACCEPT] Could not clean up notifications:', notifError.message);
+        // Don't show error to user since main operation succeeded
       }
 
       toast.success('Accepted! You can now chat.');
       setSelectedChat(senderId);
       setActiveTab('messages');
     } catch (err) {
-      toast.error("Accept failed — check rules");
+      console.error("[ACCEPT ERROR]", {
+        code: err.code,
+        message: err.message,
+        details: err.details || 'no extra details'
+      });
+
+      let userMessage = "Accept failed — check rules";
+
+      if (err.code === 'permission-denied') {
+        userMessage = "Permission denied — check Firestore security rules (connections or notifications path)";
+      } else if (err.code === 'unavailable') {
+        userMessage = "Service unavailable — check your internet";
+      }
+
+      toast.error(userMessage);
     } finally {
       setAcceptingId(null);
     }
@@ -450,7 +517,7 @@ function Connect() {
     } catch (err) {
       toast.error(
         err.code === 'permission-denied'
-          ? "Cannot send — connection may be required"
+          ? "Cannot send — connection may be required or rules restrict this chat"
           : "Send failed"
       );
     }

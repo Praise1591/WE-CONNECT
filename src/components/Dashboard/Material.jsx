@@ -31,23 +31,27 @@ import {
   runTransaction,
   getDocs,
   increment,
+  addDoc,
 } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 
 import { createNotification } from '@/utils/notifications';
 
-// ── Helper: Record transaction ──
-const addTransaction = async (userId, type, amountNGN, description, status = 'completed', metadata = {}) => {
+// ── Helper: Record transaction for any user ──
+const recordTransaction = async (userId, type, amountNGN, description, status = 'completed', extra = {}) => {
   if (!userId) return;
   try {
-    const txRef = doc(collection(db, `users/${userId}/transactions`));
-    await setDoc(txRef, {
-      type, amountNGN, description, status,
-      createdAt: serverTimestamp(),
-      ...metadata,
+    const txCollection = collection(db, `users/${userId}/transactions`);
+    await addDoc(txCollection, {
+      type,
+      amountNGN,
+      description,
+      status,
+      timestamp: serverTimestamp(),
+      ...extra,
     });
   } catch (err) {
-    console.error("Transaction record failed:", err);
+    console.error("Failed to record transaction:", err);
   }
 };
 
@@ -79,7 +83,7 @@ function Material() {
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Confirmation modal state for coin-spending downloads
+  // Confirmation modal for coin-spending downloads
   const [confirmDownload, setConfirmDownload] = useState(null);
 
   // ── Auth & Real-time Listeners ─────────────────────────────────────────────
@@ -175,14 +179,14 @@ function Material() {
 
   const hasActiveFilters = Object.values(filters).some(arr => arr.length > 0);
 
-  const getMaterialPriceInCoins = (cat) => {
+  const getMaterialPriceInCoins = (category) => {
     const map = {
       'Past Questions': 1,
-      'PDF Notes': 2,
+      'PDF Notes': 200,
       'Video Tutorials': 4,
       'Technical Reviews': 3,
     };
-    return map[cat] ?? 2;
+    return map[category] ?? 200;
   };
 
   // ── Core Handlers ──────────────────────────────────────────────────────────
@@ -220,21 +224,31 @@ function Material() {
     }
   };
 
-  const deductCoinsAndRecord = async (material, price) => { 
+  // Deduct coins from buyer + record transaction
+  const deductBuyerCoins = async (material, priceInCoins) => {
     try {
       await runTransaction(db, async (t) => {
         const buyerRef = doc(db, 'users', currentUser.uid);
         const snap = await t.get(buyerRef);
-        if (!snap.exists()) throw new Error("User not found");
+        if (!snap.exists()) throw new Error("User profile not found");
         const coins = snap.data().coins || 0;
-        if (coins < price) throw new Error("Insufficient coins");
-        t.update(buyerRef, { coins: coins - price });
+        if (coins < priceInCoins) throw new Error(`Insufficient coins (${priceInCoins} needed)`);
+        t.update(buyerRef, { coins: coins - priceInCoins });
       });
 
-      setProfile(p => ({ ...p, coins: Math.max(0, (p?.coins || 0) - price) }));
+      // Optimistic UI update
+      setProfile(p => ({ ...p, coins: Math.max(0, (p?.coins || 0) - priceInCoins) }));
 
-      await addTransaction(currentUser.uid, 'spend', price * 100, `Spent ${price} coin${price !== 1 ? 's' : ''} on "${material.title || 'Material'}"`, 'completed', { materialId: material.id, coinsSpent: price });
+      await recordTransaction(
+        currentUser.uid,
+        'spend',
+        priceInCoins * 100,
+        `Purchased "${material.title || 'Material'}" (${priceInCoins} coin${priceInCoins !== 1 ? 's' : ''})`,
+        'completed',
+        { materialId: material.id, coinsSpent: priceInCoins }
+      );
 
+      // Record download history for buyer
       const dlRef = doc(db, `users/${currentUser.uid}/downloads`, material.id);
       await setDoc(dlRef, {
         downloadedAt: serverTimestamp(),
@@ -243,81 +257,170 @@ function Material() {
         school: material.school || '—',
         category: material.category,
         file_path: material.file_path,
-        coinsSpent: price,
-        amountNGN: price * 100,
+        coinsSpent: priceInCoins,
+        amountNGN: priceInCoins * 100,
         isOwnerDownload: false,
       }, { merge: true });
 
       await createNotification(currentUser.uid, {
         type: "download",
-        message: `Downloaded "${material.title || 'Material'}" (${price} coin${price !== 1 ? 's' : ''})`,
+        message: `Downloaded "${material.title || 'Material'}" (${priceInCoins} coin${priceInCoins !== 1 ? 's' : ''})`,
         targetId: material.id,
         targetType: "material",
-        coinsSpent: price,
+        coinsSpent: priceInCoins,
         actorId: currentUser.uid,
         actorName: currentUser.displayName || "You",
       });
+
       return true;
     } catch (err) {
-      const msg = err.message.includes("Insufficient") ? `Need ${price} coin${price !== 1 ? 's' : ''}` : "Payment failed";
+      const msg = err.message.includes("Insufficient") 
+        ? `You need ${priceInCoins} coin${priceInCoins !== 1 ? 's' : ''}` 
+        : "Could not process payment";
       toast.error(msg);
       return false;
     }
   };
 
-  const incrementDownloadStats = async (material, price, isOwner) => { 
-    if (isOwner) return;
-    const diamonds = Math.floor(price * 0.6);
-    if (diamonds <= 0) return;
-    const matRef = doc(db, 'materials', material.id);
-    const ownerRef = material.ownerUid ? doc(db, 'users', material.ownerUid) : null;
+  // ────────────────────────────────────────────────────────────────
+  // FIXED: Now correctly awards diamonds to the UPLOADER's profile
+  // ────────────────────────────────────────────────────────────────
+  const awardUploaderDiamondsAndUpdateStats = async (material, priceInCoins) => {
+    const isOwner = currentUser?.uid === material.uid;
+    if (isOwner) return; // owners don't generate earnings
+
+    const diamondsAward = Math.floor(priceInCoins * 0.6); // 60%
+    if (diamondsAward <= 0) return;
+
+    const earningsNGN = diamondsAward * 60; // Consistent with wallet: ₦60 per diamond
+
     try {
       await runTransaction(db, async (t) => {
-        const snap = await t.get(matRef);
-        if (!snap.exists()) return;
-        t.update(matRef, { downloads: increment(1), diamonds_earned: increment(diamonds) });
-        if (ownerRef) t.update(ownerRef, { diamonds: increment(diamonds) });
+        const matRef = doc(db, 'materials', material.id);
+        const ownerRef = doc(db, 'users', material.uid);
+
+        const matSnap = await t.get(matRef);
+        if (!matSnap.exists()) throw new Error("Material not found");
+
+        const currentDiamondsEarned = matSnap.data().diamonds_earned || 0;
+
+        t.update(matRef, {
+          downloads: increment(1),
+          diamonds_earned: currentDiamondsEarned + diamondsAward,
+          earnings: increment(earningsNGN),
+          lastDownloadedAt: serverTimestamp(),
+        });
+
+        // ─── Critical fix ───
+        const ownerSnap = await t.get(ownerRef);
+        if (ownerSnap.exists()) {
+          const currentUserDiamonds = ownerSnap.data().diamonds || 0;
+          t.update(ownerRef, {
+            diamonds: currentUserDiamonds + diamondsAward
+          });
+        }
+        // ─────────────────────
       });
-    } catch (err) { console.warn(err); }
+
+      // Record earning transaction for uploader
+      await recordTransaction(
+        material.uid,
+        'earning',
+        earningsNGN,
+        `Earned ₦${earningsNGN.toLocaleString()} (${diamondsAward} diamonds) from "${material.title || 'Material'}"`,
+        'completed',
+        {
+          materialId: material.id,
+          diamondsAwarded: diamondsAward,
+          priceInCoins,
+        }
+      );
+
+      toast.success(`Uploader earned ${diamondsAward} diamonds (₦${earningsNGN.toLocaleString()})`);
+    } catch (err) {
+      console.error("Failed to award diamonds / update stats:", err);
+      // Don't show error to buyer — download already succeeded
+    }
   };
 
   const forceDownload = (url, filename) => {
     const a = document.createElement('a');
-    a.href = url; a.download = filename; a.style.display = 'none';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const getFileUrl = async (material, isPreview = false) => {
-    if (!currentUser) return toast.info("Please sign in") || null;
+    if (!currentUser) return null;
 
     try {
       let url = await getDownloadURL(ref(storage, material.file_path));
       if (isPreview) url += '?alt=media';
       return url;
     } catch (err) {
-      console.error("Storage error:", err);
-      toast.error(isPreview ? "Preview unavailable" : "Could not access file");
+      console.error("Storage access error:", err);
       return null;
     }
   };
 
   const handleDownload = (material) => {
-    const isOwner = currentUser?.uid === material.ownerUid;
+    const isOwner = currentUser?.uid === material.uid;
 
     if (isOwner) {
       setDownloadingId(material.id);
       getFileUrl(material, false).then(url => {
         if (url) {
-          const ext = material.file_path.split('.').pop()?.toLowerCase() || 'pdf';
-          const safe = (material.title || `material-${material.id}`).replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
-          forceDownload(url, `${safe}.${ext}`);
-          toast.success("Downloaded!");
+          const ext = material.file_path?.split('.').pop()?.toLowerCase() || 'pdf';
+          const safeName = (material.title || `material-${material.id}`)
+            .replace(/[^a-z0-9]/gi, '_')
+            .replace(/_+/g, '_');
+          forceDownload(url, `${safeName}.${ext}`);
+          toast.success("Your material downloaded successfully!");
+        } else {
+          toast.error("Could not access file");
         }
+        setDownloadingId(null);
       });
       return;
     }
 
     setConfirmDownload(material);
+  };
+
+  const confirmAndProcessPaidDownload = async () => {
+    if (!confirmDownload) return;
+    const material = confirmDownload;
+    const priceInCoins = getMaterialPriceInCoins(material.category);
+
+    setDownloadingId(material.id);
+    setConfirmDownload(null);
+
+    const success = await deductBuyerCoins(material, priceInCoins);
+    if (!success) {
+      setDownloadingId(null);
+      return;
+    }
+
+    // Award diamonds + update stats
+    await awardUploaderDiamondsAndUpdateStats(material, priceInCoins);
+
+    // Finally give the file
+    const url = await getFileUrl(material, false);
+    if (url) {
+      const ext = material.file_path?.split('.').pop()?.toLowerCase() || 'pdf';
+      const safeName = (material.title || `material-${material.id}`)
+        .replace(/[^a-z0-9]/gi, '_')
+        .replace(/_+/g, '_');
+      forceDownload(url, `${safeName}.${ext}`);
+      toast.success(`Success! ${priceInCoins} coin${priceInCoins !== 1 ? 's' : ''} deducted`);
+    } else {
+      toast.error("Downloaded paid — but file access failed. Contact support.");
+    }
+
+    setDownloadingId(null);
   };
 
   const openPreview = async (material) => {
@@ -335,7 +438,7 @@ function Material() {
     if (url) {
       setPreviewUrl(url);
     } else {
-      setPreviewError("Could not load preview — file may be missing");
+      setPreviewError("Could not load preview — file may be missing or restricted");
     }
 
     setPreviewLoading(false);
@@ -387,13 +490,9 @@ function Material() {
       setUserComment("");
     } catch (err) {
       console.error("Review submission failed:", err);
-      let userMessage = "Failed to submit review";
-      if (err.code === 'permission-denied') {
-        userMessage = "Permission denied — check Firestore security rules";
-      } else if (err.message.includes("Material not found")) {
-        userMessage = "Material no longer exists";
-      }
-      toast.error(userMessage);
+      let msg = "Failed to submit review";
+      if (err.code === 'permission-denied') msg = "Permission denied — check security rules";
+      toast.error(msg);
     } finally {
       setSubmittingReview(false);
     }
@@ -466,9 +565,9 @@ function Material() {
               const { icon: CatIcon, color } = getCategoryInfo(material.category);
               const isFavorited = favoritedIds.has(material.id);
               const isDownloading = downloadingId === material.id;
-              const price = getMaterialPriceInCoins(material.category);
-              const isOwner = currentUser?.uid === material.ownerUid;
-              const canAfford = isOwner || (profile?.coins ?? 0) >= price;
+              const priceInCoins = getMaterialPriceInCoins(material.category);
+              const isOwner = currentUser?.uid === material.uid;
+              const canAfford = isOwner || (profile?.coins ?? 0) >= priceInCoins;
 
               return (
                 <div
@@ -480,73 +579,59 @@ function Material() {
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center ring-1 ring-slate-200 dark:ring-slate-700">
                         <PersonStanding size={24} className="text-slate-500 dark:text-slate-400" />
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-xl leading-tight text-slate-900 dark:text-white line-clamp-2 group-hover:text-violet-600 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-lg text-slate-900 dark:text-white line-clamp-2">
                           {material.title || 'Untitled Material'}
                         </h3>
-                        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 line-clamp-1">{material.course || '—'}</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                          {material.course || material.category || '—'}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {material.school || '—'} • {material.department || 'General'}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Average Rating */}
-                    <div className="flex items-center gap-3 mt-auto">
-                      <div className="flex">
-                        {[1,2,3,4,5].map(n => (
-                          <Star
-                            key={n}
-                            size={18}
-                            className={n <= (material.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-200 dark:text-slate-700"}
-                          />
-                        ))}
-                      </div>
-                      <span className="font-semibold text-lg text-amber-600 dark:text-amber-400">
-                        {material.averageRating ? Number(material.averageRating).toFixed(1) : "—"}
-                      </span>
-                      <span className="text-xs text-slate-500">({material.reviewCount || 0})</span>
+                    <div className="mt-auto flex items-center justify-between">
+                      <button
+                        onClick={() => openPreview(material)}
+                        className="text-sm text-violet-600 dark:text-violet-400 hover:underline"
+                      >
+                        Preview
+                      </button>
+
+                      <button
+                        onClick={() => handleDownload(material)}
+                        disabled={isDownloading || (!isOwner && !canAfford)}
+                        className={`px-5 py-2.5 rounded-2xl text-sm font-medium flex items-center gap-2 transition-all ${
+                          isDownloading
+                            ? 'bg-violet-100 text-violet-700 animate-pulse'
+                            : isOwner
+                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                            : canAfford
+                            ? 'bg-violet-600 text-white hover:bg-violet-700'
+                            : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {isDownloading ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Download size={16} />
+                        )}
+                        {isOwner ? 'Download (Free)' : `${priceInCoins} coin${priceInCoins !== 1 ? 's' : ''}`}
+                      </button>
                     </div>
-                  </div>
-
-                  <div className="border-t border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center justify-between bg-slate-50 dark:bg-slate-900">
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span>{material.school || '—'}</span>
-                    </div>
-                    <div className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-2xl text-xs font-medium bg-gradient-to-r ${color} text-white shadow-inner`}>
-                      <CatIcon size={14} /> {material.category}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 border-t border-slate-200 dark:border-slate-700 divide-x divide-slate-200 dark:divide-slate-700">
-                    <button
-                      onClick={() => toggleFavorite(material)}
-                      className="py-5 flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-300"
-                    >
-                      <Heart size={19} className={isFavorited ? "fill-red-500 text-red-500" : ""} />
-                      <span className="text-xs font-medium">Save</span>
-                    </button>
-
-                    <button
-                      onClick={() => openPreview(material)}
-                      className="py-5 flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-300"
-                    >
-                      <Eye size={19} />
-                      <span className="text-xs font-medium">Preview</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleDownload(material)}
-                      disabled={isDownloading || (!isOwner && !canAfford)}
-                      className={`py-5 flex items-center justify-center gap-2 font-semibold transition-all ${isDownloading ? 'text-violet-600' : 'text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/50'}`}
-                    >
-                      {isDownloading ? <Loader2 size={19} className="animate-spin" /> : <Download size={19} />}
-                      <span className="text-xs">
-                        {isOwner ? 'Free' : `${price} coin${price !== 1 ? 's' : ''}`}
-                      </span>
-                    </button>
                   </div>
 
                   {!isOwner && (
-                    <div className="absolute top-5 right-5 bg-white dark:bg-slate-800 shadow px-3 py-1 rounded-2xl text-xs font-medium text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
-                      {price} coins
+                    <div className="absolute top-4 right-4 bg-violet-100 dark:bg-violet-900/40 px-3 py-1 rounded-full text-xs font-medium text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/50">
+                      {priceInCoins} coins
+                    </div>
+                  )}
+
+                  {isFavorited && (
+                    <div className="absolute top-4 left-4 bg-red-100 px-2 py-1 rounded-full text-xs text-red-600">
+                      ♥
                     </div>
                   )}
                 </div>
@@ -555,7 +640,7 @@ function Material() {
           </div>
         )}
 
-        {/* Confirmation Modal */}
+        {/* Confirmation Modal for Paid Download */}
         {confirmDownload && (
           <div 
             className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
@@ -566,16 +651,16 @@ function Material() {
               onClick={e => e.stopPropagation()}
             >
               <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">
-                Confirm Download
+                Confirm Purchase & Download
               </h3>
               <p className="text-slate-600 dark:text-slate-300 mb-8 leading-relaxed">
-                This material costs{' '}
+                "{confirmDownload.title || 'This material'}" costs{' '}
                 <span className="font-bold text-violet-600 dark:text-violet-400">
                   {getMaterialPriceInCoins(confirmDownload.category)} coin
                   {getMaterialPriceInCoins(confirmDownload.category) !== 1 ? 's' : ''}
-                </span>
-                .<br /><br />
-                Are you sure you want to spend coins and download it?
+                </span>.
+                <br /><br />
+                The uploader will receive 60% in diamonds.
               </p>
               <div className="flex gap-4 justify-end">
                 <button
@@ -585,30 +670,18 @@ function Material() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    setDownloadingId(confirmDownload.id);
-                    getFileUrl(confirmDownload, false).then(url => {
-                      if (url) {
-                        const ext = confirmDownload.file_path.split('.').pop()?.toLowerCase() || 'pdf';
-                        const safe = (confirmDownload.title || `material-${confirmDownload.id}`).replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_');
-                        forceDownload(url, `${safe}.${ext}`);
-                        toast.success(`Downloaded (${getMaterialPriceInCoins(confirmDownload.category)} coin${getMaterialPriceInCoins(confirmDownload.category) !== 1 ? 's' : ''} deducted)`);
-                        incrementDownloadStats(confirmDownload, getMaterialPriceInCoins(confirmDownload.category), currentUser.uid === confirmDownload.ownerUid);
-                      }
-                    });
-                    setConfirmDownload(null);
-                  }}
+                  onClick={confirmAndProcessPaidDownload}
                   className="px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold shadow-md transition flex items-center gap-2"
                 >
                   <Download size={18} />
-                  Yes, Download
+                  Pay & Download
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── Improved Preview Modal with Download Protection ─────────────────────────────── */}
+        {/* Preview Modal */}
         {previewMaterial && (
           <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-900 w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden max-h-[96vh] flex flex-col">
@@ -636,7 +709,7 @@ function Material() {
 
               <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col lg:flex-row gap-8 md:gap-10">
                 
-                {/* Preview Area with protection */}
+                {/* Preview Area */}
                 <div className="flex-1 flex flex-col relative">
                   {previewLoading ? (
                     <div className="flex-1 flex items-center justify-center rounded-3xl bg-white dark:bg-slate-800 min-h-[400px]">
@@ -706,7 +779,6 @@ function Material() {
                                 />
                               </Document>
 
-                              {/* Overlay for right-click protection (non-blocking for normal interaction) */}
                               <div 
                                 className="absolute inset-0 z-10"
                                 onContextMenu={(e) => e.preventDefault()}
@@ -741,15 +813,14 @@ function Material() {
                         </div>
                       )}
 
-                      {/* Visual indication – non-interactive */}
                       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/65 text-white text-sm px-5 py-2.5 rounded-full z-20 backdrop-blur-sm pointer-events-none border border-white/20 shadow-lg">
-                        Preview Mode – Download Disabled
+                        Preview Mode – Full Download Requires Coins
                       </div>
                     </div>
                   ) : null}
                 </div>
 
-                {/* Rating & Reviews Section */}
+                {/* Rating & Reviews */}
                 <div className="lg:w-5/12 flex flex-col">
                   <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow border border-slate-100 dark:border-slate-700">
                     <div className="flex justify-between items-center mb-6">
@@ -848,9 +919,9 @@ function Material() {
 
               {/* Bottom Bar */}
               <div className="px-8 py-5 bg-slate-50 dark:bg-slate-900 border-t dark:border-slate-700 text-center text-sm text-slate-500 flex items-center justify-center gap-3">
-                Preview is completely free • Full download costs {getMaterialPriceInCoins(previewMaterial.category)} coin
+                Preview is free • Full version costs {getMaterialPriceInCoins(previewMaterial.category)} coin
                 {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} 
-                {previewMaterial.ownerUid === currentUser?.uid && " (Free for you as owner)"}
+                {previewMaterial.uid === currentUser?.uid && " (Free for owner)"}
               </div>
             </div>
           </div>
