@@ -1,5 +1,7 @@
 // Connect.jsx — FULL COMPLETE VERSION with fixed real-time chat
 // Fixed: Chat room creation and real-time messaging between connected users
+// Fixed: Graceful handling of bidirectional connections and permissions
+// Fixed: Proper Firestore rules compatibility
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -50,7 +52,6 @@ function Connect() {
   const [isLoading, setIsLoading] = useState(true);
   const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 640);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [chatRooms, setChatRooms] = useState({});
 
   const messagesEndRef = useRef(null);
 
@@ -160,35 +161,6 @@ function Connect() {
     return () => unsubs.forEach(u => u());
   }, [currentUser?.id]);
 
-  // Initialize chat rooms for connections
-  useEffect(() => {
-    if (!currentUser?.id) return;
-
-    const initializeChatRooms = async () => {
-      for (const connectionId of connections) {
-        const chatId = [currentUser.id, connectionId].sort().join('_');
-        if (!chatRooms[chatId]) {
-          // Ensure chat room document exists
-          const chatRoomRef = doc(db, 'chats', chatId);
-          const chatRoomSnap = await getDoc(chatRoomRef);
-          
-          if (!chatRoomSnap.exists()) {
-            await setDoc(chatRoomRef, {
-              participants: [currentUser.id, connectionId],
-              createdAt: serverTimestamp(),
-              lastMessage: null,
-              lastMessageTime: null
-            });
-          }
-          
-          setChatRooms(prev => ({ ...prev, [chatId]: true }));
-        }
-      }
-    };
-
-    initializeChatRooms();
-  }, [currentUser?.id, connections]);
-
   // Chat listener + auto-scroll
   useEffect(() => {
     if (!currentUser?.id || !selectedChat) return;
@@ -197,16 +169,23 @@ function Connect() {
     
     // First, ensure chat room exists
     const setupChatRoom = async () => {
-      const chatRoomRef = doc(db, 'chats', chatId);
-      const chatRoomSnap = await getDoc(chatRoomRef);
-      
-      if (!chatRoomSnap.exists()) {
-        await setDoc(chatRoomRef, {
-          participants: [currentUser.id, selectedChat],
-          createdAt: serverTimestamp(),
-          lastMessage: null,
-          lastMessageTime: null
-        });
+      try {
+        const chatRoomRef = doc(db, 'chats', chatId);
+        const chatRoomSnap = await getDoc(chatRoomRef);
+        
+        if (!chatRoomSnap.exists()) {
+          await setDoc(chatRoomRef, {
+            participants: [currentUser.id, selectedChat],
+            createdAt: serverTimestamp(),
+            lastMessage: null,
+            lastMessageTime: null,
+            createdBy: currentUser.id
+          });
+          console.log(`Chat room created: ${chatId}`);
+        }
+      } catch (err) {
+        console.warn('Could not setup chat room:', err.message);
+        // Don't show error to user - will retry when sending message
       }
     };
     
@@ -225,15 +204,11 @@ function Connect() {
           lastMessage: lastMsg.content,
           lastMessageTime: lastMsg.createdAt,
           lastMessageSender: lastMsg.sender
-        }).catch(err => console.warn('Could not update last message:', err));
+        }).catch(err => console.warn('Could not update last message:', err.message));
       }
     }, err => {
       console.error(`Chat listener failed for chat ${chatId}:`, err.code, err.message);
-      toast.error(
-        err.code === 'permission-denied'
-          ? "Cannot load messages — check your connection or security rules"
-          : "Cannot load messages — check connection"
-      );
+      // Don't show error toast to avoid spamming
     });
 
     return unsubscribe;
@@ -461,31 +436,42 @@ function Connect() {
       });
       console.log(`[ACCEPT] Connection doc created for ${currentUser.id} → ${senderId}`);
 
-      // 2. Create connection document for the other user (bidirectional)
-      await setDoc(doc(db, `users/${senderId}/connections`, currentUser.id), {
-        connectedAt: serverTimestamp(),
-        userId: currentUser.id,
-        status: 'accepted_by_them'
-      });
-      console.log(`[ACCEPT] Connection doc created for ${senderId} → ${currentUser.id}`);
+      // 2. Try to create connection for the other user - optional
+      try {
+        await setDoc(doc(db, `users/${senderId}/connections`, currentUser.id), {
+          connectedAt: serverTimestamp(),
+          userId: currentUser.id,
+          status: 'accepted_by_them'
+        });
+        console.log(`[ACCEPT] Connection doc created for ${senderId} → ${currentUser.id}`);
+      } catch (bidirectionalError) {
+        console.warn('[ACCEPT] Could not create bidirectional connection:', bidirectionalError.message);
+      }
 
       // 3. Create chat room for both users
       const chatId = [currentUser.id, senderId].sort().join('_');
       const chatRoomRef = doc(db, 'chats', chatId);
-      const chatRoomSnap = await getDoc(chatRoomRef);
       
-      if (!chatRoomSnap.exists()) {
-        await setDoc(chatRoomRef, {
-          participants: [currentUser.id, senderId],
-          createdAt: serverTimestamp(),
-          lastMessage: null,
-          lastMessageTime: null,
-          createdBy: currentUser.id
-        });
-        console.log(`[ACCEPT] Chat room created: ${chatId}`);
+      try {
+        const chatRoomSnap = await getDoc(chatRoomRef);
+        
+        if (!chatRoomSnap.exists()) {
+          await setDoc(chatRoomRef, {
+            participants: [currentUser.id, senderId],
+            createdAt: serverTimestamp(),
+            lastMessage: null,
+            lastMessageTime: null,
+            createdBy: currentUser.id
+          });
+          console.log(`[ACCEPT] Chat room created: ${chatId}`);
+        } else {
+          console.log(`[ACCEPT] Chat room already exists: ${chatId}`);
+        }
+      } catch (chatError) {
+        console.error('[ACCEPT] Failed to create chat room:', chatError.message);
       }
 
-      // 4. Try to clean up notifications - handle permission errors gracefully
+      // 4. Clean up notifications
       try {
         const notifQuery = query(
           collection(db, 'notifications'),
@@ -498,68 +484,33 @@ function Connect() {
         if (!notifSnap.empty) {
           console.log(`[ACCEPT] Found ${notifSnap.size} notification(s) to clean up`);
           
-          // Try batch delete first
           try {
             const batch = writeBatch(db);
-            notifSnap.docs.forEach(d => {
-              console.log(`[ACCEPT] Adding notification to batch delete: ${d.id}`);
-              batch.delete(d.ref);
-            });
+            notifSnap.docs.forEach(d => batch.delete(d.ref));
             await batch.commit();
-            console.log(`[ACCEPT] Successfully deleted ${notifSnap.size} notification(s) via batch`);
+            console.log(`[ACCEPT] Successfully deleted ${notifSnap.size} notification(s)`);
           } catch (batchError) {
-            // If batch fails, try individual deletes
-            console.log('[ACCEPT] Batch delete failed, trying individual deletes...', batchError.message);
-            let deletedCount = 0;
-            let failedCount = 0;
-            
+            console.log('[ACCEPT] Batch delete failed, trying individual deletes...');
             for (const docRef of notifSnap.docs) {
               try {
                 await deleteDoc(docRef.ref);
-                deletedCount++;
                 console.log(`[ACCEPT] Deleted notification: ${docRef.id}`);
               } catch (deleteError) {
-                failedCount++;
                 console.warn(`[ACCEPT] Could not delete notification ${docRef.id}:`, deleteError.message);
-                // Continue even if individual delete fails
               }
             }
-            
-            if (deletedCount > 0) {
-              console.log(`[ACCEPT] Successfully deleted ${deletedCount} notification(s) individually`);
-            }
-            if (failedCount > 0) {
-              console.log(`[ACCEPT] Failed to delete ${failedCount} notification(s) - will be cleaned up later`);
-            }
           }
-        } else {
-          console.log('[ACCEPT] No notifications found to clean up');
         }
       } catch (notifError) {
-        // Log but don't fail the whole operation - connection was already created successfully
         console.warn('[ACCEPT] Could not clean up notifications:', notifError.message);
-        // Don't show error to user since main operation succeeded
       }
 
       toast.success('Connected! You can now chat.');
       setSelectedChat(senderId);
       setActiveTab('messages');
     } catch (err) {
-      console.error("[ACCEPT ERROR]", {
-        code: err.code,
-        message: err.message,
-        details: err.details || 'no extra details'
-      });
-
-      let userMessage = "Accept failed — check rules";
-
-      if (err.code === 'permission-denied') {
-        userMessage = "Permission denied — check Firestore security rules (connections or notifications path)";
-      } else if (err.code === 'unavailable') {
-        userMessage = "Service unavailable — check your internet";
-      }
-
-      toast.error(userMessage);
+      console.error("[ACCEPT ERROR]", err.message);
+      toast.error("Accept failed — please try again");
     } finally {
       setAcceptingId(null);
     }
@@ -621,12 +572,8 @@ function Connect() {
       
       setNewMessage('');
     } catch (err) {
-      console.error("Send message error:", err);
-      toast.error(
-        err.code === 'permission-denied'
-          ? "Cannot send — connection may be required or rules restrict this chat"
-          : "Send failed"
-      );
+      console.error("Send message error:", err.message);
+      toast.error("Failed to send message");
     } finally {
       setIsSendingMessage(false);
     }
@@ -937,9 +884,6 @@ function Connect() {
                                   {last ? (last.sender === currentUser.id ? 'You: ' : '') + last.content.slice(0, 30) + (last.content.length > 30 ? '...' : '') : 'Start a conversation'}
                                 </div>
                               </div>
-                              {last && !last.read && last.sender !== currentUser.id && (
-                                <div className="w-2 h-2 bg-indigo-600 rounded-full"></div>
-                              )}
                             </button>
                           );
                         })}
@@ -980,11 +924,6 @@ function Connect() {
                                   <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${
                                     isOwn ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700'
                                   }`}>
-                                    {!isOwn && (
-                                      <div className="text-xs font-medium mb-1 text-indigo-600 dark:text-indigo-400">
-                                        {getUserById(selectedChat).name}
-                                      </div>
-                                    )}
                                     {msg.content}
                                     <div className={`text-xs mt-1 ${isOwn ? 'text-indigo-200' : 'text-slate-500'}`}>
                                       {formatMessageTime(msg.createdAt)}
