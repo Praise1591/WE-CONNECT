@@ -1,7 +1,5 @@
-// Connect.jsx — FULL COMPLETE VERSION with fixed real-time chat
-// Fixed: Chat room creation and real-time messaging between connected users
-// Fixed: Graceful handling of bidirectional connections and permissions
-// Fixed: Proper Firestore rules compatibility
+// Connect.jsx — FULL COMPLETE VERSION with proper bidirectional connections
+// Fixed: Both users can see each other as connections and chat in real-time
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -146,8 +144,17 @@ function Connect() {
       snap => setRequestNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     ));
 
-    unsubs.push(onSnapshot(collection(db, `users/${currentUser.id}/connections`), snap => 
-      setConnections(snap.docs.map(d => d.id))
+    // Get connections from centralized collection
+    unsubs.push(onSnapshot(
+      query(collection(db, 'connections'), where('users', 'array-contains', currentUser.id)),
+      snap => {
+        const conns = snap.docs.map(doc => {
+          const data = doc.data();
+          // Return the other user's ID
+          return data.users.find(id => id !== currentUser.id);
+        });
+        setConnections(conns.filter(Boolean));
+      }
     ));
 
     unsubs.push(onSnapshot(collection(db, `users/${currentUser.id}/connectionRequestsSent`), snap => 
@@ -185,7 +192,6 @@ function Connect() {
         }
       } catch (err) {
         console.warn('Could not setup chat room:', err.message);
-        // Don't show error to user - will retry when sending message
       }
     };
     
@@ -208,7 +214,6 @@ function Connect() {
       }
     }, err => {
       console.error(`Chat listener failed for chat ${chatId}:`, err.code, err.message);
-      // Don't show error toast to avoid spamming
     });
 
     return unsubscribe;
@@ -226,7 +231,7 @@ function Connect() {
     if (diffMs < 60000) return 'just now';
     if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)}m ago`;
     if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   const handleNewPost = async () => {
@@ -244,11 +249,12 @@ function Connect() {
 
     try {
       await addDoc(collection(db, 'posts'), {
-        user: { id: currentUser.id, name: currentUser.name || 'User' },
+        user: { id: currentUser.id, name: currentUser.name || 'User', photoURL: currentUser.photoURL },
         content: newPost.trim(),
         media: mediaUrl,
         mediaType: mType,
         likes: 0,
+        likesCount: 0,
         comments: [],
         createdAt: serverTimestamp()
       });
@@ -289,6 +295,7 @@ function Connect() {
       await updateDoc(doc(db, 'posts', postId), {
         comments: arrayUnion({
           user: currentUser.name || 'User',
+          userId: currentUser.id,
           content: comment,
           timestamp: serverTimestamp()
         })
@@ -348,15 +355,23 @@ function Connect() {
     if (!window.confirm(`Block ${userName}?`)) return;
 
     try {
+      // Add to blocked list
       await setDoc(doc(db, `users/${currentUser.id}/blocked`, userId), {
         blockedAt: serverTimestamp(),
         name: userName
       });
-      await runTransaction(db, async (t) => {
-        t.delete(doc(db, `users/${currentUser.id}/connections`, userId));
-        t.delete(doc(db, `users/${userId}/connections`, currentUser.id));
-        t.delete(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userId));
-      });
+      
+      // Remove connection if exists
+      const connectionQuery = query(
+        collection(db, 'connections'),
+        where('users', 'array-contains', currentUser.id),
+        where('users', 'array-contains', userId)
+      );
+      const connSnap = await getDocs(connectionQuery);
+      const batch = writeBatch(db);
+      connSnap.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      
       toast.success('User blocked');
     } catch (err) {
       toast.error("Block failed");
@@ -379,7 +394,8 @@ function Connect() {
     try {
       await setDoc(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userId), {
         status: 'pending',
-        sentAt: serverTimestamp()
+        sentAt: serverTimestamp(),
+        toUserId: userId
       });
 
       await addDoc(collection(db, 'notifications'), {
@@ -388,6 +404,7 @@ function Connect() {
         title: 'Connection Request',
         message: `${currentUser.name} wants to connect`,
         fromUserId: currentUser.id,
+        fromUserName: currentUser.name,
         createdAt: serverTimestamp(),
         read: false
       });
@@ -428,50 +445,42 @@ function Connect() {
     try {
       console.log(`[ACCEPT] Starting accept flow for sender: ${senderId}`);
 
-      // 1. Create connection document for current user
-      await setDoc(doc(db, `users/${currentUser.id}/connections`, senderId), {
-        connectedAt: serverTimestamp(),
-        userId: senderId,
-        status: 'accepted_by_me'
+      // Create bidirectional connection in centralized collection
+      const connectionId = [currentUser.id, senderId].sort().join('_');
+      const connectionRef = doc(db, 'connections', connectionId);
+      
+      await setDoc(connectionRef, {
+        users: [currentUser.id, senderId],
+        createdAt: serverTimestamp(),
+        createdBy: currentUser.id,
+        status: 'accepted'
       });
-      console.log(`[ACCEPT] Connection doc created for ${currentUser.id} → ${senderId}`);
+      console.log(`[ACCEPT] Connection created: ${connectionId}`);
 
-      // 2. Try to create connection for the other user - optional
-      try {
-        await setDoc(doc(db, `users/${senderId}/connections`, currentUser.id), {
-          connectedAt: serverTimestamp(),
-          userId: currentUser.id,
-          status: 'accepted_by_them'
-        });
-        console.log(`[ACCEPT] Connection doc created for ${senderId} → ${currentUser.id}`);
-      } catch (bidirectionalError) {
-        console.warn('[ACCEPT] Could not create bidirectional connection:', bidirectionalError.message);
-      }
-
-      // 3. Create chat room for both users
+      // Create chat room for both users
       const chatId = [currentUser.id, senderId].sort().join('_');
       const chatRoomRef = doc(db, 'chats', chatId);
       
-      try {
-        const chatRoomSnap = await getDoc(chatRoomRef);
-        
-        if (!chatRoomSnap.exists()) {
-          await setDoc(chatRoomRef, {
-            participants: [currentUser.id, senderId],
-            createdAt: serverTimestamp(),
-            lastMessage: null,
-            lastMessageTime: null,
-            createdBy: currentUser.id
-          });
-          console.log(`[ACCEPT] Chat room created: ${chatId}`);
-        } else {
-          console.log(`[ACCEPT] Chat room already exists: ${chatId}`);
-        }
-      } catch (chatError) {
-        console.error('[ACCEPT] Failed to create chat room:', chatError.message);
+      const chatRoomSnap = await getDoc(chatRoomRef);
+      if (!chatRoomSnap.exists()) {
+        await setDoc(chatRoomRef, {
+          participants: [currentUser.id, senderId],
+          createdAt: serverTimestamp(),
+          lastMessage: null,
+          lastMessageTime: null,
+          createdBy: currentUser.id
+        });
+        console.log(`[ACCEPT] Chat room created: ${chatId}`);
       }
 
-      // 4. Clean up notifications
+      // Remove the sent request from sender's side
+      try {
+        await deleteDoc(doc(db, `users/${senderId}/connectionRequestsSent`, currentUser.id));
+      } catch (err) {
+        console.warn('Could not delete sent request:', err.message);
+      }
+
+      // Clean up notifications
       try {
         const notifQuery = query(
           collection(db, 'notifications'),
@@ -482,28 +491,26 @@ function Connect() {
         const notifSnap = await getDocs(notifQuery);
 
         if (!notifSnap.empty) {
-          console.log(`[ACCEPT] Found ${notifSnap.size} notification(s) to clean up`);
-          
-          try {
-            const batch = writeBatch(db);
-            notifSnap.docs.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-            console.log(`[ACCEPT] Successfully deleted ${notifSnap.size} notification(s)`);
-          } catch (batchError) {
-            console.log('[ACCEPT] Batch delete failed, trying individual deletes...');
-            for (const docRef of notifSnap.docs) {
-              try {
-                await deleteDoc(docRef.ref);
-                console.log(`[ACCEPT] Deleted notification: ${docRef.id}`);
-              } catch (deleteError) {
-                console.warn(`[ACCEPT] Could not delete notification ${docRef.id}:`, deleteError.message);
-              }
-            }
-          }
+          const batch = writeBatch(db);
+          notifSnap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          console.log(`[ACCEPT] Deleted ${notifSnap.size} notification(s)`);
         }
       } catch (notifError) {
         console.warn('[ACCEPT] Could not clean up notifications:', notifError.message);
       }
+
+      // Send acceptance notification to sender
+      await addDoc(collection(db, 'notifications'), {
+        toUserId: senderId,
+        type: 'connection_accepted',
+        title: 'Connection Accepted',
+        message: `${currentUser.name} accepted your connection request`,
+        fromUserId: currentUser.id,
+        fromUserName: currentUser.name,
+        createdAt: serverTimestamp(),
+        read: false
+      });
 
       toast.success('Connected! You can now chat.');
       setSelectedChat(senderId);
@@ -528,6 +535,10 @@ function Connect() {
       const batch = writeBatch(db);
       snap.docs.forEach(d => batch.delete(d.ref));
       await batch.commit();
+      
+      // Also remove from sent requests
+      await deleteDoc(doc(db, `users/${senderId}/connectionRequestsSent`, currentUser.id));
+      
       toast.info('Request declined');
     } catch (err) {
       toast.error("Decline failed");
@@ -558,6 +569,7 @@ function Connect() {
       // Send the message
       await addDoc(collection(db, `chats/${chatId}/messages`), {
         sender: currentUser.id,
+        senderName: currentUser.name,
         content: newMessage.trim(),
         createdAt: serverTimestamp(),
         read: false
@@ -567,7 +579,8 @@ function Connect() {
       await updateDoc(chatRoomRef, {
         lastMessage: newMessage.trim(),
         lastMessageTime: serverTimestamp(),
-        lastMessageSender: currentUser.id
+        lastMessageSender: currentUser.id,
+        lastMessageSenderName: currentUser.name
       });
       
       setNewMessage('');
@@ -683,7 +696,11 @@ function Connect() {
                 {posts.map(post => (
                   <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-5 relative">
                     <div className="flex items-center gap-3 mb-4">
-                      <UserCircle size={44} className="text-slate-400" />
+                      {post.user.photoURL ? (
+                        <img src={post.user.photoURL} className="w-12 h-12 rounded-full object-cover" />
+                      ) : (
+                        <UserCircle size={48} className="text-slate-400" />
+                      )}
                       <div>
                         <p className="font-medium">{post.user.name}</p>
                         <p className="text-xs text-slate-500">
@@ -692,10 +709,13 @@ function Connect() {
                       </div>
                     </div>
                     <p className="mb-4 whitespace-pre-wrap">{post.content}</p>
-                    {post.media && <img src={post.media} alt="" className="rounded-lg mb-4 max-h-96 object-cover" />}
+                    {post.media && post.mediaType === 'image' && <img src={post.media} alt="" className="rounded-lg mb-4 max-h-96 object-cover" />}
+                    {post.media && post.mediaType === 'video' && (
+                      <video src={post.media} controls className="rounded-lg mb-4 max-h-96 w-full" />
+                    )}
 
                     <div className="flex gap-10 mb-4 text-slate-600">
-                      <button onClick={() => handleLike(post.id)} className="flex items-center gap-1.5 hover:text-red-500">
+                      <button onClick={() => handleLike(post.id)} className="flex items-center gap-1.5 hover:text-red-500 transition-colors">
                         <Heart size={20} /> {post.likes || 0}
                       </button>
                       <span className="flex items-center gap-1.5">
@@ -705,7 +725,7 @@ function Connect() {
 
                     <div className="space-y-3">
                       {post.comments?.map((c, i) => (
-                        <div key={i} className="text-sm">
+                        <div key={i} className="text-sm bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg">
                           <span className="font-medium">{c.user}: </span>{c.content}
                         </div>
                       ))}
@@ -724,7 +744,7 @@ function Connect() {
                     </div>
 
                     {post.user.id === currentUser.id && (
-                      <button onClick={() => handleDeletePost(post.id)} className="absolute top-4 right-4 text-red-500">
+                      <button onClick={() => handleDeletePost(post.id)} className="absolute top-4 right-4 text-red-500 hover:text-red-700">
                         <Trash2 size={20} />
                       </button>
                     )}
@@ -762,12 +782,12 @@ function Connect() {
                       if (isBlocked) btn = <span className="px-5 py-2.5 bg-slate-500 text-white rounded-full">Blocked</span>;
                       else if (isConnected) btn = <span className="px-5 py-2.5 bg-emerald-100 text-emerald-800 rounded-full flex items-center gap-2"><UserCheck size={16} /> Connected</span>;
                       else if (hasSent) btn = (
-                        <button onClick={() => handleCancelSentRequest(user.id)} className="px-5 py-2.5 bg-orange-600 text-white rounded-full">
+                        <button onClick={() => handleCancelSentRequest(user.id)} className="px-5 py-2.5 bg-orange-600 text-white rounded-full hover:bg-orange-700 transition-colors">
                           Cancel Request
                         </button>
                       );
                       else btn = (
-                        <button onClick={() => handleSendConnectionRequest(user.id)} className="px-5 py-2.5 bg-indigo-600 text-white rounded-full">
+                        <button onClick={() => handleSendConnectionRequest(user.id)} className="px-5 py-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors">
                           Connect
                         </button>
                       );
@@ -775,13 +795,18 @@ function Connect() {
                       return (
                         <div key={user.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-4 flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                            {user.photoURL ? <img src={user.photoURL} className="w-12 h-12 rounded-full" /> : <UserCircle size={48} className="text-slate-400" />}
-                            <p className="font-medium truncate">{user.name || 'Unknown'}</p>
+                            {user.photoURL ? <img src={user.photoURL} className="w-12 h-12 rounded-full object-cover" /> : <UserCircle size={48} className="text-slate-400" />}
+                            <div>
+                              <p className="font-medium">{user.name || 'Unknown'}</p>
+                              {isConnected && (
+                                <p className="text-xs text-green-600">Connected</p>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-3">
                             {btn}
                             {!isBlocked && !isConnected && (
-                              <button onClick={() => handleBlockUser(user.id, user.name)} className="p-2.5 text-red-600 hover:bg-red-50 rounded-full">
+                              <button onClick={() => handleBlockUser(user.id, user.name)} className="p-2.5 text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Block user">
                                 <Slash size={20} />
                               </button>
                             )}
@@ -804,6 +829,7 @@ function Connect() {
                   <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center">
                     <UserPlus className="mx-auto h-16 w-16 text-slate-400 mb-4" />
                     <h3 className="text-xl font-medium">No pending requests</h3>
+                    <p className="text-slate-500 mt-2">When someone sends you a connection request, it will appear here</p>
                   </div>
                 ) : requestNotifications.map(notif => {
                   const sender = getUserById(notif.fromUserId);
@@ -811,7 +837,11 @@ function Connect() {
 
                   return (
                     <div key={notif.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-6 flex flex-col sm:flex-row gap-5">
-                      {sender.photoURL ? <img src={sender.photoURL} className="w-16 h-16 rounded-full" /> : <UserCircle size={64} className="text-slate-400" />}
+                      {sender.photoURL ? (
+                        <img src={sender.photoURL} className="w-16 h-16 rounded-full object-cover" />
+                      ) : (
+                        <UserCircle size={64} className="text-slate-400" />
+                      )}
                       <div className="flex-1">
                         <p className="font-bold text-lg">{sender.name || 'Someone'}</p>
                         <p className="text-slate-600 mt-1">wants to connect with you</p>
@@ -819,13 +849,13 @@ function Connect() {
                           <button
                             onClick={() => handleAcceptRequest(notif.fromUserId)}
                             disabled={isAccepting}
-                            className={`flex-1 py-3 bg-green-600 text-white rounded-xl flex items-center justify-center gap-2 ${isAccepting ? 'opacity-70' : ''}`}
+                            className={`flex-1 py-3 bg-green-600 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-green-700 transition-colors ${isAccepting ? 'opacity-70 cursor-not-allowed' : ''}`}
                           >
                             {isAccepting ? <><Loader2 className="h-5 w-5 animate-spin" /> Accepting...</> : 'Accept'}
                           </button>
                           <button
                             onClick={() => handleRejectRequest(notif.fromUserId)}
-                            className="flex-1 py-3 bg-red-100 text-red-700 rounded-xl"
+                            className="flex-1 py-3 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-colors"
                           >
                             Decline
                           </button>
@@ -843,9 +873,9 @@ function Connect() {
                         const u = getUserById(id);
                         return (
                           <div key={id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 flex items-center justify-between">
-                            {u.photoURL ? <img src={u.photoURL} className="w-10 h-10 rounded-full" /> : <UserCircle size={40} className="text-slate-400" />}
+                            {u.photoURL ? <img src={u.photoURL} className="w-10 h-10 rounded-full object-cover" /> : <UserCircle size={40} className="text-slate-400" />}
                             <span className="font-medium truncate flex-1 ml-3">{u.name}</span>
-                            <button onClick={() => handleCancelSentRequest(id)} className="px-5 py-2 bg-orange-600 text-white rounded-lg">
+                            <button onClick={() => handleCancelSentRequest(id)} className="px-5 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
                               Cancel
                             </button>
                           </div>
@@ -863,7 +893,11 @@ function Connect() {
                   <div className="md:col-span-4 lg:col-span-3 bg-white dark:bg-slate-800 rounded-2xl shadow p-5">
                     <h3 className="font-bold text-lg mb-4">Conversations</h3>
                     {connections.length === 0 ? (
-                      <div className="text-center py-12 text-slate-500">No connections yet. Connect with people to start chatting!</div>
+                      <div className="text-center py-12 text-slate-500">
+                        <MessageCircle size={48} className="mx-auto mb-3 opacity-50" />
+                        <p>No connections yet</p>
+                        <p className="text-sm mt-2">Connect with people to start chatting!</p>
+                      </div>
                     ) : (
                       <div className="space-y-1">
                         {connections.map(id => {
@@ -877,11 +911,11 @@ function Connect() {
                               onClick={() => setSelectedChat(id)}
                               className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all ${selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-4 border-indigo-600' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                             >
-                              {u.photoURL ? <img src={u.photoURL} className="w-10 h-10 rounded-full" /> : <UserCircle size={40} className="text-slate-400" />}
-                              <div className="flex-1 min-w-0">
+                              {u.photoURL ? <img src={u.photoURL} className="w-10 h-10 rounded-full object-cover" /> : <UserCircle size={40} className="text-slate-400" />}
+                              <div className="flex-1 min-w-0 text-left">
                                 <div className="font-medium truncate">{u.name}</div>
                                 <div className="text-xs text-slate-500 truncate">
-                                  {last ? (last.sender === currentUser.id ? 'You: ' : '') + last.content.slice(0, 30) + (last.content.length > 30 ? '...' : '') : 'Start a conversation'}
+                                  {last ? (last.sender === currentUser.id ? 'You: ' : '') + (last.content?.slice(0, 30) || '') + (last.content?.length > 30 ? '...' : '') : 'Start a conversation'}
                                 </div>
                               </div>
                             </button>
@@ -898,7 +932,11 @@ function Connect() {
                       <>
                         <div className="p-4 border-b flex items-center gap-3 bg-white/50 dark:bg-slate-900/50">
                           {isNarrowScreen && <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronLeft size={24} /></button>}
-                          {getUserById(selectedChat).photoURL ? <img src={getUserById(selectedChat).photoURL} className="w-10 h-10 rounded-full" /> : <UserCircle size={40} />}
+                          {getUserById(selectedChat).photoURL ? (
+                            <img src={getUserById(selectedChat).photoURL} className="w-10 h-10 rounded-full object-cover" />
+                          ) : (
+                            <UserCircle size={40} />
+                          )}
                           <div className="flex-1">
                             <h3 className="font-bold truncate">{getUserById(selectedChat).name}</h3>
                             {connections.includes(selectedChat) && (
@@ -971,17 +1009,20 @@ function Connect() {
                 <h2 className="text-3xl font-bold">Notifications</h2>
                 {notifications.length === 0 ? (
                   <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center text-slate-500">
-                    No notifications yet
+                    <Bell className="mx-auto h-16 w-16 mb-4 opacity-50" />
+                    <p>No notifications yet</p>
                   </div>
-                ) : notifications.map(n => (
-                  <div key={n.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-5">
-                    <p className="font-semibold">{n.title}</p>
-                    <p className="mt-1">{n.message}</p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      {n.createdAt?.toDate?.() ? n.createdAt.toDate().toLocaleString() : 'Recent'}
-                    </p>
-                  </div>
-                ))}
+                ) : (
+                  notifications.map(n => (
+                    <div key={n.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-5">
+                      <p className="font-semibold">{n.title}</p>
+                      <p className="mt-1">{n.message}</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {n.createdAt?.toDate?.() ? n.createdAt.toDate().toLocaleString() : 'Recent'}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
@@ -996,7 +1037,7 @@ function Connect() {
                         <UserCircle size={160} className="text-slate-300" />
                       )}
                       {editingProfile && (
-                        <label className="absolute bottom-2 right-2 bg-indigo-600 p-3 rounded-full cursor-pointer">
+                        <label className="absolute bottom-2 right-2 bg-indigo-600 p-3 rounded-full cursor-pointer hover:bg-indigo-700 transition-colors">
                           <Camera size={20} className="text-white" />
                           <input type="file" accept="image/*" hidden onChange={handleProfilePhotoUpload} />
                         </label>
@@ -1019,19 +1060,19 @@ function Connect() {
                       <div className="mt-8 flex flex-wrap gap-4 justify-center sm:justify-start">
                         {!editingProfile ? (
                           <>
-                            <button onClick={() => setEditingProfile(true)} className="px-6 py-3 bg-indigo-600 text-white rounded-full flex items-center gap-2">
+                            <button onClick={() => setEditingProfile(true)} className="px-6 py-3 bg-indigo-600 text-white rounded-full flex items-center gap-2 hover:bg-indigo-700 transition-colors">
                               <Edit2 size={18} /> Edit Profile
                             </button>
-                            <button onClick={() => auth.signOut()} className="px-6 py-3 bg-red-600 text-white rounded-full flex items-center gap-2">
+                            <button onClick={() => auth.signOut()} className="px-6 py-3 bg-red-600 text-white rounded-full flex items-center gap-2 hover:bg-red-700 transition-colors">
                               <LogOut size={18} /> Sign Out
                             </button>
                           </>
                         ) : (
                           <>
-                            <button onClick={handleSaveProfile} className="px-6 py-3 bg-green-600 text-white rounded-full">
+                            <button onClick={handleSaveProfile} className="px-6 py-3 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors">
                               Save Changes
                             </button>
-                            <button onClick={() => { setEditingProfile(false); setEditedName(currentUser.name); setProfilePhotoPreview(currentUser.photoURL); }} className="px-6 py-3 bg-slate-600 text-white rounded-full">
+                            <button onClick={() => { setEditingProfile(false); setEditedName(currentUser.name); setProfilePhotoPreview(currentUser.photoURL); }} className="px-6 py-3 bg-slate-600 text-white rounded-full hover:bg-slate-700 transition-colors">
                               Cancel
                             </button>
                           </>
@@ -1041,16 +1082,16 @@ function Connect() {
                   </div>
 
                   <div className="mt-10 grid grid-cols-3 gap-6 text-center">
-                    <div>
-                      <p className="text-3xl font-bold">{myPosts.length}</p>
+                    <div className="bg-indigo-50 dark:bg-indigo-950/30 rounded-xl p-4">
+                      <p className="text-3xl font-bold text-indigo-600">{myPosts.length}</p>
                       <p className="text-slate-600 mt-1">Posts</p>
                     </div>
-                    <div>
-                      <p className="text-3xl font-bold">{connections.length}</p>
+                    <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-xl p-4">
+                      <p className="text-3xl font-bold text-emerald-600">{connections.length}</p>
                       <p className="text-slate-600 mt-1">Connections</p>
                     </div>
-                    <div>
-                      <p className="text-3xl font-bold">{blockedUsers.length}</p>
+                    <div className="bg-red-50 dark:bg-red-950/30 rounded-xl p-4">
+                      <p className="text-3xl font-bold text-red-600">{blockedUsers.length}</p>
                       <p className="text-slate-600 mt-1">Blocked</p>
                     </div>
                   </div>
@@ -1061,21 +1102,27 @@ function Connect() {
                   <h3 className="text-2xl font-bold flex items-center gap-2"><MessageSquare size={24} className="text-indigo-600" /> My Posts</h3>
                   {myPosts.length === 0 ? (
                     <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center text-slate-500">
-                      You haven't posted anything yet
+                      <MessageSquare className="mx-auto h-12 w-12 mb-3 opacity-50" />
+                      <p>You haven't posted anything yet</p>
                     </div>
-                  ) : myPosts.map(post => (
-                    <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-5 relative">
-                      <p className="mb-4 whitespace-pre-wrap">{post.content}</p>
-                      {post.media && <img src={post.media} className="rounded-lg mb-5 max-h-80 object-cover" />}
-                      <div className="flex gap-10 text-sm text-slate-600">
-                        <span className="flex items-center gap-1.5"><Heart size={18} /> {post.likes}</span>
-                        <span className="flex items-center gap-1.5"><MessageSquare size={18} /> {post.comments?.length || 0}</span>
+                  ) : (
+                    myPosts.map(post => (
+                      <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-5 relative">
+                        <p className="mb-4 whitespace-pre-wrap">{post.content}</p>
+                        {post.media && post.mediaType === 'image' && <img src={post.media} className="rounded-lg mb-5 max-h-80 object-cover" />}
+                        {post.media && post.mediaType === 'video' && (
+                          <video src={post.media} controls className="rounded-lg mb-5 max-h-80 w-full" />
+                        )}
+                        <div className="flex gap-10 text-sm text-slate-600">
+                          <span className="flex items-center gap-1.5"><Heart size={18} /> {post.likes || 0}</span>
+                          <span className="flex items-center gap-1.5"><MessageSquare size={18} /> {post.comments?.length || 0}</span>
+                        </div>
+                        <button onClick={() => handleDeletePost(post.id)} className="absolute top-5 right-5 text-red-600 hover:text-red-700">
+                          <Trash2 size={22} />
+                        </button>
                       </div>
-                      <button onClick={() => handleDeletePost(post.id)} className="absolute top-5 right-5 text-red-600">
-                        <Trash2 size={22} />
-                      </button>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
 
                 {/* Connections list */}
@@ -1083,7 +1130,8 @@ function Connect() {
                   <h3 className="text-2xl font-bold flex items-center gap-2"><Users size={24} className="text-indigo-600" /> Connections ({connections.length})</h3>
                   {connections.length === 0 ? (
                     <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center text-slate-500">
-                      No connections yet
+                      <Users className="mx-auto h-12 w-12 mb-3 opacity-50" />
+                      <p>No connections yet</p>
                     </div>
                   ) : (
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1091,9 +1139,9 @@ function Connect() {
                         const u = getUserById(id);
                         return (
                           <div key={id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-5 flex items-center justify-between gap-4">
-                            {u.photoURL ? <img src={u.photoURL} className="w-12 h-12 rounded-full" /> : <UserCircle size={48} className="text-slate-400" />}
+                            {u.photoURL ? <img src={u.photoURL} className="w-12 h-12 rounded-full object-cover" /> : <UserCircle size={48} className="text-slate-400" />}
                             <span className="font-medium truncate flex-1">{u.name}</span>
-                            <button onClick={() => handleBlockUser(id, u.name)} className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm">
+                            <button onClick={() => handleBlockUser(id, u.name)} className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition-colors">
                               Block
                             </button>
                           </div>
@@ -1108,7 +1156,8 @@ function Connect() {
                   <h3 className="text-2xl font-bold flex items-center gap-2"><Slash size={24} className="text-red-500" /> Blocked Users ({blockedUsers.length})</h3>
                   {blockedUsers.length === 0 ? (
                     <div className="bg-white dark:bg-slate-800 rounded-2xl p-12 text-center text-slate-500">
-                      No blocked users
+                      <Slash className="mx-auto h-12 w-12 mb-3 opacity-50" />
+                      <p>No blocked users</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -1116,9 +1165,9 @@ function Connect() {
                         const u = getUserById(id);
                         return (
                           <div key={id} className="bg-white dark:bg-slate-800 rounded-2xl shadow p-5 flex items-center justify-between">
-                            {u.photoURL ? <img src={u.photoURL} className="w-12 h-12 rounded-full" /> : <UserCircle size={48} className="text-slate-400" />}
+                            {u.photoURL ? <img src={u.photoURL} className="w-12 h-12 rounded-full object-cover" /> : <UserCircle size={48} className="text-slate-400" />}
                             <span className="font-medium truncate flex-1 ml-3">{u.name}</span>
-                            <button onClick={() => handleUnblockUser(id)} className="px-6 py-2.5 bg-green-600 text-white rounded-lg text-sm">
+                            <button onClick={() => handleUnblockUser(id)} className="px-6 py-2.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors">
                               Unblock
                             </button>
                           </div>
