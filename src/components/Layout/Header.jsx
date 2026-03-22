@@ -1,4 +1,4 @@
-// components/Layout/Header.jsx
+// Header.jsx — Complete with fixed logout functionality
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { signOut } from '../../firebase';
+import { auth, signOut } from '../../firebase'; // Import signOut correctly
 import AuthForm from '../Dashboard/AuthForm';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -52,11 +52,20 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
 
   const handleLogout = async () => {
     try {
-      await signOut();
+      if (!signOut) {
+        console.error('signOut is not available');
+        toast.error('Logout function not available');
+        return;
+      }
+      await signOut(auth);
+      localStorage.removeItem('userProfile');
       setIsProfileOpen(false);
       navigate('/', { replace: true });
+      // Dispatch logout event
+      window.dispatchEvent(new CustomEvent('userLoggedOut'));
     } catch (error) {
       console.error('Logout failed:', error);
+      toast.error('Failed to logout. Please try again.');
     }
   };
 
@@ -94,6 +103,11 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
       navigate(`/profile/${user.uid}`);
       setIsProfileOpen(false);
     }
+  };
+
+  const handleSettings = () => {
+    navigate('/settings');
+    setIsProfileOpen(false);
   };
 
   return (
@@ -274,10 +288,7 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
                               <span>View Public Profile</span>
                             </button>
                             <button
-                              onClick={() => {
-                                navigate('/settings');
-                                setIsProfileOpen(false);
-                              }}
+                              onClick={handleSettings}
                               className="w-full px-4 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl flex items-center gap-3 transition-all text-sm"
                             >
                               <Settings size={16} />
