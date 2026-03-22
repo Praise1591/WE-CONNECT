@@ -1,7 +1,6 @@
-// Schools.jsx — Updated with comprehensive University list (Nigeria-wide)
-
+// Schools.jsx — Redesigned with modern UI/UX while maintaining all functionality
 import React from 'react';
-import { Search } from 'lucide-react';
+import { Search, Filter, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 const MultiSelectDropdown = ({
   options = [],
@@ -59,16 +58,16 @@ const MultiSelectDropdown = ({
     <div className="relative w-full" ref={dropdownRef}>
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between min-h-11 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 cursor-pointer hover:border-purple-400 transition-all duration-200 shadow-sm hover:shadow"
+        className="flex items-center justify-between min-h-12 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800/50 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-all duration-200 shadow-sm hover:shadow-md"
       >
         <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
           {selectedOptions.length === 0 ? (
-            <span className="text-slate-500 text-sm">{placeholder}</span>
+            <span className="text-slate-500 dark:text-slate-400 text-sm">{placeholder}</span>
           ) : (
             selectedOptions.map((option) => (
               <span
                 key={option.value}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 rounded-lg"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded-lg"
               >
                 {option.label}
                 <button
@@ -76,7 +75,7 @@ const MultiSelectDropdown = ({
                     e.stopPropagation();
                     removeTag(option);
                   }}
-                  className="hover:text-purple-900 font-bold text-sm leading-none"
+                  className="hover:text-indigo-900 font-bold text-sm leading-none ml-1"
                 >
                   ×
                 </button>
@@ -92,19 +91,24 @@ const MultiSelectDropdown = ({
                 e.stopPropagation();
                 clearAll();
               }}
-              className="text-slate-500 hover:text-slate-700 text-lg leading-none"
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none p-1"
+              title="Clear all"
             >
-              ×
+              <X size={14} />
             </button>
           )}
-          <span className="text-slate-500 text-xs">{isOpen ? '▲' : '▼'}</span>
+          {isOpen ? (
+            <ChevronUp size={16} className="text-slate-400" />
+          ) : (
+            <ChevronDown size={16} className="text-slate-400" />
+          )}
         </div>
       </div>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+        <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative border-b border-slate-100 dark:border-slate-700">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input
               ref={searchInputRef}
               type="text"
@@ -112,13 +116,13 @@ const MultiSelectDropdown = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onClick={(e) => e.stopPropagation()}
-              className="w-full pl-10 pr-4 py-2.5 text-sm border-b border-slate-200 dark:border-slate-700 outline-none focus:bg-slate-50 dark:focus:bg-slate-700"
+              className="w-full pl-10 pr-4 py-3 text-sm bg-white dark:bg-slate-800 outline-none focus:ring-0"
             />
           </div>
 
-          <ul className="max-h-60 overflow-y-auto py-1">
+          <ul className="max-h-60 overflow-y-auto py-2">
             {filteredOptions.length === 0 ? (
-              <li className="px-4 py-2.5 text-slate-500 text-center text-sm">No options found</li>
+              <li className="px-4 py-3 text-slate-500 text-center text-sm">No options found</li>
             ) : (
               filteredOptions.map((option) => {
                 const isSelected = selectedOptions.some((item) => item.value === option.value);
@@ -126,13 +130,13 @@ const MultiSelectDropdown = ({
                   <li
                     key={option.value}
                     onClick={() => toggleOption(option)}
-                    className="px-4 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center gap-3 text-sm"
+                    className="px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer flex items-center gap-3 text-sm transition-colors"
                   >
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => {}}
-                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                     />
                     <span className="text-slate-700 dark:text-slate-200">{option.label}</span>
                   </li>
@@ -167,10 +171,7 @@ function Schools({ onFiltersChange }) {
     { label: 'Technical Reviews', value: 'review' },
   ];
 
-  // Expanded list: major federal, state & private universities in Nigeria (2025/2026 era)
-  // ~120+ entries covering most prominent ones — full 300+ would require external data loading
   const universities = [
-    // Federal Universities (major ones)
     { label: 'University of Ibadan', value: 'ui' },
     { label: 'University of Lagos', value: 'unilag' },
     { label: 'University of Nigeria, Nsukka', value: 'unn' },
@@ -201,8 +202,6 @@ function Schools({ onFiltersChange }) {
     { label: 'Federal University Oye-Ekiti', value: 'fuoye' },
     { label: 'Federal University Dutsin-Ma', value: 'fudma' },
     { label: 'Federal University of Petroleum Resources Effurun', value: 'fupre' },
-
-    // State Universities (selected major ones)
     { label: 'Rivers State University', value: 'rsu' },
     { label: 'Delta State University', value: 'delsu' },
     { label: 'Lagos State University', value: 'lasu' },
@@ -218,13 +217,11 @@ function Schools({ onFiltersChange }) {
     { label: 'Nasarawa State University', value: 'nsuk' },
     { label: 'Kogi State University', value: 'ksu' },
     { label: 'Ibrahim Badamasi Babangida University', value: 'ibbu' },
-
-    // Private Universities (major & popular ones)
     { label: 'Covenant University', value: 'cu' },
     { label: 'Babcock University', value: 'babcock' },
     { label: 'Afe Babalola University', value: 'abuad' },
     { label: 'Bowen University', value: 'bowen' },
-    { label: 'Redeemer\'s University', value: 'run' },
+    { label: "Redeemer's University", value: 'run' },
     { label: 'Igbinedion University', value: 'iuokada' },
     { label: 'American University of Nigeria', value: 'aun' },
     { label: 'Ajayi Crowther University', value: 'acu' },
@@ -242,7 +239,6 @@ function Schools({ onFiltersChange }) {
     { label: 'Elizade University', value: 'elizade' },
     { label: 'Godfrey Okoye University', value: 'gouni' },
     { label: 'Nile University of Nigeria', value: 'nile' },
-    // ... more can be added; recent new ones (2025) like Leadership University, Jimoh Babalola University, etc.
   ];
 
   const departments = [
@@ -274,7 +270,6 @@ function Schools({ onFiltersChange }) {
     { label: 'Political Science', value: 'political-science' },
     { label: 'Public Administration', value: 'public-admin' },
     { label: 'Sociology', value: 'sociology' },
-    // Add more as needed
   ];
 
   const getInitialSelected = (optionsList, savedLabels) => {
@@ -284,40 +279,39 @@ function Schools({ onFiltersChange }) {
   const handleFilterChange = (field) => (selected) => {
     const values = selected.map(item => item.label);
     onFiltersChange({ field, values });
+    // Save to localStorage
+    const savedFilters = localStorage.getItem('materialFilters');
+    const filters = savedFilters ? JSON.parse(savedFilters) : {};
+    filters[field] = values;
+    localStorage.setItem('materialFilters', JSON.stringify(filters));
   };
 
   return (
-    <div className="w-full py-8 px-4 bg-slate-50/50 dark:bg-slate-900/50">
-      <div className="max-w-7xl mx-auto">
-        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white text-center mb-8">
-          Browse Educational Materials
-        </h2>
+    <div className="w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <MultiSelectDropdown
+          options={materialTypes}
+          placeholder="Material Type"
+          searchPlaceholder="Search types..."
+          onChange={handleFilterChange('category')}
+          initialSelected={getInitialSelected(materialTypes, getSavedSelections('category'))}
+        />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          <MultiSelectDropdown
-            options={materialTypes}
-            placeholder="Material Type"
-            searchPlaceholder="Search types..."
-            onChange={handleFilterChange('category')}
-            initialSelected={getInitialSelected(materialTypes, getSavedSelections('category'))}
-          />
+        <MultiSelectDropdown
+          options={universities}
+          placeholder="University"
+          searchPlaceholder="Search universities..."
+          onChange={handleFilterChange('school')}
+          initialSelected={getInitialSelected(universities, getSavedSelections('school'))}
+        />
 
-          <MultiSelectDropdown
-            options={universities}
-            placeholder="University"
-            searchPlaceholder="Search universities..."
-            onChange={handleFilterChange('school')}
-            initialSelected={getInitialSelected(universities, getSavedSelections('school'))}
-          />
-
-          <MultiSelectDropdown
-            options={departments}
-            placeholder="Department / Course"
-            searchPlaceholder="Search departments..."
-            onChange={handleFilterChange('department')}
-            initialSelected={getInitialSelected(departments, getSavedSelections('department'))}
-          />
-        </div>
+        <MultiSelectDropdown
+          options={departments}
+          placeholder="Department / Course"
+          searchPlaceholder="Search departments..."
+          onChange={handleFilterChange('department')}
+          initialSelected={getInitialSelected(departments, getSavedSelections('department'))}
+        />
       </div>
     </div>
   );

@@ -1,826 +1,535 @@
 // Recent.jsx
-
 import React, { useState, useEffect } from 'react';
-import {
-  PersonStanding,
-  MoreVertical,
-  Heart,
-  Download,
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Clock, 
+  Eye, 
+  Download, 
+  Heart, 
+  ChevronRight, 
+  User, 
+  Tag, 
+  Calendar,
+  Bookmark,
   Share2,
-  Flag,
-  FileText,
-  Video,
-  BookOpen,
-  ScrollText,
-  Clock,
-  Eye,
-  Loader2,
-  X,
+  TrendingUp,
   Star,
+  Filter,
+  Search,
+  X
 } from 'lucide-react';
-import { toast } from 'react-toastify';
-
-import { db, storage, auth } from '@/firebase';
-import {
-  collection,
-  query,
-  orderBy,
-  limit,
-  onSnapshot,
+import { db, auth } from '@/firebase';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  orderBy, 
+  limit, 
+  where,
   doc,
-  setDoc,
-  deleteDoc,
-  serverTimestamp,
-  getDoc,
-  runTransaction,
-  increment,
-  getDocs,
+  updateDoc,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
-import { ref, getDownloadURL } from 'firebase/storage';
 
 function Recent() {
-  const [recentMaterials, setRecentMaterials] = useState([]);
+  const [recentItems, setRecentItems] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [favoritedIds, setFavoritedIds] = useState(new Set());
-  const [openMenuId, setOpenMenuId] = useState(null);
-
+  const [favorites, setFavorites] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [downloadingId, setDownloadingId] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortBy, setSortBy] = useState('latest'); // latest, popular, trending
 
-  const [previewMaterial, setPreviewMaterial] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState(null);
+  // Categories for filtering
+  const categories = [
+    { id: 'all', name: 'All', icon: Tag },
+    { id: 'video', name: 'Videos', icon: TrendingUp },
+    { id: 'document', name: 'Documents', icon: Bookmark },
+    { id: 'tutorial', name: 'Tutorials', icon: Star },
+    { id: 'course', name: 'Courses', icon: Calendar },
+  ];
 
-  // ── Reviews state ──────────────────────────────────────────────────────────
-  const [reviews, setReviews] = useState([]);
-  const [userRating, setUserRating] = useState(0);
-  const [userComment, setUserComment] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
-  const [averageRating, setAverageRating] = useState(0);
-  const [reviewCount, setReviewCount] = useState(0);
-  const [hoveredStar, setHoveredStar] = useState(0);
-
-  // ── Auth & Profile ─────────────────────────────────────────────────────────
+  // Get current user
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(setCurrentUser);
-    return unsubscribe;
+    const unsub = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+    });
+    return unsub;
   }, []);
 
+  // Fetch user favorites
   useEffect(() => {
-    if (!currentUser) {
-      setFavoritedIds(new Set());
-      setProfile(null);
-      return;
-    }
-
-    const favUnsub = onSnapshot(collection(db, `users/${currentUser.uid}/favorites`), (snap) => {
-      setFavoritedIds(new Set(snap.docs.map((d) => d.id)));
+    if (!currentUser) return;
+    
+    const favoritesRef = collection(db, `users/${currentUser.uid}/favorites`);
+    const unsub = onSnapshot(favoritesRef, (snapshot) => {
+      const favs = snapshot.docs.map(doc => doc.id);
+      setFavorites(favs);
     }, console.error);
-
-    const profileUnsub = onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
-      setProfile(snap.exists() ? snap.data() : { coins: 0, diamonds: 0 });
-    }, console.error);
-
-    return () => {
-      favUnsub();
-      profileUnsub();
-    };
+    
+    return unsub;
   }, [currentUser]);
 
-  // ── Recent Materials ────────────────────────────────────────────────────
+  // Fetch recent materials
   useEffect(() => {
-    const q = query(collection(db, 'materials'), orderBy('createdAt', 'desc'), limit(10));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const items = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setRecentMaterials(items);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Recent materials error:', err);
-        toast.error("Couldn't load recent materials");
-        setLoading(false);
-      }
+    const q = query(
+      collection(db, 'materials'),
+      orderBy('createdAt', 'desc'),
+      limit(12)
     );
-
-    return unsubscribe;
+    
+    const unsub = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.() || new Date()
+      }));
+      setRecentItems(items);
+      setFilteredItems(items);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching recent items:", error);
+      setLoading(false);
+    });
+    
+    return unsub;
   }, []);
 
-  // ── Reviews listener ────────────────────────────────────────────────────
+  // Filter and sort items
   useEffect(() => {
-    if (!previewMaterial?.id) {
-      setReviews([]);
-      setAverageRating(0);
-      setReviewCount(0);
-      setUserRating(0);
-      setUserComment("");
+    let result = [...recentItems];
+    
+    // Filter by category
+    if (selectedCategory !== 'all') {
+      result = result.filter(item => 
+        item.category?.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    }
+    
+    // Filter by search term
+    if (searchTerm) {
+      result = result.filter(item => 
+        item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Sort items
+    switch(sortBy) {
+      case 'popular':
+        result.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+        break;
+      case 'trending':
+        result.sort((a, b) => (b.views || 0) - (a.views || 0));
+        break;
+      case 'latest':
+      default:
+        result.sort((a, b) => b.createdAt - a.createdAt);
+        break;
+    }
+    
+    setFilteredItems(result);
+  }, [recentItems, selectedCategory, searchTerm, sortBy]);
+
+  // Toggle favorite
+  const toggleFavorite = async (e, materialId) => {
+    e.stopPropagation();
+    if (!currentUser) {
+      alert('Please login to save favorites');
       return;
     }
-
-    const reviewsCol = collection(db, `materials/${previewMaterial.id}/reviews`);
-    const q = query(reviewsCol, orderBy("createdAt", "desc"));
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setReviews(list);
-
-      if (list.length > 0) {
-        const sum = list.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
-        setAverageRating((sum / list.length).toFixed(1));
-        setReviewCount(list.length);
-      } else {
-        setAverageRating(0);
-        setReviewCount(0);
-      }
-
-      const myReview = list.find(r => r.userId === currentUser?.uid);
-      setUserRating(myReview ? Number(myReview.rating) : 0);
-      setUserComment(myReview?.comment || "");
-    }, console.error);
-
-    return unsubscribe;
-  }, [previewMaterial?.id, currentUser?.uid]);
-
-  // ── Helpers ─────────────────────────────────────────────────────────────
-
-  const getMaterialPriceInCoins = (cat) => {
-    const map = {
-      'Past Questions': 1,
-      'PDF Notes': 2,
-      'Video Tutorials': 4,
-      'Technical Reviews': 3,
-    };
-    return map[cat] ?? 2;
-  };
-
-  const getCategoryInfo = (category) => {
-    const map = {
-      'Past Questions': { icon: ScrollText, color: 'from-amber-500 to-orange-600' },
-      'PDF Notes': { icon: FileText, color: 'from-blue-500 to-cyan-600' },
-      'Video Tutorials': { icon: Video, color: 'from-purple-500 to-pink-600' },
-      'Technical Reviews': { icon: BookOpen, color: 'from-emerald-500 to-teal-600' },
-    };
-    return map[category] ?? { icon: FileText, color: 'from-slate-500 to-slate-700' };
-  };
-
-  const addTransaction = async (userId, type, amountNGN, description, status = 'completed', metadata = {}) => {
-    if (!userId) return;
+    
     try {
-      const txRef = doc(collection(db, `users/${userId}/transactions`));
-      await setDoc(txRef, {
-        type,
-        amountNGN,
-        description,
-        status,
-        createdAt: serverTimestamp(),
-        ...metadata,
-      });
-    } catch (err) {
-      console.error('Transaction record failed:', err);
-    }
-  };
-
-  const deductCoinsAndRecord = async (material, price) => {
-    if (!currentUser) return false;
-
-    try {
-      await runTransaction(db, async (t) => {
-        const buyerRef = doc(db, 'users', currentUser.uid);
-        const buyerSnap = await t.get(buyerRef);
-        if (!buyerSnap.exists()) throw new Error('Profile not found');
-        const buyerCoins = buyerSnap.data().coins || 0;
-        if (buyerCoins < price) throw new Error('Insufficient coins');
-
-        t.update(buyerRef, { coins: buyerCoins - price });
-      });
-
-      setProfile((prev) => ({ ...prev, coins: Math.max(0, (prev?.coins || 0) - price) }));
-
-      await addTransaction(
-        currentUser.uid,
-        'spend',
-        price * 100,
-        `Spent ${price} coin${price !== 1 ? 's' : ''} on "${material.title || 'Material'}"`,
-        'completed',
-        {
-          materialId: material.id,
-          category: material.category,
-          coinsSpent: price,
-        }
-      );
-
-      const dlRef = doc(db, `users/${currentUser.uid}/downloads`, material.id);
-      await setDoc(
-        dlRef,
-        {
-          downloadedAt: serverTimestamp(),
-          title: material.title || material.name || 'Untitled',
-          course: material.course || '—',
-          school: material.school || '—',
-          category: material.category || 'Material',
-          file_path: material.file_path,
-          coinsSpent: price,
-          amountNGN: price * 100,
-          isOwnerDownload: false,
-        },
-        { merge: true }
-      );
-
-      return true;
-    } catch (err) {
-      console.error('Coin deduction failed:', err);
-      const msg = err.message?.includes('Insufficient')
-        ? `Not enough coins (${price} required)`
-        : 'Failed to process payment';
-      toast.error(msg);
-      return false;
-    }
-  };
-
-  const incrementDownloadStats = async (material, price, isOwner) => {
-    if (isOwner) return;
-    const diamondsToCredit = Math.floor(price * 0.6);
-    if (diamondsToCredit <= 0) return;
-
-    const matRef = doc(db, 'materials', material.id);
-    const ownerRef = material.ownerUid ? doc(db, 'users', material.ownerUid) : null;
-
-    try {
-      await runTransaction(db, async (t) => {
-        const matSnap = await t.get(matRef);
-        if (!matSnap.exists()) return;
-
-        t.update(matRef, {
-          downloads: increment(1),
-          diamonds_earned: increment(diamondsToCredit),
+      const favoriteRef = doc(db, `users/${currentUser.uid}/favorites`, materialId);
+      if (favorites.includes(materialId)) {
+        await updateDoc(favoriteRef, {
+          removedAt: new Date()
         });
-
-        if (ownerRef) {
-          t.update(ownerRef, { diamonds: increment(diamondsToCredit) });
-        }
-      });
-    } catch (err) {
-      console.warn('Stats update failed (non-critical):', err);
-    }
-  };
-
-  const forceDownload = (url, filename) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const getFileUrl = async (material, isPreview = false) => {
-    if (!currentUser) {
-      toast.info('Please sign in');
-      return null;
-    }
-
-    const price = getMaterialPriceInCoins(material.category);
-    const isOwner = currentUser?.uid === material.ownerUid;
-
-    if (isPreview) {
-      try {
-        const storageRef = ref(storage, material.file_path);
-        return await getDownloadURL(storageRef);
-      } catch (err) {
-        console.error('Preview URL error:', err);
-        toast.error('Could not load preview');
-        return null;
+        // The onSnapshot will automatically update favorites state
+      } else {
+        await updateDoc(favoriteRef, {
+          materialId: materialId,
+          addedAt: new Date()
+        });
       }
+    } catch (error) {
+      console.error("Error toggling favorite:", error);
     }
+  };
 
-    if (!isOwner && (profile?.coins ?? 0) < price) {
-      toast.error(`Not enough coins! Requires ${price} coin${price !== 1 ? 's' : ''}.`);
-      return null;
-    }
-
-    let deductionSuccess = true;
-    if (!isOwner) {
-      deductionSuccess = await deductCoinsAndRecord(material, price);
-    }
-
-    if (!deductionSuccess) return null;
-
-    incrementDownloadStats(material, price, isOwner);
-
+  // Handle material click
+  const handleMaterialClick = async (item) => {
+    // Update view count
     try {
-      const storageRef = ref(storage, material.file_path);
-      const url = await getDownloadURL(storageRef);
-
-      if (!isPreview) {
-        const ext = material.file_path.split('.').pop()?.toLowerCase() || 'pdf';
-        const safeTitle = (material.title || `material-${material.id}`)
-          .replace(/[^a-z0-9]/gi, '_')
-          .replace(/_+/g, '_')
-          .replace(/^_|_$/g, '');
-        const filename = `${safeTitle}.${ext}`;
-
-        forceDownload(url, filename);
-
-        toast.success(isOwner ? 'File downloaded!' : `File downloaded (${price} coin${price !== 1 ? 's' : ''} deducted)`);
-      }
-
-      return url;
-    } catch (err) {
-      console.error('File access error:', err);
-      toast.error('Could not access file');
-      return null;
-    } finally {
-      setDownloadingId(null);
+      const materialRef = doc(db, 'materials', item.id);
+      await updateDoc(materialRef, {
+        views: (item.views || 0) + 1
+      });
+    } catch (error) {
+      console.error("Error updating views:", error);
     }
+    
+    // Navigate to material detail (implement based on your routing)
+    console.log("Open material:", item.id);
   };
 
-  const handleDownload = (material) => {
-    setDownloadingId(material.id);
-    getFileUrl(material, false);
-  };
-
-  const openPreview = async (material) => {
-    if (!currentUser) {
-      toast.info('Please sign in to preview');
-      return;
-    }
-    if (!material?.file_path) {
-      toast.error('No file attached');
-      return;
-    }
-
-    setPreviewMaterial(material);
-    setPreviewUrl(null);
-    setPreviewError(null);
-    setPreviewLoading(true);
-
-    const url = await getFileUrl(material, true);
-
-    if (url) {
-      setPreviewUrl(url);
+  // Share material
+  const shareMaterial = (e, item) => {
+    e.stopPropagation();
+    if (navigator.share) {
+      navigator.share({
+        title: item.title,
+        text: item.description,
+        url: window.location.href + '/material/' + item.id
+      });
     } else {
-      setPreviewError('Could not load preview — file may be missing or restricted.');
-    }
-
-    setPreviewLoading(false);
-  };
-
-  const toggleFavorite = async (material) => {
-    if (!currentUser) {
-      toast.info('Please sign in to favorite materials');
-      return;
-    }
-
-    const favRef = doc(db, `users/${currentUser.uid}/favorites`, material.id);
-
-    try {
-      const exists = (await getDoc(favRef)).exists();
-      if (exists) {
-        await deleteDoc(favRef);
-        toast.info('Removed from favorites');
-      } else {
-        await setDoc(favRef, {
-          addedAt: serverTimestamp(),
-          title: material.title || material.name || 'Untitled',
-          course: material.course || '—',
-          school: material.school || '—',
-          category: material.category || 'Material',
-        });
-        toast.success('Added to favorites ❤️');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to update favorites');
+      navigator.clipboard.writeText(window.location.href + '/material/' + item.id);
+      alert('Link copied to clipboard!');
     }
   };
 
-  const handleSubmitReview = async () => {
-    if (!currentUser) {
-      toast.info("Please sign in to leave a review");
-      return;
-    }
-    if (userRating === 0) {
-      toast.warn("Please select a rating");
-      return;
-    }
-
-    setSubmittingReview(true);
-
-    try {
-      const reviewRef = doc(collection(db, `materials/${previewMaterial.id}/reviews`));
-      const materialRef = doc(db, "materials", previewMaterial.id);
-
-      await runTransaction(db, async (t) => {
-        const materialSnap = await t.get(materialRef);
-        if (!materialSnap.exists()) throw new Error("Material not found");
-
-        const existingReviews = await getDocs(collection(db, `materials/${previewMaterial.id}/reviews`));
-        let currentTotal = 0;
-        let count = existingReviews.size;
-
-        const oldReview = existingReviews.docs.find(d => d.data().userId === currentUser.uid);
-        if (oldReview) {
-          currentTotal -= oldReview.data().rating;
-          count -= 1;
-          await t.delete(oldReview.ref);
-        }
-
-        currentTotal += userRating;
-        count += 1;
-
-        const newAvg = count > 0 ? currentTotal / count : 0;
-
-        t.set(reviewRef, {
-          userId: currentUser.uid,
-          userName: currentUser.displayName || currentUser.email?.split('@')[0] || "Anonymous",
-          rating: userRating,
-          comment: userComment.trim() || null,
-          createdAt: serverTimestamp(),
-        });
-
-        t.update(materialRef, {
-          averageRating: newAvg,
-          reviewCount: count,
-        });
-      });
-
-      toast.success("Review submitted! Thank you.");
-      setUserComment("");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to submit review");
-    } finally {
-      setSubmittingReview(false);
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
     }
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { type: "spring", stiffness: 100, damping: 12 }
+    }
+  };
+
+  // Format date
+  const formatDate = (date) => {
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+      <div className="mt-8 lg:mt-10">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <div className="h-8 w-48 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse" />
+            <div className="h-4 w-64 bg-slate-200 dark:bg-slate-700 rounded-lg mt-2 animate-pulse" />
+          </div>
+          <div className="h-10 w-24 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-lg animate-pulse">
+              <div className="h-48 bg-slate-200 dark:bg-slate-700" />
+              <div className="p-5 space-y-3">
+                <div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3" />
+                <div className="flex justify-between pt-3">
+                  <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded" />
+                  <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
-        Recent Materials
-      </h2>
-
-      {recentMaterials.length === 0 ? (
-        <p className="text-slate-500 dark:text-slate-400 text-center py-10">
-          No materials have been uploaded yet.
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
-          {recentMaterials.map((item) => {
-            const { icon: CategoryIcon, color } = getCategoryInfo(item.category);
-            const isFavorited = favoritedIds.has(item.id);
-            const isMenuOpen = openMenuId === item.id;
-            const isDownloading = downloadingId === item.id;
-            const price = getMaterialPriceInCoins(item.category);
-            const isOwner = currentUser?.uid === item.ownerUid;
-            const canAfford = isOwner || (profile?.coins ?? 0) >= price;
-
-            const uploadedTime =
-              item.createdAt?.toDate?.()
-                ? item.createdAt.toDate().toLocaleString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : 'recent';
-
-            return (
-              <div
-                key={item.id}
-                className="group bg-white dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl shadow-md hover:shadow-2xl border border-slate-200/60 dark:border-slate-700/50 transition-all duration-300 overflow-hidden flex flex-col h-full relative"
-              >
-                <div className="relative h-44 sm:h-48 overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/20 to-transparent z-10" />
-                  <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center">
-                    <PersonStanding size={72} className="text-slate-400/70 dark:text-slate-600/70" />
-                  </div>
-
-                  <div className="absolute top-4 left-4 z-20">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r ${color} text-white backdrop-blur-sm shadow-sm`}
-                    >
-                      <CategoryIcon size={14} />
-                      {item.category}
-                    </span>
-                  </div>
-
-                  {!isOwner && (
-                    <div className="absolute top-4 right-20 z-20 bg-white/90 dark:bg-slate-900/80 px-2.5 py-1 rounded-full text-xs font-medium text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/40 shadow-sm">
-                      {price} coin{price !== 1 ? 's' : ''}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => toggleFavorite(item)}
-                    className="absolute top-4 right-4 z-20 p-2.5 bg-black/30 backdrop-blur-md rounded-full hover:bg-black/50 transition-all"
-                  >
-                    <Heart
-                      size={20}
-                      className={`${isFavorited ? 'fill-red-500 text-red-500' : 'text-white'} transition-colors`}
-                    />
-                  </button>
-                </div>
-
-                <div className="p-5 flex flex-col flex-grow">
-                  <h3 className="font-semibold text-lg text-slate-800 dark:text-white line-clamp-2">
-                    {item.title || item.course || 'Untitled Material'}
-                  </h3>
-                  <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
-                    {item.course} • {item.school || '—'}
-                  </p>
-
-                  <div className="mt-3 flex items-center gap-2 text-sm">
-                    <div className="flex">
-                      {[1,2,3,4,5].map(n => (
-                        <Star
-                          key={n}
-                          size={16}
-                          className={n <= (item.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300 dark:text-slate-600"}
-                        />
-                      ))}
-                    </div>
-                    <span className="font-medium text-amber-600 dark:text-amber-400">
-                      {item.averageRating ? Number(item.averageRating).toFixed(1) : "—"}
-                    </span>
-                    <span className="text-slate-500 dark:text-slate-400 text-xs">
-                      ({item.reviewCount || 0})
-                    </span>
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <div className="flex items-center gap-1.5">
-                      <Clock size={14} />
-                      <span>{uploadedTime}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1">
-                        <Eye size={14} /> {item.views || 0}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Download size={14} /> {item.downloads || 0}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto pt-5 flex items-center gap-3 border-t border-slate-100 dark:border-slate-700/60">
-                    <button
-                      onClick={() => openPreview(item)}
-                      className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-medium rounded-2xl transition-all flex items-center justify-center gap-2"
-                    >
-                      <Eye size={18} />
-                      Preview
-                    </button>
-
-                    <button
-                      onClick={() => handleDownload(item)}
-                      disabled={isDownloading || !canAfford}
-                      className={`flex-1 py-3 font-medium rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 ${
-                        isDownloading
-                          ? 'bg-violet-700 text-white cursor-wait'
-                          : canAfford
-                          ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white'
-                          : 'bg-slate-300 dark:bg-slate-600 text-slate-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {isDownloading ? (
-                        <>
-                          <Loader2 size={18} className="animate-spin" />
-                          Preparing…
-                        </>
-                      ) : (
-                        <>
-                          <Download size={18} />
-                          {isOwner ? 'Free' : `${price} coin${price !== 1 ? 's' : ''}`}
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenMenuId(isMenuOpen ? null : item.id);
-                      }}
-                      className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                    >
-                      <MoreVertical size={20} className="text-slate-600 dark:text-slate-300" />
-                    </button>
-                  </div>
-                </div>
-
-                {isMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
-                    <div className="absolute bottom-24 right-6 z-50 w-52 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 animate-fade-in">
-                      <button
-                        onClick={() => toast.info('Link copied (implement real share)')}
-                        className="w-full px-5 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/70 flex items-center gap-3 text-sm"
-                      >
-                        <Share2 size={18} /> Share
-                      </button>
-                      <button
-                        onClick={() => toast.warning('Reported (implement backend report)')}
-                        className="w-full px-5 py-3 text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center gap-3 text-sm"
-                      >
-                        <Flag size={18} /> Report
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Preview Modal ────────────────────────────────────────────────────── */}
-      {previewMaterial && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-4 border-b dark:border-slate-700 flex items-center justify-between">
-              <h2 className="text-lg md:text-xl font-semibold truncate pr-4">
-                Preview: {previewMaterial.title || previewMaterial.name || 'Material'}
-              </h2>
-              <button
-                onClick={() => {
-                  setPreviewMaterial(null);
-                  setPreviewUrl(null);
-                  setPreviewError(null);
-                }}
-                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 flex-shrink-0"
-              >
-                <X size={22} />
-              </button>
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+      className="mt-8 lg:mt-10"
+    >
+      {/* Header with filters */}
+      <div className="mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+              <Clock className="w-7 h-7 text-indigo-500" />
+              What's New
+            </h2>
+            <p className="text-slate-500 dark:text-slate-400 mt-1">
+              Latest materials added by the community • {filteredItems.length} items
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Search bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search materials..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
-
-            <div className="flex-1 overflow-auto p-6 bg-slate-50 dark:bg-slate-950">
-              {previewLoading ? (
-                <div className="h-96 flex items-center justify-center">
-                  <Loader2 className="h-12 w-12 animate-spin text-violet-600" />
-                </div>
-              ) : previewError ? (
-                <div className="h-full flex flex-col items-center justify-center text-center gap-6 py-12 px-6">
-                  <Eye size={80} className="text-slate-400 dark:text-slate-500 opacity-60 mb-4" />
-                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
-                    {previewError}
-                  </p>
-                  <p className="text-slate-600 dark:text-slate-400">
-                    Preview is free, but the file might be unavailable, deleted, or restricted.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setPreviewMaterial(null);
-                      setPreviewUrl(null);
-                      setPreviewError(null);
-                    }}
-                    className="px-10 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg font-medium"
-                  >
-                    Close
-                  </button>
-                </div>
-              ) : previewUrl ? (
-                <div className="relative w-full h-[70vh] md:h-[80vh] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
-                  {previewMaterial.category?.toLowerCase().includes('video') ? (
-                    <video
-                      src={previewUrl}
-                      controls
-                      autoPlay
-                      className="absolute inset-0 w-full h-full object-contain"
-                      onContextMenu={(e) => e.preventDefault()}
-                      onDragStart={(e) => e.preventDefault()}
-                    />
-                  ) : (
-                    <iframe
-                      src={previewUrl}
-                      className="absolute inset-0 w-full h-full"
-                      title="Material Preview"
-                      allowFullScreen
-                      sandbox="allow-scripts allow-same-origin allow-popups"
-                      onContextMenu={(e) => e.preventDefault()}
-                    />
-                  )}
-
-                  {/* Thin overlay — only catches context menu & drag events */}
-                  <div
-                    className="absolute inset-0 z-10"
-                    onContextMenu={(e) => e.preventDefault()}
-                    onDragStart={(e) => e.preventDefault()}
-                  />
-
-                  {/* Visual indication — does not block interaction */}
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/65 text-white text-sm px-5 py-2.5 rounded-full z-20 backdrop-blur-sm pointer-events-none border border-white/20 shadow-lg">
-                    Preview Mode – Download Disabled
-                  </div>
-                </div>
-              ) : null}
-
-              {/* ── Reviews section ── */}
-              <div className="mt-8 border-t dark:border-slate-700 pt-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center justify-between">
-                  <span>Reviews • {reviewCount} {reviewCount === 1 ? "review" : "reviews"}</span>
-                  <span className="text-amber-600 dark:text-amber-400 font-bold">
-                    {averageRating > 0 ? `★ ${averageRating}` : "No ratings yet"}
-                  </span>
-                </h3>
-
-                <div className="mb-6 p-5 bg-slate-100/70 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <p className="text-sm font-medium mb-3">Your Rating</p>
-                  <div className="flex gap-1 mb-4" onMouseLeave={() => setHoveredStar(0)}>
-                    {[1,2,3,4,5].map(star => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setUserRating(star)}
-                        onMouseEnter={() => setHoveredStar(star)}
-                        className={`text-3xl transition-transform hover:scale-110 ${
-                          star <= (hoveredStar || userRating)
-                            ? "text-amber-500"
-                            : "text-slate-300 dark:text-slate-600"
-                        }`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-
-                  <textarea
-                    value={userComment}
-                    onChange={e => setUserComment(e.target.value)}
-                    placeholder="Share your thoughts about this material... (optional)"
-                    className="w-full h-28 p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
-                  />
-
-                  <button
-                    onClick={handleSubmitReview}
-                    disabled={submittingReview || userRating === 0}
-                    className="mt-4 px-6 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {submittingReview && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {userRating > 0 ? "Submit Review" : "Select Rating"}
-                  </button>
-                </div>
-
-                {reviews.length > 0 ? (
-                  <div className="space-y-6 max-h-72 overflow-y-auto pr-2">
-                    {reviews.map(review => (
-                      <div key={review.id} className="border-b dark:border-slate-700 pb-5 last:border-b-0">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <p className="font-medium text-slate-900 dark:text-slate-100">
-                              {review.userName}
-                            </p>
-                            <div className="flex gap-0.5 text-amber-500 mt-0.5">
-                              {"★".repeat(review.rating || 0)}{"☆".repeat(5 - (review.rating || 0))}
-                            </div>
-                          </div>
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            {review.createdAt?.toDate?.()
-                              ? review.createdAt.toDate().toLocaleDateString()
-                              : "—"}
-                          </span>
-                        </div>
-                        {review.comment && (
-                          <p className="text-sm text-slate-700 dark:text-slate-300 mt-2 leading-relaxed">
-                            {review.comment}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">
-                    No reviews yet. Be the first to share your opinion!
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-4 border-t dark:border-slate-700 text-center text-sm text-slate-500 dark:text-slate-400 bg-slate-100/50 dark:bg-slate-900/30">
-              Free preview — full file costs {getMaterialPriceInCoins(previewMaterial.category)} coin
-              {getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} (free if you are the owner)
-            </div>
+            
+            {/* Filter button */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Filter className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            </button>
           </div>
         </div>
+        
+        {/* Filters panel */}
+        <AnimatePresence>
+          {showFilters && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-4 shadow-lg border border-slate-200 dark:border-slate-700">
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* Category filters */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Categories:</span>
+                    {categories.map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setSelectedCategory(cat.id)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                          selectedCategory === cat.id
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                      >
+                        <cat.icon className="w-3 h-3 inline mr-1" />
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Sort options */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Sort by:</span>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="latest">Latest</option>
+                      <option value="popular">Most Downloaded</option>
+                      <option value="trending">Most Viewed</option>
+                    </select>
+                  </div>
+                  
+                  {/* Clear filters */}
+                  {(selectedCategory !== 'all' || searchTerm || sortBy !== 'latest') && (
+                    <button
+                      onClick={() => {
+                        setSelectedCategory('all');
+                        setSearchTerm('');
+                        setSortBy('latest');
+                      }}
+                      className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear all
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        {/* View all button */}
+        <div className="flex justify-end">
+          <motion.button
+            whileHover={{ x: 5 }}
+            className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-medium group"
+          >
+            View all
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Materials grid */}
+      {filteredItems.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredItems.map((item) => (
+            <motion.div
+              key={item.id}
+              variants={itemVariants}
+              whileHover={{ y: -8, transition: { duration: 0.2 } }}
+              onClick={() => handleMaterialClick(item)}
+              className="group cursor-pointer"
+            >
+              <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-800 shadow-lg hover:shadow-2xl transition-all duration-300">
+                {/* Thumbnail/Image placeholder */}
+                <div className="relative h-48 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 overflow-hidden">
+                  {item.thumbnail ? (
+                    <img 
+                      src={item.thumbnail} 
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-6xl opacity-30">
+                        {item.category === 'video' ? '🎥' : 
+                         item.category === 'document' ? '📄' : 
+                         item.category === 'tutorial' ? '📚' : '📘'}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Category badge */}
+                  <div className="absolute top-3 left-3">
+                    <span className="px-2.5 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-xs font-medium">
+                      {item.category || 'General'}
+                    </span>
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div className="absolute top-3 right-3 flex gap-2">
+                    {/* Favorite button */}
+                    <button
+                      onClick={(e) => toggleFavorite(e, item.id)}
+                      className="p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
+                    >
+                      <Heart 
+                        className={`w-4 h-4 transition-colors ${
+                          favorites.includes(item.id) 
+                            ? 'fill-red-500 text-red-500' 
+                            : 'text-slate-600 hover:text-red-500'
+                        }`} 
+                      />
+                    </button>
+                    
+                    {/* Share button */}
+                    <button
+                      onClick={(e) => shareMaterial(e, item)}
+                      className="p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
+                    >
+                      <Share2 className="w-4 h-4 text-slate-600 hover:text-indigo-500" />
+                    </button>
+                  </div>
+                  
+                  {/* Author info */}
+                  {item.authorName && (
+                    <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm rounded-full px-2 py-1">
+                      <User className="w-3 h-3 text-white" />
+                      <span className="text-white text-xs">{item.authorName}</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Content */}
+                <div className="p-5">
+                  <h3 className="font-bold text-slate-800 dark:text-white text-lg mb-2 line-clamp-2">
+                    {item.title || 'Untitled Material'}
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 line-clamp-2">
+                    {item.description || 'No description available'}
+                  </p>
+                  
+                  {/* Stats and metadata */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{item.views || 0} views</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Download className="w-3.5 h-3.5" />
+                          <span>{item.downloads || 0} downloads</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>{formatDate(item.createdAt)}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Tags */}
+                    {item.tags && item.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-2">
+                        {item.tags.slice(0, 3).map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded-full text-xs text-slate-600 dark:text-slate-400"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                        {item.tags.length > 3 && (
+                          <span className="text-xs text-slate-400">+{item.tags.length - 3}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Action button */}
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleMaterialClick(item);
+                    }}
+                    className="w-full mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors"
+                  >
+                    View Details
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center py-16"
+        >
+          <div className="text-6xl mb-4">📭</div>
+          <p className="text-slate-500 dark:text-slate-400 text-lg">No materials found</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
+            Try adjusting your filters or search term
+          </p>
+          <button
+            onClick={() => {
+              setSelectedCategory('all');
+              setSearchTerm('');
+              setSortBy('latest');
+            }}
+            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Clear Filters
+          </button>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }
 

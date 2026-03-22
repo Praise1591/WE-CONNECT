@@ -1,23 +1,14 @@
+// Dashboard.jsx
 import React from "react";
-import StatsGrid from './StatsGrid'
+import StatsGrid from './StatsGrid';
 import Recent from "./Recent";
 
-
-
-function Dashboard(){
-    return(
-        <div className="space-y-6">
-            
-            <StatsGrid />
-
-            <Recent />
-
-            
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2">
-                    
-                </div>
+function Dashboard() {
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/30">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+                <StatsGrid />
+                <Recent />
             </div>
         </div>
     );

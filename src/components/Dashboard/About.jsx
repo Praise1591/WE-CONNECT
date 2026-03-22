@@ -1,249 +1,324 @@
-// About.jsx — Plain JSX version (no TypeScript)
-import React from 'react';
+// About.jsx - Authentic, Clean Design
+import React, { useEffect, useRef, useState } from 'react';
 import { 
-  Zap, 
-  Users, 
-  BookOpen, 
-  Download, 
-  Heart, 
-  Mail, 
-  Phone, 
-  Globe, 
-  ChevronRight,
-  Sparkles,
-  Target,
-  Shield,
-  BarChart2,
-  GraduationCap
+  Zap, Users, BookOpen, Download, Heart, Mail, Phone, Globe, 
+  Target, Shield, Lightbulb, Compass, Coffee, MessageCircle,
+  ChevronDown, Quote, Twitter, Linkedin, Instagram, Youtube,
+  ArrowUpRight, Sparkles, Gem, Crown, Star, Feather, 
+  Eye, Layers, Palette, Code, Camera, Music
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Parallax } from 'react-parallax';
-import Particles from 'react-particles';
-import { loadFull } from 'tsparticles';
-
-// Particle configuration for subtle, creative background effects
-const particlesInit = async (engine) => {
-  await loadFull(engine);
-};
-
-const particlesOptions = {
-  background: {
-    color: {
-      value: "transparent",
-    },
-  },
-  fpsLimit: 60,
-  interactivity: {
-    events: {
-      onHover: {
-        enable: true,
-        mode: "repulse",
-      },
-      resize: true,
-    },
-    modes: {
-      repulse: {
-        distance: 200,
-        duration: 0.4,
-      },
-    },
-  },
-  particles: {
-    color: {
-      value: ["#3b82f6", "#8b5cf6"],
-    },
-    links: {
-      color: "#ffffff",
-      distance: 150,
-      enable: true,
-      opacity: 0.2,
-      width: 1,
-    },
-    collisions: {
-      enable: true,
-    },
-    move: {
-      direction: "none",
-      enable: true,
-      outModes: {
-        default: "bounce",
-      },
-      random: false,
-      speed: 1,
-      straight: false,
-    },
-    number: {
-      density: {
-        enable: true,
-        area: 800,
-      },
-      value: 80,
-    },
-    opacity: {
-      value: 0.3,
-    },
-    shape: {
-      type: "circle",
-    },
-    size: {
-      value: { min: 1, max: 3 },
-    },
-  },
-  detectRetina: true,
-};
+import { motion, useScroll, useTransform } from 'framer-motion';
 
 function About() {
+  const [activeSection, setActiveSection] = useState('mission');
+  const heroRef = useRef(null);
+  const { scrollYProgress } = useScroll();
+  const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 0.98]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const sections = ['mission', 'values', 'features', 'contact'];
+      const scrollPosition = window.scrollY + 200;
+      
+      for (const section of sections) {
+        const element = document.getElementById(section);
+        if (element) {
+          const { offsetTop, offsetHeight } = element;
+          if (scrollPosition >= offsetTop && scrollPosition < offsetTop + offsetHeight) {
+            setActiveSection(section);
+            break;
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToSection = (sectionId) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const values = [
+    {
+      icon: Lightbulb,
+      title: "Innovation",
+      description: "We believe in the power of fresh ideas and creative solutions to transform education.",
+      color: "from-amber-500 to-orange-500"
+    },
+    {
+      icon: Users,
+      title: "Collaboration",
+      description: "Learning is better together. We foster genuine connections and peer-to-peer support.",
+      color: "from-emerald-500 to-teal-500"
+    },
+    {
+      icon: Shield,
+      title: "Integrity",
+      description: "We maintain a safe, respectful space where academic honesty is valued and protected.",
+      color: "from-blue-500 to-cyan-500"
+    },
+    {
+      icon: Heart,
+      title: "Empathy",
+      description: "Understanding the student journey helps us build tools that truly serve our community.",
+      color: "from-rose-500 to-pink-500"
+    },
+    {
+      icon: Compass,
+      title: "Growth",
+      description: "We're committed to continuous improvement based on real student feedback and needs.",
+      color: "from-purple-500 to-indigo-500"
+    },
+    {
+      icon: Coffee,
+      title: "Dedication",
+      description: "Built by students who understand the challenges and celebrate the victories.",
+      color: "from-stone-500 to-neutral-500"
+    }
+  ];
+
+  const features = [
+    {
+      icon: BookOpen,
+      title: "Resource Sharing",
+      description: "Upload and access study materials, past questions, and educational resources shared by peers.",
+      details: "Share your notes, find relevant materials, and build your academic toolkit."
+    },
+    {
+      icon: MessageCircle,
+      title: "Community Discussions",
+      description: "Engage in meaningful conversations about courses, careers, and campus life.",
+      details: "Connect with students who share your interests and academic goals."
+    },
+    {
+      icon: Download,
+      title: "Personal Library",
+      description: "Save and organize your favorite resources for quick access when you need them.",
+      details: "Build your personal collection of valuable learning materials."
+    },
+    {
+      icon: Users,
+      title: "Study Networks",
+      description: "Find study partners and build connections within your department and beyond.",
+      details: "Create or join study groups that match your learning style."
+    }
+  ];
+
+  const teamMembers = [
+    { name: "Oluwaseun Adekunle", role: "Founder", bio: "Computer Science student passionate about EdTech", avatar: "👨‍💻" },
+    { name: "Amina Mohammed", role: "Community Lead", bio: "Building inclusive learning spaces", avatar: "👩‍💼" },
+    { name: "Chidi Okonkwo", role: "Technical Lead", bio: "Full-stack developer & open-source advocate", avatar: "👨‍🔧" },
+    { name: "Ngozi Eze", role: "Content Curator", bio: "Ensuring quality educational resources", avatar: "📚" },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800 overflow-x-hidden relative">
-      {/* Creative Particle Background */}
-      <Particles
-        id="tsparticles"
-        init={particlesInit}
-        options={particlesOptions}
-        className="absolute inset-0 z-0"
-      />
+    <div className="min-h-screen bg-white dark:bg-slate-950">
+      {/* Navigation Dots */}
+      <div className="fixed right-8 top-1/2 transform -translate-y-1/2 z-50 hidden lg:block">
+        <div className="flex flex-col gap-3">
+          {['mission', 'values', 'features', 'contact'].map((section) => (
+            <button
+              key={section}
+              onClick={() => scrollToSection(section)}
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                activeSection === section 
+                  ? 'bg-indigo-600 w-6' 
+                  : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
 
-      {/* Subtle logo watermark */}
-      <div 
-        className="absolute inset-0 bg-no-repeat bg-center bg-contain opacity-5 dark:opacity-3 pointer-events-none"
-        style={{
-          backgroundImage: `url('/weconnect-logo.png')`,
-          backgroundSize: 'clamp(50%, 80%, 100%) auto',
-        }}
-      />
+      {/* Hero Section */}
+      <motion.section 
+        ref={heroRef}
+        style={{ scale: heroScale }}
+        className="relative min-h-screen flex items-center justify-center px-4"
+      >
+        <div className="max-w-6xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="inline-block mb-6"
+          >
+            <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-full">
+              <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span className="text-sm text-indigo-600 dark:text-indigo-400">Student Built · Student Driven</span>
+            </div>
+          </motion.div>
 
-      {/* Hero Section with Parallax */}
-      <Parallax strength={200} className="relative">
-        <motion.section 
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: 'easeOut' }}
-          className="relative py-16 sm:py-24 md:py-32 lg:py-40 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-purple-600/20 dark:from-blue-500/10 dark:to-purple-500/10" />
-          <div className="absolute top-0 left-0 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-blue-500/30 rounded-full blur-3xl -translate-x-1/3 -translate-y-1/3 animate-pulse-slow" />
-          <div className="absolute bottom-0 right-0 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-purple-500/30 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 animate-pulse-slow" />
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="text-5xl md:text-7xl font-bold mb-6"
+          >
+            <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              WE CONNECT
+            </span>
+          </motion.h1>
 
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.2, duration: 0.8 }}
-              className="inline-flex items-center gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8"
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto mb-4"
+          >
+            A community platform for Nigerian university students
+          </motion.p>
+
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="text-lg text-gray-500 dark:text-gray-500 max-w-2xl mx-auto mb-12"
+          >
+            Share knowledge, discover resources, and connect with fellow students who share your academic journey.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+            className="flex flex-col sm:flex-row gap-4 justify-center"
+          >
+            <button className="px-8 py-3 bg-indigo-600 text-white rounded-full font-medium hover:bg-indigo-700 transition-colors">
+              Join the Community
+            </button>
+            <button className="px-8 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-full font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+              Learn More
+            </button>
+          </motion.div>
+
+          <motion.div
+            animate={{ y: [0, 10, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute bottom-10 left-1/2 transform -translate-x-1/2"
+          >
+            <ChevronDown className="w-6 h-6 text-gray-400" />
+          </motion.div>
+        </div>
+      </motion.section>
+
+      {/* Mission Section */}
+      <section id="mission" className="py-24 px-4 bg-gray-50 dark:bg-slate-900/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
             >
-              <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl sm:rounded-3xl flex items-center justify-center shadow-xl md:shadow-2xl">
-                <Zap className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 text-white" />
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
+                Our Mission
+              </h2>
+              <p className="text-xl text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                To create a supportive digital space where Nigerian university students can connect, collaborate, and grow together.
+              </p>
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
+                We believe that every student deserves access to quality educational resources and a community that supports their academic journey. WE CONNECT was born from this belief — built by students, for students.
+              </p>
+              <div className="mt-8 flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-950 rounded-full flex items-center justify-center">
+                  <Feather className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-500">Started with a simple idea</p>
+                  <p className="font-medium text-gray-900 dark:text-white">One platform. Infinite possibilities.</p>
+                </div>
               </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
-                WE CONNECT
-              </h1>
             </motion.div>
 
-            <motion.p 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4, duration: 0.6 }}
-              className="text-base sm:text-lg md:text-xl lg:text-2xl text-slate-700 dark:text-slate-300 max-w-4xl mx-auto mb-3 sm:mb-4 md:mb-6 leading-relaxed"
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="relative"
             >
-              The <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">ultimate student community platform</span> connecting Nigerian university students to share knowledge, materials, and opportunities.
-            </motion.p>
-
-            <motion.p 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5, duration: 0.6 }}
-              className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 italic"
-            >
-              I Connect. You Connect. We Connect.
-            </motion.p>
-
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6, duration: 0.6 }}
-              className="flex items-center justify-center gap-1 sm:gap-2 mt-4 sm:mt-6 md:mt-8"
-            >
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 animate-pulse" />
-              <span className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-400">Built by students, for students</span>
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 animate-pulse" />
+              <div className="bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-3xl p-8">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+                      <Eye className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Vision</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Connected learning for all</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+                      <Target className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Goal</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Empower student success</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+                      <Users className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Community</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Collaborative learning</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+                      <Sparkles className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Impact</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Real student outcomes</p>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
-        </motion.section>
-      </Parallax>
+        </div>
+      </section>
 
-      {/* Mission & Values */}
-      <Parallax strength={100}>
-        <section className="py-16 sm:py-20 md:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-          <motion.h2 
-            initial={{ opacity: 0, y: 30 }}
+      {/* Values Section */}
+      <section id="values" className="py-24 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-center text-slate-800 dark:text-white mb-10 sm:mb-12 md:mb-16"
+            className="text-center mb-12"
           >
-            Our Mission
-          </motion.h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Our Values
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              These principles guide everything we do at WE CONNECT
+            </p>
+          </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8 md:gap-10">
-            {[
-              { icon: Target, colorFrom: 'blue-500', colorTo: 'blue-600', title: 'Empower Learning', desc: 'Making quality educational materials accessible to every Nigerian student, regardless of location or resources.' },
-              { icon: Users, colorFrom: 'purple-500', colorTo: 'purple-600', title: 'Build Community', desc: 'Fostering real connections between students across universities to collaborate, share experiences, and grow together.' },
-              { icon: Shield, colorFrom: 'emerald-500', colorTo: 'teal-600', title: 'Student-First', desc: 'A safe, trusted platform created and moderated by students who understand your academic journey.' },
-            ].map((item, idx) => (
-              <motion.div 
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {values.map((value, idx) => (
+              <motion.div
                 key={idx}
-                initial={{ opacity: 0, y: 50 }}
+                initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: idx * 0.2, duration: 0.6 }}
-                whileHover={{ scale: 1.05, rotate: 1 }}
-                className="group relative bg-white dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 md:p-8 hover:shadow-2xl transition-all duration-500 ease-out border border-slate-200/50 dark:border-slate-700/50"
+                transition={{ delay: idx * 0.1 }}
+                className="group"
               >
-                <div className={`absolute inset-0 bg-gradient-to-br from-${item.colorFrom}/5 to-${item.colorTo}/5 rounded-2xl sm:rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                <div className="relative">
-                  <div className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 bg-gradient-to-r from-${item.colorFrom} to-${item.colorTo} rounded-lg sm:rounded-xl md:rounded-2xl flex items-center justify-center mb-3 sm:mb-4 md:mb-6 shadow-lg`}>
-                    <item.icon className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-9 lg:h-9 text-white" />
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:shadow-lg transition-all">
+                  <div className={`w-12 h-12 bg-gradient-to-r ${value.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                    <value.icon className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 dark:text-white mb-2 sm:mb-3 md:mb-4">{item.title}</h3>
-                  <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-300 leading-relaxed">{item.desc}</p>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                    {value.title}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    {value.description}
+                  </p>
                 </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-      </Parallax>
-
-      {/* Stats Section */}
-      <section className="py-16 sm:py-20 md:py-24 px-4 sm:px-6 lg:px-8 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto text-center">
-          <motion.h2 
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-slate-800 dark:text-white mb-10 sm:mb-12 md:mb-16"
-          >
-            Our Impact
-          </motion.h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 md:gap-10">
-            {[
-              { icon: Users, value: '50K+', label: 'Active Students' },
-              { icon: BookOpen, value: '10K+', label: 'Materials Shared' },
-              { icon: GraduationCap, value: '100+', label: 'Universities' },
-              { icon: BarChart2, value: '1M+', label: 'Connections Made' },
-            ].map((stat, idx) => (
-              <motion.div 
-                key={idx}
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.2, duration: 0.6 }}
-                className="p-4 sm:p-6 md:p-8 rounded-2xl bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-700 shadow-lg"
-              >
-                <stat.icon className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-blue-600 dark:text-blue-400 mx-auto mb-2 sm:mb-3 md:mb-4" />
-                <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 dark:text-white">{stat.value}</h3>
-                <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-300">{stat.label}</p>
               </motion.div>
             ))}
           </div>
@@ -251,128 +326,198 @@ function About() {
       </section>
 
       {/* Features Section */}
-      <Parallax strength={150}>
-        <section className="py-16 sm:py-20 md:py-24 px-4 sm:px-6 lg:px-8 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto">
-            <motion.h2 
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-              className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-center text-slate-800 dark:text-white mb-10 sm:mb-12 md:mb-16"
-            >
-              Explore WE CONNECT
-            </motion.h2>
-
-            <AnimatePresence>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-                {[
-                  { icon: BookOpen, color: 'from-blue-500 to-cyan-600', title: "Materials Library", desc: "Browse thousands of past questions, lecture notes, video tutorials, and technical reviews from students across Nigeria." },
-                  { icon: Download, color: 'from-emerald-500 to-teal-600', title: "Downloads", desc: "Keep track of all your downloaded materials in one organized place — accessible anytime." },
-                  { icon: Heart, color: 'from-red-500 to-pink-600', title: "Favourites", desc: "Save your most important resources for quick access during exams or revision." },
-                  { icon: Users, color: 'from-purple-500 to-indigo-600', title: "Connect Network", desc: "Find and connect with students from your department, school, or across the country." },
-                ].map((feature, idx) => (
-                  <motion.div 
-                    key={idx}
-                    initial={{ opacity: 0, x: idx % 2 === 0 ? -50 : 50 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: idx * 0.1, duration: 0.6 }}
-                    className="group bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 md:p-8 hover:shadow-2xl transition-all duration-500 ease-out border border-slate-200/30 dark:border-slate-700/50"
-                  >
-                    <div className="flex items-start gap-3 sm:gap-4 md:gap-6">
-                      <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-gradient-to-r ${feature.color} rounded-lg sm:rounded-xl md:rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 group-hover:scale-110 transition-transform duration-300`}>
-                        <feature.icon className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 dark:text-white mb-1 sm:mb-2 md:mb-3 group-hover:translate-x-2 transition-transform duration-300">
-                          {feature.title}
-                        </h3>
-                        <p className="text-xs sm:text-sm md:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-                          {feature.desc}
-                        </p>
-                        <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-slate-400 mt-2 sm:mt-3 md:mt-4 group-hover:translate-x-4 transition-transform duration-300" />
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </AnimatePresence>
-          </div>
-        </section>
-      </Parallax>
-
-      {/* Contact Section */}
-      <section className="py-16 sm:py-20 md:py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto text-center">
-          <motion.h2 
-            initial={{ opacity: 0, y: 30 }}
+      <section id="features" className="py-24 px-4 bg-gray-50 dark:bg-slate-900/50">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-slate-800 dark:text-white mb-8 sm:mb-10 md:mb-12"
+            className="text-center mb-12"
           >
-            Get in Touch
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-            className="text-sm sm:text-base md:text-lg lg:text-xl text-slate-600 dark:text-slate-400 mb-8 sm:mb-10 md:mb-12 max-w-3xl mx-auto"
-          >
-            Have questions, feedback, or want to contribute? We're here for you.
-          </motion.p>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              What We Offer
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Tools and features designed to enhance your learning experience
+            </p>
+          </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
-            <motion.a 
-              href="mailto:support@weconnect.ng"
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1, duration: 0.5 }}
-              className="group bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-8 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 ease-out"
-            >
-              <Mail className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 md:mb-4 group-hover:scale-110 transition-transform duration-300" />
-              <p className="text-sm sm:text-base md:text-lg font-medium">Email Us</p>
-              <p className="text-xs sm:text-sm opacity-90 mt-1">weconnect@gmail.com</p>
-            </motion.a>
-
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-              className="group bg-gradient-to-br from-purple-600 to-purple-700 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-8 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 ease-out"
-            >
-              <Phone className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 md:mb-4 group-hover:scale-110 transition-transform duration-300" />
-              <p className="text-sm sm:text-base md:text-lg font-medium">Call Us</p>
-              <p className="text-xs sm:text-sm opacity-90 mt-1">+234 812 345 6789</p>
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.3, duration: 0.5 }}
-              className="group bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-8 text-white hover:shadow-2xl hover:scale-105 transition-all duration-300 ease-out"
-            >
-              <Globe className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-auto mb-2 sm:mb-3 md:mb-4 group-hover:scale-110 transition-transform duration-300" />
-              <p className="text-sm sm:text-base md:text-lg font-medium">Visit Website</p>
-              <p className="text-xs sm:text-sm opacity-90 mt-1">weconnect.ng</p>
-            </motion.div>
+          <div className="grid md:grid-cols-2 gap-8">
+            {features.map((feature, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.1 }}
+                className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:shadow-lg transition-all"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-950 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <feature.icon className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                      {feature.title}
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-2">
+                      {feature.description}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-500">
+                      {feature.details}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          <motion.p 
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
+      {/* The Story Section */}
+      <section className="py-24 px-4">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ delay: 0.4, duration: 0.6 }}
-            className="mt-10 sm:mt-12 md:mt-16 text-sm sm:text-base md:text-lg text-slate-600 dark:text-slate-400"
+            className="text-center mb-12"
           >
-            Made with <span className="text-red-500">❤️</span> by students, for the future of Nigerian education
-          </motion.p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-full mb-6">
+              <Quote className="w-4 h-4 text-amber-600" />
+              <span className="text-sm text-amber-600 dark:text-amber-400">Our Story</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">
+              How It All Began
+            </h2>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="space-y-6"
+          >
+            <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+              WE CONNECT started as a simple idea among a group of Nigerian university students who recognized a common challenge: accessing quality study materials and connecting with peers across different institutions was harder than it needed to be.
+            </p>
+            <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+              What began as a small WhatsApp group sharing past questions grew into something bigger. Students wanted more — a dedicated space where they could not only share resources but also build meaningful connections, find study partners, and support each other's academic journeys.
+            </p>
+            <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+              Today, WE CONNECT is growing organically as more students discover the value of a community built by and for Nigerian students. We're not trying to be the biggest platform — we're focused on being the most genuine and useful one.
+            </p>
+            <div className="pt-6">
+              <div className="flex items-center gap-4 p-6 bg-gray-50 dark:bg-slate-900 rounded-2xl">
+                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-950 rounded-full flex items-center justify-center">
+                  <Code className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Built with ❤️ by students</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-500">Open to feedback, driven by community needs</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Team Section */}
+      <section className="py-24 px-4 bg-gray-50 dark:bg-slate-900/50">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Behind the Platform
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              A team of passionate students working to make learning better
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {teamMembers.map((member, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.1 }}
+                className="text-center"
+              >
+                <div className="w-24 h-24 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950 dark:to-purple-950 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
+                  {member.avatar}
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{member.name}</h3>
+                <p className="text-sm text-indigo-600 dark:text-indigo-400 mb-2">{member.role}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-500">{member.bio}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Contact Section */}
+      <section id="contact" className="py-24 px-4">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Get in Touch
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-8">
+              Have questions, feedback, or ideas? We'd love to hear from you.
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-6 mb-12">
+              <a
+                href="mailto:hello@weconnect.ng"
+                className="group flex items-center gap-4 p-6 bg-gray-50 dark:bg-slate-900 rounded-2xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-950 rounded-xl flex items-center justify-center">
+                  <Mail className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm text-gray-500 dark:text-gray-500">Email us</p>
+                  <p className="font-medium text-gray-900 dark:text-white">hello@weconnect.ng</p>
+                </div>
+                <ArrowUpRight className="w-5 h-5 text-gray-400 ml-auto group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+              </a>
+
+              <div className="group flex items-center gap-4 p-6 bg-gray-50 dark:bg-slate-900 rounded-2xl">
+                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-950 rounded-xl flex items-center justify-center">
+                  <MessageCircle className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm text-gray-500 dark:text-gray-500">Join our community</p>
+                  <p className="font-medium text-gray-900 dark:text-white">Discord / WhatsApp</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-4">
+              {[Twitter, Linkedin, Instagram, Youtube].map((Icon, idx) => (
+                <a
+                  key={idx}
+                  href="#"
+                  className="w-10 h-10 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center hover:bg-indigo-100 dark:hover:bg-indigo-950 transition-colors group"
+                >
+                  <Icon className="w-5 h-5 text-gray-600 dark:text-gray-400 group-hover:text-indigo-600 transition-colors" />
+                </a>
+              ))}
+            </div>
+
+            <p className="mt-12 text-sm text-gray-500 dark:text-gray-500">
+              Made with <Heart className="w-3 h-3 inline text-red-500" /> by Nigerian students
+            </p>
+          </motion.div>
         </div>
       </section>
     </div>
