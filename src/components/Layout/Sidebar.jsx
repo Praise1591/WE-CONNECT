@@ -1,5 +1,5 @@
-// components/Layout/Sidebar.jsx
-import React, { useState, useEffect } from 'react';
+// src/components/Layout/Sidebar.jsx
+import React from 'react';
 import {
   LayoutDashboard,
   BookAIcon,

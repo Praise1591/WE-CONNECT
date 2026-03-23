@@ -12,6 +12,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext'; // Import ThemeProvider
 
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
@@ -76,7 +77,7 @@ function ProtectedLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-indigo-950">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
         <p className="text-slate-600 dark:text-slate-400">Connecting to server...</p>
         <p className="text-sm text-slate-500 dark:text-slate-500 mt-2">This may take a moment</p>
@@ -86,7 +87,7 @@ function ProtectedLayout() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-900 dark:to-indigo-950">
         <div className="max-w-md text-center">
           <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-8">
             <h2 className="text-xl font-bold text-red-600 dark:text-red-400 mb-3">
@@ -123,7 +124,7 @@ function DashboardLayout({ children }) {
   const toggleMobileMenu = () => setMobileMenuOpen(prev => !prev);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebar}
@@ -151,40 +152,44 @@ function DashboardLayout({ children }) {
 // Main App
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-          <Routes>
-            <Route path="/" element={<Landing />} />
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 transition-colors duration-300">
+            <Routes>
+              <Route path="/" element={<Landing />} />
 
-            <Route element={<ProtectedLayout />}>
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="materials" element={<Material />} />
-              <Route path="upload" element={<UploadsData />} />
-              <Route path="analytics" element={<AnalyticsDashboard />} />
-              <Route path="favorites" element={<Favorites />} />
-              <Route path="settings" element={<ProfileSettings />} />
-              <Route path="connect" element={<Connect />} />
-              <Route path="notifications" element={<Notification />} />
-              <Route path="downloads" element={<DownloadsPage />} />
-              <Route path="monetary" element={<MonetaryValue />} />
-              <Route path="about" element={<ErrorBoundary><About /></ErrorBoundary>} />
-            </Route>
+              <Route element={<ProtectedLayout />}>
+                <Route path="dashboard" element={<Dashboard />} />
+                {/* Materials routes - both list and detail */}
+                <Route path="materials" element={<Material />} />
+                <Route path="materials/:materialId" element={<Material />} />
+                <Route path="upload" element={<UploadsData />} />
+                <Route path="analytics" element={<AnalyticsDashboard />} />
+                <Route path="favorites" element={<Favorites />} />
+                <Route path="settings" element={<ProfileSettings />} />
+                <Route path="connect" element={<Connect />} />
+                <Route path="notifications" element={<Notification />} />
+                <Route path="downloads" element={<DownloadsPage />} />
+                <Route path="monetary" element={<MonetaryValue />} />
+                <Route path="about" element={<ErrorBoundary><About /></ErrorBoundary>} />
+              </Route>
 
-            {/* Public Profile Route - accessible to all authenticated users */}
-            <Route path="/profile/:userId" element={<PublicProfileViewer />} />
+              {/* Public Profile Route - accessible to all authenticated users */}
+              <Route path="/profile/:userId" element={<PublicProfileViewer />} />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
 
-          <ToastContainer
-            position="bottom-right"
-            theme="colored"
-            toastClassName="!rounded-xl !shadow-lg"
-          />
-        </div>
-      </BrowserRouter>
-    </AuthProvider>
+            <ToastContainer
+              position="bottom-right"
+              theme="colored"
+              toastClassName="!rounded-xl !shadow-lg"
+            />
+          </div>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

@@ -7,7 +7,8 @@ import {
   Edit2, Upload, Shield, Clock, BookOpen, Users,
   Globe, Linkedin, Twitter, Github, CheckCircle,
   Eye, Copy, Share2, QrCode, Sparkles, TrendingUp,
-  Award as AwardIcon, Zap, Calendar, Activity
+  Award as AwardIcon, Zap, Calendar, Activity, Star, Download,
+  UserPlus, UserMinus, UserCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -25,7 +26,9 @@ import {
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import {
   updateProfile,
@@ -52,6 +55,10 @@ function ProfileSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [following, setFollowing] = useState([]);
+  const [followers, setFollowers] = useState([]);
+  const [loadingFollowing, setLoadingFollowing] = useState(false);
+  
   const [stats, setStats] = useState({
     totalUploads: 0,
     totalDownloads: 0,
@@ -103,14 +110,53 @@ function ProfileSettings() {
     const loadProfile = async () => {
       try {
         const profileRef = doc(db, 'profiles', user.uid);
+        let profileData = null;
         
-        // Real-time listener for profile updates
+        // Initial data fetch
+        const profileSnap = await getDoc(profileRef);
+        
+        if (profileSnap.exists()) {
+          profileData = profileSnap.data();
+          setRole(profileData.role || 'student');
+          setMemberSince(profileData.createdAt?.toDate?.()?.toLocaleDateString() || '2024');
+          setForm({
+            name: profileData.name || user.displayName || '',
+            email: user.email || '',
+            phone: profileData.phone || '',
+            address: profileData.address || '',
+            gender: profileData.gender || '',
+            bio: profileData.bio || '',
+            website: profileData.website || '',
+            linkedin: profileData.linkedin || '',
+            twitter: profileData.twitter || '',
+            github: profileData.github || '',
+            matricNumber: profileData.matricNumber || '',
+            school: profileData.school || '',
+            faculty: profileData.faculty || '',
+            department: profileData.department || '',
+            graduationYear: profileData.graduationYear || '',
+            specialization: profileData.specialization || '',
+            yearsExperience: profileData.yearsExperience || '',
+            certifications: profileData.certifications || '',
+            title: profileData.title || '',
+            yearsTeaching: profileData.yearsTeaching || '',
+            researchInterests: profileData.researchInterests || '',
+            publications: profileData.publications || '',
+            achievements: profileData.achievements || '',
+          });
+          setPreviewUrl(profileData.photoURL || user.photoURL || null);
+          setProfileViews(profileData.profileViews || 0);
+          setFollowing(profileData.following || []);
+          setFollowers(profileData.followers || []);
+        }
+        
+        // Set up real-time listener for updates
         const unsubscribe = onSnapshot(profileRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
             setRole(data.role || 'student');
             setMemberSince(data.createdAt?.toDate?.()?.toLocaleDateString() || '2024');
-            setForm({
+            setForm(prev => ({ ...prev,
               name: data.name || user.displayName || '',
               email: user.email || '',
               phone: data.phone || '',
@@ -134,9 +180,11 @@ function ProfileSettings() {
               researchInterests: data.researchInterests || '',
               publications: data.publications || '',
               achievements: data.achievements || '',
-            });
+            }));
             setPreviewUrl(data.photoURL || user.photoURL || null);
             setProfileViews(data.profileViews || 0);
+            setFollowing(data.following || []);
+            setFollowers(data.followers || []);
           }
         });
 
@@ -154,7 +202,7 @@ function ProfileSettings() {
           totalDownloads: totalDownloads,
           totalFavorites: 0,
           averageRating: avgRating,
-          profileViews: data?.profileViews || 0
+          profileViews: profileData?.profileViews || 0
         });
         
         setLoading(false);
@@ -195,9 +243,9 @@ function ProfileSettings() {
     };
   };
 
-  const getInitials = () => {
-    const name = form.name || 'User';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const getInitials = (name = form.name) => {
+    const userName = name || 'User';
+    return userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   const handleSave = async () => {
@@ -274,6 +322,31 @@ function ProfileSettings() {
       toast.error("Failed to save changes");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUnfollow = async (userId, userName) => {
+    if (!auth.currentUser) return;
+    
+    try {
+      const user = auth.currentUser;
+      const profileRef = doc(db, 'profiles', user.uid);
+      
+      // Remove from current user's following list
+      await updateDoc(profileRef, {
+        following: arrayRemove(userId)
+      });
+      
+      // Remove current user from that user's followers list
+      const targetUserRef = doc(db, 'profiles', userId);
+      await updateDoc(targetUserRef, {
+        followers: arrayRemove(user.uid)
+      });
+      
+      toast.success(`Unfollowed ${userName}`);
+    } catch (err) {
+      console.error("Unfollow error:", err);
+      toast.error("Failed to unfollow user");
     }
   };
 
@@ -354,9 +427,9 @@ function ProfileSettings() {
   const sections = [
     { id: 'personal', label: 'Personal Info', icon: User },
     { id: 'professional', label: 'Professional', icon: Briefcase },
-    { id: 'academic', label: 'Academic', icon: GraduationCap },
     { id: 'social', label: 'Social Links', icon: Globe },
     { id: 'achievements', label: 'Achievements', icon: AwardIcon },
+    { id: 'following', label: 'Following', icon: Users },
   ];
 
   const renderPersonalInfo = () => (
@@ -796,6 +869,165 @@ function ProfileSettings() {
     </div>
   );
 
+  const renderFollowing = () => {
+    const [followingDetails, setFollowingDetails] = useState([]);
+    const [loadingDetails, setLoadingDetails] = useState(true);
+
+    useEffect(() => {
+      const loadFollowingDetails = async () => {
+        if (!following.length) {
+          setFollowingDetails([]);
+          setLoadingDetails(false);
+          return;
+        }
+
+        setLoadingDetails(true);
+        try {
+          const details = await Promise.all(
+            following.map(async (userId) => {
+              const userRef = doc(db, 'profiles', userId);
+              const userSnap = await getDoc(userRef);
+              if (userSnap.exists()) {
+                const data = userSnap.data();
+                return {
+                  id: userId,
+                  name: data.name || 'User',
+                  photoURL: data.photoURL,
+                  role: data.role || 'student',
+                  bio: data.bio,
+                  school: data.school
+                };
+              }
+              return null;
+            })
+          );
+          setFollowingDetails(details.filter(d => d !== null));
+        } catch (err) {
+          console.error("Error loading following details:", err);
+          toast.error("Failed to load following details");
+        } finally {
+          setLoadingDetails(false);
+        }
+      };
+
+      loadFollowingDetails();
+    }, [following]);
+
+    if (loadingDetails) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        </div>
+      );
+    }
+
+    if (followingDetails.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <div className="w-20 h-20 mx-auto bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mb-4">
+            <Users className="w-10 h-10 text-slate-400" />
+          </div>
+          <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
+            No following yet
+          </h3>
+          <p className="text-slate-500 dark:text-slate-400">
+            Start following users to see their activity and materials
+          </p>
+          <button
+            onClick={() => navigate('/explore')}
+            className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+          >
+            Explore Users
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-indigo-700 dark:text-indigo-300">
+                You are following <span className="font-bold">{followingDetails.length}</span> {followingDetails.length === 1 ? 'person' : 'people'}
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/explore')}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              Find more people
+            </button>
+          </div>
+        </div>
+
+        {followingDetails.map((user) => (
+          <motion.div
+            key={user.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md transition"
+          >
+            <div className="flex items-center gap-4">
+              {/* Avatar */}
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0">
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white font-bold">
+                    {getInitials(user.name)}
+                  </div>
+                )}
+              </div>
+
+              {/* User Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                    {user.name}
+                  </h4>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 rounded-full text-xs">
+                    {user.role === 'student' && <GraduationCap className="w-3 h-3" />}
+                    {user.role === 'tutor' && <Briefcase className="w-3 h-3" />}
+                    {user.role === 'lecturer' && <Award className="w-3 h-3" />}
+                    <span className="capitalize">{user.role}</span>
+                  </span>
+                </div>
+                {user.school && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {user.school}
+                  </p>
+                )}
+                {user.bio && (
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-1">
+                    {user.bio}
+                  </p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigate(`/profile/${user.id}`)}
+                  className="px-3 py-1.5 text-sm bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg transition"
+                >
+                  View Profile
+                </button>
+                <button
+                  onClick={() => handleUnfollow(user.id, user.name)}
+                  className="px-3 py-1.5 text-sm bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 rounded-lg transition flex items-center gap-1"
+                >
+                  <UserMinus className="w-3 h-3" />
+                  Unfollow
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    );
+  };
+
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'personal':
@@ -806,6 +1038,8 @@ function ProfileSettings() {
         return renderSocialLinks();
       case 'achievements':
         return renderAchievements();
+      case 'following':
+        return renderFollowing();
       default:
         return renderPersonalInfo();
     }
@@ -986,6 +1220,21 @@ function ProfileSettings() {
                   Complete your profile to get better visibility
                 </p>
               </div>
+
+              {/* Follow Stats */}
+              <div className="mt-6 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200/70 dark:border-slate-700/60 p-4">
+                <div className="flex justify-between items-center">
+                  <div className="text-center flex-1">
+                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{following.length}</p>
+                    <p className="text-xs text-slate-500">Following</p>
+                  </div>
+                  <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+                  <div className="text-center flex-1">
+                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{followers.length}</p>
+                    <p className="text-xs text-slate-500">Followers</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1004,50 +1253,54 @@ function ProfileSettings() {
               <div className="space-y-8">
                 {renderActiveSection()}
 
-                {/* Action Buttons */}
-                <div className="pt-6 flex flex-col sm:flex-row gap-4 border-t border-slate-200 dark:border-slate-700">
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-xl shadow-sm disabled:opacity-60 transition flex items-center justify-center gap-2"
-                  >
-                    {saving ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Save size={18} />
-                    )}
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
+                {/* Action Buttons - Only show for non-following sections */}
+                {activeSection !== 'following' && (
+                  <div className="pt-6 flex flex-col sm:flex-row gap-4 border-t border-slate-200 dark:border-slate-700">
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-xl shadow-sm disabled:opacity-60 transition flex items-center justify-center gap-2"
+                    >
+                      {saving ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Save size={18} />
+                      )}
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
 
-                  <button
-                    onClick={() => navigate(`/profile/${auth.currentUser?.uid}`)}
-                    className="flex-1 py-3 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-medium rounded-xl transition flex items-center justify-center gap-2"
-                  >
-                    <Eye size={18} />
-                    View Public Profile
-                  </button>
-                </div>
-
-                {/* Danger Zone */}
-                <div className="pt-8 mt-4 border-t border-red-200 dark:border-red-800/50">
-                  <div className="flex items-center gap-2 mb-4">
-                    <AlertTriangle className="w-5 h-5 text-red-500" />
-                    <h3 className="text-lg font-semibold text-red-700 dark:text-red-400">
-                      Danger Zone
-                    </h3>
+                    <button
+                      onClick={() => navigate(`/profile/${auth.currentUser?.uid}`)}
+                      className="flex-1 py-3 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-medium rounded-xl transition flex items-center justify-center gap-2"
+                    >
+                      <Eye size={18} />
+                      View Public Profile
+                    </button>
                   </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                    Permanently delete your account and all associated data. This action cannot be undone.
-                  </p>
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={deleting}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 font-medium rounded-xl disabled:opacity-50 transition"
-                  >
-                    <Trash2 size={18} />
-                    {deleting ? 'Deleting...' : 'Delete My Account'}
-                  </button>
-                </div>
+                )}
+
+                {/* Danger Zone - Only show for non-following sections */}
+                {activeSection !== 'following' && (
+                  <div className="pt-8 mt-4 border-t border-red-200 dark:border-red-800/50">
+                    <div className="flex items-center gap-2 mb-4">
+                      <AlertTriangle className="w-5 h-5 text-red-500" />
+                      <h3 className="text-lg font-semibold text-red-700 dark:text-red-400">
+                        Danger Zone
+                      </h3>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      Permanently delete your account and all associated data. This action cannot be undone.
+                    </p>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={deleting}
+                      className="flex items-center justify-center gap-2 px-6 py-3 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 font-medium rounded-xl disabled:opacity-50 transition"
+                    >
+                      <Trash2 size={18} />
+                      {deleting ? 'Deleting...' : 'Delete My Account'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

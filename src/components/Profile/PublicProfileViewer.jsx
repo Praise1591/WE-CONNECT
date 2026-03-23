@@ -5,9 +5,10 @@ import {
   User, Mail, MapPin, Calendar, BookOpen, Upload, Download,
   Heart, Users, Eye, Award, GraduationCap, Briefcase,
   Twitter, Linkedin, Github, Globe, Share2, MessageSquare,
-  Star, Clock, FileText, Video, ScrollText, Zap, Shield,
+  Star, Clock, FileText, Video, ScrollText, Zap,
   AlertCircle, Loader2, ExternalLink, Copy, Phone,
-  CheckCircle, UserPlus, UserCheck, Search, X, ChevronRight, ChevronLeft
+  UserPlus, UserCheck, Search, X, ChevronRight,
+  Activity, TrendingUp, ChevronDown, ChevronUp, UserMinus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -25,7 +26,8 @@ import {
   updateDoc,
   increment,
   writeBatch,
-  onSnapshot
+  onSnapshot,
+  serverTimestamp
 } from 'firebase/firestore';
 
 function PublicProfileViewer() {
@@ -33,6 +35,7 @@ function PublicProfileViewer() {
   const navigate = useNavigate();
   const { user: currentUser, isAuthenticated } = useAuth();
   
+  // Profile States
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -42,187 +45,236 @@ function PublicProfileViewer() {
   const [stats, setStats] = useState({
     totalUploads: 0,
     totalDownloads: 0,
-    totalFavorites: 0,
     averageRating: 0,
-    totalReviews: 0,
     followers: 0,
     following: 0,
+    profileViews: 0
   });
-  const [activeTab, setActiveTab] = useState('materials');
   const [isFollowing, setIsFollowing] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [followingInProgress, setFollowingInProgress] = useState(false);
+  const [activeTab, setActiveTab] = useState('materials');
+  const [unfollowingId, setUnfollowingId] = useState(null);
   
-  // Search states
+  // Search States
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [searchFilters, setSearchFilters] = useState({ role: 'all', school: '' });
+  const [allSchools, setAllSchools] = useState([]);
 
+  // Load all schools for filter
   useEffect(() => {
-    if (userId) {
-      loadProfile();
-      loadUserMaterials();
-      loadUserStats();
-      checkFollowStatus();
-      loadFollowers();
-      loadFollowing();
-      
-      // Real-time listeners for followers/following updates
-      if (userId) {
-        const followersUnsub = onSnapshot(collection(db, 'users', userId, 'followers'), () => {
-          loadUserStats();
-          loadFollowers();
-        });
-        
-        const followingUnsub = onSnapshot(collection(db, 'users', userId, 'following'), () => {
-          loadUserStats();
-          loadFollowing();
-        });
-        
-        return () => {
-          followersUnsub();
-          followingUnsub();
-        };
+    const loadSchools = async () => {
+      try {
+        const schoolsRef = collection(db, 'schools');
+        const schoolsSnap = await getDocs(schoolsRef);
+        const schools = schoolsSnap.docs.map(doc => doc.data().name);
+        setAllSchools(schools);
+      } catch (err) {
+        console.error("Error loading schools:", err);
       }
-    }
-  }, [userId, currentUser]);
+    };
+    loadSchools();
+  }, []);
 
-  const loadProfile = async () => {
-    try {
-      const profileRef = doc(db, 'profiles', userId);
-      const profileDoc = await getDoc(profileRef);
-      
-      if (profileDoc.exists()) {
+  // Main load function
+  useEffect(() => {
+    if (!userId) return;
+    
+    const loadAllData = async () => {
+      setLoading(true);
+      try {
+        // Load profile
+        const profileRef = doc(db, 'profiles', userId);
+        const profileDoc = await getDoc(profileRef);
+        
+        if (!profileDoc.exists()) {
+          setError("User not found");
+          setLoading(false);
+          return;
+        }
+        
         const profileData = profileDoc.data();
         setProfile({
           id: userId,
           ...profileData,
           joinedDate: profileData.createdAt?.toDate?.() || new Date(),
+          lastActive: profileData.lastActive?.toDate?.() || new Date()
+        });
+        
+        // Load materials stats
+        const materialsRef = collection(db, 'materials');
+        const materialsQuery = query(materialsRef, where('uid', '==', userId));
+        const materialsSnap = await getDocs(materialsQuery);
+        const uploadedMaterials = materialsSnap.docs;
+        const totalUploads = uploadedMaterials.length;
+        const totalDownloads = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().downloads || 0), 0);
+        const avgRating = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().averageRating || 0), 0) / (totalUploads || 1);
+        
+        // Get followers and following counts
+        const followersRef = collection(db, 'users', userId, 'followers');
+        const followersSnap = await getDocs(followersRef);
+        const followersCount = followersSnap.size;
+        
+        const followingRef = collection(db, 'users', userId, 'following');
+        const followingSnap = await getDocs(followingRef);
+        const followingCount = followingSnap.size;
+        
+        // Get recent materials
+        const recentMaterials = uploadedMaterials
+          .sort((a, b) => {
+            const dateA = a.data().createdAt?.toDate?.() || new Date(0);
+            const dateB = b.data().createdAt?.toDate?.() || new Date(0);
+            return dateB - dateA;
+          })
+          .slice(0, 6)
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate?.() || new Date()
+          }));
+        
+        // Check if current user follows this profile
+        let isFollowingStatus = false;
+        if (currentUser && currentUser.uid !== userId) {
+          const followRef = doc(db, 'users', currentUser.uid, 'following', userId);
+          const followDoc = await getDoc(followRef);
+          isFollowingStatus = followDoc.exists();
+        }
+        
+        setStats({
+          totalUploads,
+          totalDownloads,
+          averageRating: avgRating,
+          followers: followersCount,
+          following: followingCount,
           profileViews: profileData.profileViews || 0
         });
         
-        // Increment profile views if not the current user
+        setMaterials(recentMaterials);
+        setAllMaterials(recentMaterials);
+        setIsFollowing(isFollowingStatus);
+        
+        // Increment profile views
         if (currentUser?.uid !== userId) {
           await updateDoc(profileRef, {
-            profileViews: increment(1)
+            profileViews: increment(1),
+            lastActive: serverTimestamp()
           });
         }
-      } else {
-        setError("User not found");
+        
+        // Load followers list
+        const followersListData = [];
+        for (const docSnap of followersSnap.docs) {
+          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+          if (userProfile.exists()) {
+            followersListData.push({ id: docSnap.id, ...userProfile.data() });
+          }
+        }
+        setFollowersList(followersListData);
+        
+        // Load following list (people this user is following)
+        const followingListData = [];
+        for (const docSnap of followingSnap.docs) {
+          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+          if (userProfile.exists()) {
+            followingListData.push({ 
+              id: docSnap.id, 
+              ...userProfile.data(),
+              followedAt: docSnap.data().followedAt?.toDate?.() || new Date()
+            });
+          }
+        }
+        setFollowingList(followingListData);
+        
+        // Load recent activity
+        setLoadingActivity(true);
+        const activityQuery = query(
+          materialsRef,
+          where('uid', '==', userId),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        );
+        const activitySnap = await getDocs(activityQuery);
+        const activities = activitySnap.docs.map(doc => ({
+          id: doc.id,
+          type: 'upload',
+          title: doc.data().title,
+          category: doc.data().category,
+          createdAt: doc.data().createdAt?.toDate?.() || new Date(),
+          action: `uploaded a new ${doc.data().category || 'material'}`
+        }));
+        setRecentActivity(activities);
+        setLoadingActivity(false);
+        
+      } catch (err) {
+        console.error("Error loading profile:", err);
+        setError("Failed to load profile");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Error loading profile:", err);
-      setError("Failed to load profile");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadUserMaterials = async () => {
-    try {
-      const materialsRef = collection(db, 'materials');
-      const q = query(
-        materialsRef,
-        where('uid', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-      const materialsSnap = await getDocs(q);
-      
-      const materialsData = materialsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || new Date()
-      }));
-      
-      setAllMaterials(materialsData);
-      setMaterials(materialsData.slice(0, 6));
-    } catch (err) {
-      console.error("Error loading materials:", err);
-    }
-  };
-
-  const loadUserStats = async () => {
-    try {
-      // Get materials stats
-      const materialsRef = collection(db, 'materials');
-      const q = query(materialsRef, where('uid', '==', userId));
-      const materialsSnap = await getDocs(q);
-      
-      const uploadedMaterials = materialsSnap.docs;
-      const totalDownloads = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().downloads || 0), 0);
-      const avgRating = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().averageRating || 0), 0) / (uploadedMaterials.length || 1);
-      
-      // Get followers count
-      const followersRef = collection(db, 'users', userId, 'followers');
-      const followersSnap = await getDocs(followersRef);
-      
-      // Get following count
-      const followingRef = collection(db, 'users', userId, 'following');
-      const followingSnap = await getDocs(followingRef);
-      
-      setStats({
-        totalUploads: uploadedMaterials.length,
-        totalDownloads: totalDownloads,
-        totalFavorites: 0,
-        averageRating: avgRating,
-        totalReviews: uploadedMaterials.reduce((sum, doc) => sum + (doc.data().reviewCount || 0), 0),
-        followers: followersSnap.size,
-        following: followingSnap.size,
-      });
-    } catch (err) {
-      console.error("Error loading stats:", err);
-    }
-  };
-
-  const checkFollowStatus = async () => {
-    if (!currentUser || currentUser.uid === userId) return;
+    };
     
-    try {
-      const followRef = doc(db, 'users', currentUser.uid, 'following', userId);
-      const followDoc = await getDoc(followRef);
-      setIsFollowing(followDoc.exists());
-    } catch (err) {
-      console.error("Error checking follow status:", err);
-    }
-  };
+    loadAllData();
+  }, [userId, currentUser]);
 
-  const loadFollowers = async () => {
-    try {
-      const followersRef = collection(db, 'users', userId, 'followers');
-      const followersSnap = await getDocs(followersRef);
-      const followers = [];
-      for (const docSnap of followersSnap.docs) {
-        const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
-        if (userProfile.exists()) {
-          followers.push({ id: docSnap.id, ...userProfile.data() });
+  // Real-time listener for followers/following updates
+  useEffect(() => {
+    if (!userId || !profile) return;
+    
+    const followersUnsub = onSnapshot(
+      collection(db, 'users', userId, 'followers'),
+      async () => {
+        const followersRef = collection(db, 'users', userId, 'followers');
+        const followersSnap = await getDocs(followersRef);
+        setStats(prev => ({ ...prev, followers: followersSnap.size }));
+        
+        const followersListData = [];
+        for (const docSnap of followersSnap.docs) {
+          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+          if (userProfile.exists()) {
+            followersListData.push({ id: docSnap.id, ...userProfile.data() });
+          }
         }
+        setFollowersList(followersListData);
       }
-      setFollowersList(followers);
-    } catch (err) {
-      console.error("Error loading followers:", err);
-    }
-  };
-
-  const loadFollowing = async () => {
-    try {
-      const followingRef = collection(db, 'users', userId, 'following');
-      const followingSnap = await getDocs(followingRef);
-      const following = [];
-      for (const docSnap of followingSnap.docs) {
-        const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
-        if (userProfile.exists()) {
-          following.push({ id: docSnap.id, ...userProfile.data() });
+    );
+    
+    const followingUnsub = onSnapshot(
+      collection(db, 'users', userId, 'following'),
+      async () => {
+        const followingRef = collection(db, 'users', userId, 'following');
+        const followingSnap = await getDocs(followingRef);
+        setStats(prev => ({ ...prev, following: followingSnap.size }));
+        
+        const followingListData = [];
+        for (const docSnap of followingSnap.docs) {
+          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+          if (userProfile.exists()) {
+            followingListData.push({ 
+              id: docSnap.id, 
+              ...userProfile.data(),
+              followedAt: docSnap.data().followedAt?.toDate?.() || new Date()
+            });
+          }
         }
+        setFollowingList(followingListData);
       }
-      setFollowingList(following);
-    } catch (err) {
-      console.error("Error loading following:", err);
-    }
-  };
+    );
+    
+    return () => {
+      followersUnsub();
+      followingUnsub();
+    };
+  }, [userId, profile]);
 
   const handleFollow = async () => {
     if (!currentUser) {
@@ -235,32 +287,32 @@ function PublicProfileViewer() {
       return;
     }
     
+    setFollowingInProgress(true);
     try {
       const batch = writeBatch(db);
       
-      // Add to current user's following
       const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
       batch.set(followingRef, {
-        followedAt: new Date(),
-        userName: profile?.name
+        followedAt: serverTimestamp(),
+        userName: profile?.name,
+        userPhoto: profile?.photoURL
       });
       
-      // Add to target user's followers
       const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
       batch.set(followerRef, {
-        followedAt: new Date(),
-        userName: currentUser.displayName || profile?.name
+        followedAt: serverTimestamp(),
+        userName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Someone',
+        userPhoto: currentUser.photoURL
       });
       
-      // Create notification for the user being followed
       const notificationRef = doc(collection(db, `users/${userId}/notifications`));
       batch.set(notificationRef, {
         type: 'new_follower',
-        message: `${currentUser.displayName || 'Someone'} started following you`,
+        message: `${currentUser.displayName || currentUser.email?.split('@')[0] || 'Someone'} started following you`,
         userId: currentUser.uid,
-        userName: currentUser.displayName || 'Someone',
+        userName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Someone',
         read: false,
-        createdAt: new Date(),
+        createdAt: serverTimestamp()
       });
       
       await batch.commit();
@@ -268,24 +320,22 @@ function PublicProfileViewer() {
       setIsFollowing(true);
       setStats(prev => ({ ...prev, followers: prev.followers + 1 }));
       toast.success(`Now following ${profile?.name}`);
-      
-      // Trigger notification update
-      window.dispatchEvent(new CustomEvent('notificationUpdate'));
     } catch (err) {
       console.error("Error following user:", err);
       toast.error("Failed to follow user");
+    } finally {
+      setFollowingInProgress(false);
     }
   };
 
   const handleUnfollow = async () => {
+    setFollowingInProgress(true);
     try {
       const batch = writeBatch(db);
       
-      // Remove from current user's following
       const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
       batch.delete(followingRef);
       
-      // Remove from target user's followers
       const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
       batch.delete(followerRef);
       
@@ -297,29 +347,86 @@ function PublicProfileViewer() {
     } catch (err) {
       console.error("Error unfollowing user:", err);
       toast.error("Failed to unfollow user");
+    } finally {
+      setFollowingInProgress(false);
     }
   };
 
-  const searchUsers = async () => {
-    if (!searchTerm.trim()) return;
+  // Handle unfollow from the following list
+  const handleUnfollowFromList = async (targetUserId, targetName) => {
+    if (!currentUser) return;
+    
+    setUnfollowingId(targetUserId);
+    try {
+      const batch = writeBatch(db);
+      
+      const followingRef = doc(db, 'users', currentUser.uid, 'following', targetUserId);
+      batch.delete(followingRef);
+      
+      const followerRef = doc(db, 'users', targetUserId, 'followers', currentUser.uid);
+      batch.delete(followerRef);
+      
+      await batch.commit();
+      
+      // Update the following list
+      setFollowingList(prev => prev.filter(user => user.id !== targetUserId));
+      setStats(prev => ({ ...prev, following: prev.following - 1 }));
+      toast.success(`Unfollowed ${targetName}`);
+    } catch (err) {
+      console.error("Error unfollowing user:", err);
+      toast.error("Failed to unfollow user");
+    } finally {
+      setUnfollowingId(null);
+    }
+  };
+
+  const handleSearchUsers = async () => {
+    if (!searchTerm.trim() && searchFilters.role === 'all' && !searchFilters.school) {
+      toast.error("Please enter a search term or select filters");
+      return;
+    }
     
     setSearching(true);
     try {
       const usersRef = collection(db, 'profiles');
-      const snapshot = await getDocs(usersRef);
+      let constraints = [];
+      
+      if (searchFilters.role !== 'all') {
+        constraints.push(where('role', '==', searchFilters.role));
+      }
+      
+      if (searchFilters.school) {
+        constraints.push(where('school', '==', searchFilters.school));
+      }
+      
+      let q = query(usersRef, ...constraints, limit(20));
+      const snapshot = await getDocs(q);
       const results = [];
+      const searchLower = searchTerm.toLowerCase().trim();
       
       snapshot.forEach((docSnap) => {
         const userData = docSnap.data();
-        if (docSnap.id !== currentUser?.uid && 
-            (userData.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             userData.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             userData.school?.toLowerCase().includes(searchTerm.toLowerCase()))) {
-          results.push({ id: docSnap.id, ...userData });
+        const userIdDoc = docSnap.id;
+        
+        if (userIdDoc === currentUser?.uid) return;
+        
+        const matches = !searchTerm || 
+          userData.name?.toLowerCase().includes(searchLower) ||
+          userData.email?.toLowerCase().includes(searchLower) ||
+          userData.school?.toLowerCase().includes(searchLower);
+        
+        if (matches) {
+          results.push({ id: userIdDoc, ...userData });
         }
       });
       
-      setSearchResults(results.slice(0, 10));
+      setSearchResults(results);
+      
+      if (results.length === 0) {
+        toast.error(`No users found`);
+      } else {
+        toast.success(`Found ${results.length} user${results.length !== 1 ? 's' : ''}`);
+      }
     } catch (err) {
       console.error("Error searching users:", err);
       toast.error("Failed to search users");
@@ -350,7 +457,7 @@ function PublicProfileViewer() {
   const handleCopyProfileLink = () => {
     const url = `${window.location.origin}/profile/${userId}`;
     navigator.clipboard.writeText(url);
-    toast.success("Profile link copied to clipboard!");
+    toast.success("Profile link copied!");
   };
 
   const handleShare = () => {
@@ -366,6 +473,7 @@ function PublicProfileViewer() {
   };
 
   const formatDate = (date) => {
+    if (!date) return 'Recently';
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -373,9 +481,24 @@ function PublicProfileViewer() {
     });
   };
 
+  const formatRelativeTime = (date) => {
+    if (!date) return 'Just now';
+    const now = new Date();
+    const diff = now - new Date(date);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
+    return formatDate(date);
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-12 w-12 animate-spin text-indigo-600" />
           <p className="text-slate-500 dark:text-slate-400">Loading profile...</p>
@@ -386,7 +509,7 @@ function PublicProfileViewer() {
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
         <div className="text-center max-w-md">
           <div className="w-24 h-24 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-6">
             <AlertCircle className="w-12 h-12 text-red-500" />
@@ -413,44 +536,47 @@ function PublicProfileViewer() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 pb-12">
       {/* Cover Image Section */}
-      <div className="relative h-64 md:h-80 lg:h-96 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
+      <div className="relative h-48 md:h-64 lg:h-72 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
         <div className="absolute inset-0 bg-black/30" />
-        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 bg-gradient-to-t from-black/60 to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-black/60 to-transparent">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-white shadow-2xl bg-gradient-to-br from-indigo-500 to-purple-600">
+                  <div className="w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden border-4 border-white shadow-2xl bg-gradient-to-br from-indigo-500 to-purple-600">
                     {profile.photoURL ? (
                       <img src={profile.photoURL} alt={profile.name} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-white text-3xl font-bold">
+                      <div className="w-full h-full flex items-center justify-center text-white text-2xl md:text-3xl font-bold">
                         {profile.name?.charAt(0).toUpperCase()}
                       </div>
                     )}
                   </div>
-                  <div className="absolute -bottom-2 -right-2 bg-indigo-600 rounded-full p-1.5 border-2 border-white">
-                    <RoleIcon className="w-4 h-4 text-white" />
+                  <div className="absolute -bottom-2 -right-2 bg-indigo-600 rounded-full p-1 border-2 border-white">
+                    <RoleIcon className="w-3 h-3 text-white" />
                   </div>
                 </div>
                 <div className="text-white">
-                  <h1 className="text-2xl md:text-3xl font-bold">{profile.name}</h1>
-                  <p className="text-white/90 text-sm mt-1">
+                  <h1 className="text-xl md:text-2xl font-bold">{profile.name}</h1>
+                  <p className="text-white/90 text-xs md:text-sm mt-0.5">
                     {profile.role === 'student' && profile.school && `${profile.school} • Student`}
                     {profile.role === 'tutor' && profile.specialization && `${profile.specialization} • Tutor`}
                     {profile.role === 'lecturer' && profile.title && `${profile.title} • Lecturer`}
                   </p>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-white/70">
+                    <span className="flex items-center gap-1"><Calendar size={10} />Joined {formatDate(profile.joinedDate)}</span>
+                    <span className="flex items-center gap-1"><Eye size={10} />{stats.profileViews} views</span>
+                  </div>
                 </div>
               </div>
               
-              <div className="flex gap-3">
-                {/* Search Users Button */}
+              <div className="flex gap-2 flex-wrap">
                 {isAuthenticated && (
                   <button
                     onClick={() => setShowSearchModal(true)}
-                    className="px-4 py-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-xl font-medium transition flex items-center gap-2"
+                    className="px-3 py-1.5 text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-lg font-medium transition flex items-center gap-1"
                   >
-                    <Search size={18} />
+                    <Search size={14} />
                     Find Users
                   </button>
                 )}
@@ -458,25 +584,34 @@ function PublicProfileViewer() {
                 {isAuthenticated && currentUser?.uid !== userId && (
                   <button
                     onClick={isFollowing ? handleUnfollow : handleFollow}
-                    className="px-6 py-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-xl font-medium transition flex items-center gap-2"
+                    disabled={followingInProgress}
+                    className={`px-3 py-1.5 text-sm backdrop-blur-sm rounded-lg font-medium transition flex items-center gap-1 ${
+                      followingInProgress ? 'opacity-50 cursor-not-allowed' : ''
+                    } bg-white/20 hover:bg-white/30 text-white`}
                   >
-                    {isFollowing ? <UserCheck size={18} /> : <UserPlus size={18} />}
-                    {isFollowing ? 'Following' : 'Follow'}
+                    {followingInProgress ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : isFollowing ? (
+                      <UserCheck size={14} />
+                    ) : (
+                      <UserPlus size={14} />
+                    )}
+                    {followingInProgress ? 'Processing...' : (isFollowing ? 'Following' : 'Follow')}
                   </button>
                 )}
                 
                 <button
                   onClick={handleShare}
-                  className="px-6 py-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-xl font-medium transition flex items-center gap-2"
+                  className="px-3 py-1.5 text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-lg font-medium transition flex items-center gap-1"
                 >
-                  <Share2 size={18} />
+                  <Share2 size={14} />
                   Share
                 </button>
                 
                 {currentUser?.uid === userId && (
                   <button
                     onClick={() => navigate('/settings')}
-                    className="px-6 py-2.5 bg-white text-indigo-600 hover:bg-indigo-50 rounded-xl font-medium transition flex items-center gap-2"
+                    className="px-3 py-1.5 text-sm bg-white text-indigo-600 hover:bg-indigo-50 rounded-lg font-medium transition flex items-center gap-1"
                   >
                     Edit Profile
                   </button>
@@ -487,9 +622,9 @@ function PublicProfileViewer() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16 md:-mt-20 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-12 md:-mt-16 relative z-10">
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {[
             { icon: Upload, label: 'Materials', value: stats.totalUploads, color: 'from-blue-500 to-cyan-500' },
             { icon: Download, label: 'Downloads', value: stats.totalDownloads, color: 'from-green-500 to-emerald-500' },
@@ -502,478 +637,344 @@ function PublicProfileViewer() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
               onClick={stat.onClick}
-              className={`bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-5 border border-slate-200/70 dark:border-slate-700/60 ${stat.onClick ? 'cursor-pointer hover:shadow-xl transition' : ''}`}
+              className={`bg-white dark:bg-slate-800 rounded-xl shadow-md p-3 border border-slate-200/70 dark:border-slate-700/60 ${stat.onClick ? 'cursor-pointer hover:shadow-lg transition' : ''}`}
             >
-              <div className="flex items-center justify-between mb-3">
-                <div className={`p-2 rounded-xl bg-gradient-to-r ${stat.color}`}>
-                  <stat.icon className="w-5 h-5 text-white" />
+              <div className="flex items-center justify-between mb-2">
+                <div className={`p-1.5 rounded-lg bg-gradient-to-r ${stat.color}`}>
+                  <stat.icon className="w-4 h-4 text-white" />
                 </div>
-                {stat.suffix && (
-                  <span className="text-xs text-slate-400">{stat.suffix}</span>
-                )}
+                {stat.suffix && <span className="text-xs text-slate-400">{stat.suffix}</span>}
               </div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {stat.value}
-              </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                {stat.label}
-              </p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{stat.label}</p>
             </motion.div>
           ))}
         </div>
 
-        {/* Main Content */}
+        {/* Tabs Navigation */}
+        <div className="flex gap-2 mb-6 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('materials')}
+            className={`px-4 py-2 text-sm font-medium transition-all relative whitespace-nowrap ${
+              activeTab === 'materials'
+                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            Materials
+          </button>
+          <button
+            onClick={() => setActiveTab('followers')}
+            className={`px-4 py-2 text-sm font-medium transition-all relative whitespace-nowrap ${
+              activeTab === 'followers'
+                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            Followers
+            {stats.followers > 0 && (
+              <span className="ml-1.5 text-xs bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">
+                {stats.followers}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('following')}
+            className={`px-4 py-2 text-sm font-medium transition-all relative whitespace-nowrap ${
+              activeTab === 'following'
+                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            Following
+            {stats.following > 0 && (
+              <span className="ml-1.5 text-xs bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">
+                {stats.following}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('activity')}
+            className={`px-4 py-2 text-sm font-medium transition-all relative whitespace-nowrap ${
+              activeTab === 'activity'
+                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            Activity
+          </button>
+        </div>
+
+        {/* Tab Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - About */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-4">
             {/* About Card */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                <User size={20} className="text-indigo-600" />
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                <User size={16} className="text-indigo-600" />
                 About
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {profile.bio && (
-                  <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
-                    {profile.bio}
-                  </p>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{profile.bio}</p>
                 )}
-                <div className="pt-3 space-y-2">
+                <div className="pt-2 space-y-1.5">
                   {profile.email && (
-                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                      <Mail size={14} />
-                      <span>{profile.email}</span>
+                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                      <Mail size={12} />
+                      <span className="truncate">{profile.email}</span>
                     </div>
                   )}
                   {profile.phone && (
-                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                      <Phone size={14} />
+                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                      <Phone size={12} />
                       <span>{profile.phone}</span>
                     </div>
                   )}
                   {profile.address && (
-                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                      <MapPin size={14} />
-                      <span>{profile.address}</span>
+                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                      <MapPin size={12} />
+                      <span className="truncate">{profile.address}</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                    <Calendar size={14} />
-                    <span>Joined {formatDate(profile.joinedDate)}</span>
-                  </div>
                 </div>
               </div>
             </div>
 
             {/* Role-specific Info */}
-            {profile.role === 'student' && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <GraduationCap size={20} className="text-indigo-600" />
+            {profile.role === 'student' && profile.school && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                  <GraduationCap size={16} className="text-indigo-600" />
                   Education
                 </h3>
-                <div className="space-y-3">
-                  {profile.school && (
-                    <div>
-                      <p className="text-xs text-slate-500">School</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.school}</p>
-                    </div>
-                  )}
-                  {profile.faculty && (
-                    <div>
-                      <p className="text-xs text-slate-500">Faculty</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.faculty}</p>
-                    </div>
-                  )}
-                  {profile.department && (
-                    <div>
-                      <p className="text-xs text-slate-500">Department</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.department}</p>
-                    </div>
-                  )}
-                  {profile.matricNumber && (
-                    <div>
-                      <p className="text-xs text-slate-500">Matric Number</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.matricNumber}</p>
-                    </div>
-                  )}
+                <div className="space-y-2">
+                  {profile.school && <div><p className="text-xs text-slate-500">School</p><p className="text-sm font-medium">{profile.school}</p></div>}
+                  {profile.faculty && <div><p className="text-xs text-slate-500">Faculty</p><p className="text-sm font-medium">{profile.faculty}</p></div>}
+                  {profile.department && <div><p className="text-xs text-slate-500">Department</p><p className="text-sm font-medium">{profile.department}</p></div>}
                 </div>
-              </div>
-            )}
-
-            {profile.role === 'tutor' && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Briefcase size={20} className="text-indigo-600" />
-                  Tutoring
-                </h3>
-                <div className="space-y-3">
-                  {profile.specialization && (
-                    <div>
-                      <p className="text-xs text-slate-500">Specialization</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.specialization}</p>
-                    </div>
-                  )}
-                  {profile.yearsExperience && (
-                    <div>
-                      <p className="text-xs text-slate-500">Experience</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.yearsExperience} years</p>
-                    </div>
-                  )}
-                  {profile.certifications && (
-                    <div>
-                      <p className="text-xs text-slate-500">Certifications</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">{profile.certifications}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {profile.role === 'lecturer' && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Award size={20} className="text-indigo-600" />
-                  Academic
-                </h3>
-                <div className="space-y-3">
-                  {profile.title && (
-                    <div>
-                      <p className="text-xs text-slate-500">Title</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.title}</p>
-                    </div>
-                  )}
-                  {profile.school && (
-                    <div>
-                      <p className="text-xs text-slate-500">Institution</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.school}</p>
-                    </div>
-                  )}
-                  {profile.department && (
-                    <div>
-                      <p className="text-xs text-slate-500">Department</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.department}</p>
-                    </div>
-                  )}
-                  {profile.yearsTeaching && (
-                    <div>
-                      <p className="text-xs text-slate-500">Teaching Experience</p>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">{profile.yearsTeaching} years</p>
-                    </div>
-                  )}
-                  {profile.researchInterests && (
-                    <div>
-                      <p className="text-xs text-slate-500">Research Interests</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">{profile.researchInterests}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Achievements */}
-            {profile.achievements && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Award size={20} className="text-indigo-600" />
-                  Achievements
-                </h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                  {profile.achievements}
-                </p>
               </div>
             )}
 
             {/* Social Links */}
             {(profile.website || profile.linkedin || profile.twitter || profile.github) && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Globe size={20} className="text-indigo-600" />
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Globe size={16} className="text-indigo-600" />
                   Connect
                 </h3>
-                <div className="flex flex-wrap gap-3">
-                  {profile.website && (
-                    <a href={profile.website} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
-                      <Globe size={18} />
-                    </a>
-                  )}
-                  {profile.linkedin && (
-                    <a href={profile.linkedin} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
-                      <Linkedin size={18} className="text-blue-600" />
-                    </a>
-                  )}
-                  {profile.twitter && (
-                    <a href={profile.twitter} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
-                      <Twitter size={18} className="text-sky-500" />
-                    </a>
-                  )}
-                  {profile.github && (
-                    <a href={profile.github} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
-                      <Github size={18} />
-                    </a>
-                  )}
+                <div className="flex flex-wrap gap-2">
+                  {profile.website && <a href={profile.website} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Globe size={14} /></a>}
+                  {profile.linkedin && <a href={profile.linkedin} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Linkedin size={14} className="text-blue-600" /></a>}
+                  {profile.twitter && <a href={profile.twitter} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Twitter size={14} className="text-sky-500" /></a>}
+                  {profile.github && <a href={profile.github} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Github size={14} /></a>}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right Column - Materials & Activity */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Tabs */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
-              <div className="flex border-b border-slate-200 dark:border-slate-700">
-                {['materials', 'followers', 'following'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`flex-1 px-4 py-3 text-sm font-medium transition-all ${
-                      activeTab === tab
-                        ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
-                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-                    }`}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    {tab === 'followers' && stats.followers > 0 && (
-                      <span className="ml-2 text-xs bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                        {stats.followers}
-                      </span>
-                    )}
-                    {tab === 'following' && stats.following > 0 && (
-                      <span className="ml-2 text-xs bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                        {stats.following}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              <div className="p-6">
-                {/* Materials Tab */}
-                {activeTab === 'materials' && (
-                  <div className="space-y-4">
+          {/* Right Column - Tab Content */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Materials Tab */}
+            {activeTab === 'materials' && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <BookOpen size={16} className="text-indigo-600" />
+                    Uploaded Materials
+                  </h3>
+                  
+                  <div className="space-y-3">
                     {materials.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Upload className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-slate-500">No materials uploaded yet</p>
+                      <div className="text-center py-8">
+                        <Upload className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No materials uploaded yet</p>
                       </div>
                     ) : (
-                      <>
-                        {materials.map((material, idx) => {
-                          const CategoryIcon = getCategoryIcon(material.category);
-                          return (
-                            <motion.div
-                              key={material.id}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.05 }}
-                              className="bg-slate-50 dark:bg-slate-700/30 rounded-xl p-4 hover:shadow-md transition cursor-pointer"
-                              onClick={() => navigate(`/materials/${material.id}`)}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className={`p-2 rounded-lg bg-gradient-to-r ${
-                                  material.category === 'Past Questions' ? 'from-amber-500 to-orange-500' :
-                                  material.category === 'PDF Notes' ? 'from-blue-500 to-cyan-500' :
-                                  material.category === 'Video Tutorials' ? 'from-purple-500 to-pink-500' :
-                                  'from-emerald-500 to-teal-500'
-                                }`}>
-                                  <CategoryIcon className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="flex-1">
-                                  <h4 className="font-semibold text-slate-900 dark:text-white">
-                                    {material.title}
-                                  </h4>
-                                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                    {material.course || material.category}
-                                  </p>
-                                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-                                    <span className="flex items-center gap-1">
-                                      <Download size={12} />
-                                      {material.downloads || 0} downloads
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                      <Star size={12} />
-                                      {material.averageRating?.toFixed(1) || 0}/5
-                                    </span>
-                                    <span>
-                                      {formatDate(material.createdAt)}
-                                    </span>
-                                  </div>
-                                </div>
-                                <button className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition">
-                                  <ExternalLink size={16} />
-                                </button>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                        {allMaterials.length > 6 && (
-                          <button
-                            onClick={() => setShowAllMaterials(!showAllMaterials)}
-                            className="w-full py-3 text-indigo-600 dark:text-indigo-400 font-medium hover:underline flex items-center justify-center gap-2"
+                      materials.map((material) => {
+                        const CategoryIcon = getCategoryIcon(material.category);
+                        return (
+                          <div
+                            key={material.id}
+                            className="bg-slate-50 dark:bg-slate-700/30 rounded-lg p-3 hover:shadow-md transition cursor-pointer"
+                            onClick={() => navigate(`/materials/${material.id}`)}
                           >
-                            {showAllMaterials ? 'Show Less ↑' : `View all ${allMaterials.length} materials →`}
-                          </button>
-                        )}
-                        {showAllMaterials && allMaterials.slice(6).map((material, idx) => {
-                          const CategoryIcon = getCategoryIcon(material.category);
-                          return (
-                            <motion.div
-                              key={material.id}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.05 }}
-                              className="bg-slate-50 dark:bg-slate-700/30 rounded-xl p-4 hover:shadow-md transition cursor-pointer"
-                              onClick={() => navigate(`/materials/${material.id}`)}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className={`p-2 rounded-lg bg-gradient-to-r ${
-                                  material.category === 'Past Questions' ? 'from-amber-500 to-orange-500' :
-                                  material.category === 'PDF Notes' ? 'from-blue-500 to-cyan-500' :
-                                  material.category === 'Video Tutorials' ? 'from-purple-500 to-pink-500' :
-                                  'from-emerald-500 to-teal-500'
-                                }`}>
-                                  <CategoryIcon className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="flex-1">
-                                  <h4 className="font-semibold text-slate-900 dark:text-white">
-                                    {material.title}
-                                  </h4>
-                                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                    {material.course || material.category}
-                                  </p>
-                                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-                                    <span className="flex items-center gap-1">
-                                      <Download size={12} />
-                                      {material.downloads || 0} downloads
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                      <Star size={12} />
-                                      {material.averageRating?.toFixed(1) || 0}/5
-                                    </span>
-                                    <span>
-                                      {formatDate(material.createdAt)}
-                                    </span>
-                                  </div>
+                            <div className="flex items-start gap-2">
+                              <div className={`p-1.5 rounded-lg bg-gradient-to-r ${
+                                material.category === 'Past Questions' ? 'from-amber-500 to-orange-500' :
+                                material.category === 'PDF Notes' ? 'from-blue-500 to-cyan-500' :
+                                material.category === 'Video Tutorials' ? 'from-purple-500 to-pink-500' :
+                                'from-emerald-500 to-teal-500'
+                              }`}>
+                                <CategoryIcon className="w-3 h-3 text-white" />
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-medium text-sm text-slate-900 dark:text-white">{material.title}</h4>
+                                <p className="text-xs text-slate-500 mt-0.5">{material.course || material.category}</p>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                                  <span className="flex items-center gap-0.5"><Download size={10} />{material.downloads || 0}</span>
+                                  <span className="flex items-center gap-0.5"><Star size={10} />{material.averageRating?.toFixed(1) || 0}</span>
+                                  <span>{formatRelativeTime(material.createdAt)}</span>
                                 </div>
                               </div>
-                            </motion.div>
-                          );
-                        })}
-                      </>
+                              <ExternalLink size={12} className="text-slate-400 flex-shrink-0" />
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-                )}
+                </div>
+              </div>
+            )}
 
-                {/* Followers Tab */}
-                {activeTab === 'followers' && (
-                  <div className="space-y-3">
+            {/* Followers Tab */}
+            {activeTab === 'followers' && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Users size={16} className="text-indigo-600" />
+                    Followers ({followersList.length})
+                  </h3>
+                  
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
                     {followersList.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-slate-500">No followers yet</p>
+                      <div className="text-center py-8">
+                        <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No followers yet</p>
                       </div>
                     ) : (
                       followersList.map((follower) => (
                         <div
                           key={follower.id}
-                          className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer"
+                          className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700/30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer"
                           onClick={() => navigate(`/profile/${follower.id}`)}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
                               {follower.name?.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium text-slate-900 dark:text-white">
-                                {follower.name}
-                              </p>
+                              <p className="font-medium text-sm text-slate-900 dark:text-white">{follower.name}</p>
                               <p className="text-xs text-slate-500">
                                 {follower.role === 'student' ? 'Student' : 
                                  follower.role === 'tutor' ? 'Tutor' : 'Lecturer'}
+                                {follower.school && ` • ${follower.school}`}
                               </p>
                             </div>
                           </div>
-                          <button className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                            View
-                          </button>
+                          <ChevronRight size={14} className="text-slate-400" />
                         </div>
                       ))
                     )}
                   </div>
-                )}
+                </div>
+              </div>
+            )}
 
-                {/* Following Tab */}
-                {activeTab === 'following' && (
-                  <div className="space-y-3">
+            {/* Following Tab - Shows people this user is following */}
+            {activeTab === 'following' && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <UserPlus size={16} className="text-indigo-600" />
+                    Following ({followingList.length})
+                  </h3>
+                  
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
                     {followingList.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-slate-500">Not following anyone yet</p>
+                      <div className="text-center py-8">
+                        <UserPlus className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">Not following anyone yet</p>
+                        <p className="text-xs text-slate-400 mt-1">Follow users to see their updates here</p>
                       </div>
                     ) : (
                       followingList.map((followed) => (
                         <div
                           key={followed.id}
-                          className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer"
-                          onClick={() => navigate(`/profile/${followed.id}`)}
+                          className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700/30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                          <div 
+                            className="flex items-center gap-2 flex-1 cursor-pointer"
+                            onClick={() => navigate(`/profile/${followed.id}`)}
+                          >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
                               {followed.name?.charAt(0).toUpperCase()}
                             </div>
-                            <div>
-                              <p className="font-medium text-slate-900 dark:text-white">
-                                {followed.name}
-                              </p>
+                            <div className="flex-1">
+                              <p className="font-medium text-sm text-slate-900 dark:text-white">{followed.name}</p>
                               <p className="text-xs text-slate-500">
                                 {followed.role === 'student' ? 'Student' : 
                                  followed.role === 'tutor' ? 'Tutor' : 'Lecturer'}
+                                {followed.school && ` • ${followed.school}`}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                Followed {formatRelativeTime(followed.followedAt)}
                               </p>
                             </div>
                           </div>
-                          <button className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                            View
-                          </button>
+                          {/* Unfollow button - only show if viewing your own profile */}
+                          {currentUser?.uid === userId && (
+                            <button
+                              onClick={() => handleUnfollowFromList(followed.id, followed.name)}
+                              disabled={unfollowingId === followed.id}
+                              className="px-2 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition disabled:opacity-50 flex items-center gap-1"
+                            >
+                              {unfollowingId === followed.id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <UserMinus size={12} />
+                              )}
+                              Unfollow
+                            </button>
+                          )}
                         </div>
                       ))
                     )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Badges/Recognition */}
-            {stats.totalUploads > 0 && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Zap size={20} className="text-indigo-600" />
-                  Achievements
-                </h3>
-                <div className="flex flex-wrap gap-3">
-                  {stats.totalUploads >= 1 && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-                      <Upload size={14} className="text-blue-600" />
-                      <span className="text-xs font-medium">First Upload</span>
-                    </div>
-                  )}
-                  {stats.totalUploads >= 10 && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-                      <Award size={14} className="text-purple-600" />
-                      <span className="text-xs font-medium">10+ Materials</span>
-                    </div>
-                  )}
-                  {stats.totalDownloads >= 100 && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-100 dark:bg-green-900/30 rounded-full">
-                      <Download size={14} className="text-green-600" />
-                      <span className="text-xs font-medium">100+ Downloads</span>
-                    </div>
-                  )}
-                  {stats.followers >= 10 && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-pink-100 dark:bg-pink-900/30 rounded-full">
-                      <Users size={14} className="text-pink-600" />
-                      <span className="text-xs font-medium">Popular</span>
-                    </div>
-                  )}
+            {/* Activity Tab */}
+            {activeTab === 'activity' && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Activity size={16} className="text-indigo-600" />
+                    Recent Activity
+                  </h3>
+                  
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    {loadingActivity ? (
+                      <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-indigo-600" /></div>
+                    ) : recentActivity.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-500">No recent activity</p>
+                      </div>
+                    ) : (
+                      recentActivity.map((activity) => (
+                        <div
+                          key={activity.id}
+                          className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700/30 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                          onClick={() => navigate(`/materials/${activity.id}`)}
+                        >
+                          <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/30 rounded-full">
+                            <Upload size={10} className="text-indigo-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs text-slate-700 dark:text-slate-300">
+                              <span className="font-medium">{profile.name}</span> {activity.action}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">{formatRelativeTime(activity.createdAt)}</p>
+                          </div>
+                          <ChevronRight size={12} className="text-slate-400" />
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -981,89 +982,44 @@ function PublicProfileViewer() {
         </div>
       </div>
 
-      {/* Search Users Modal */}
+      {/* Search Modal */}
       <AnimatePresence>
         {showSearchModal && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-800 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl"
-            >
-              <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Find Users</h3>
-                <button 
-                  onClick={() => setShowSearchModal(false)} 
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
-                >
-                  <X size={20} />
-                </button>
+            <motion.div className="bg-white dark:bg-slate-800 rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden shadow-2xl">
+              <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-indigo-50 to-purple-50">
+                <h3 className="text-lg font-semibold">Find Users</h3>
+                <button onClick={() => setShowSearchModal(false)} className="p-1.5 hover:bg-slate-200 rounded-lg"><X size={18} /></button>
               </div>
-              
-              <div className="p-6">
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by name, email, or school..."
-                    className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
-                    onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
-                  />
-                  <button
-                    onClick={searchUsers}
-                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition font-medium"
-                  >
-                    Search
-                  </button>
+              <div className="p-4">
+                <div className="flex gap-2 mb-3">
+                  <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search by name, email, school..." className="flex-1 px-3 py-2 text-sm bg-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" onKeyPress={(e) => e.key === 'Enter' && handleSearchUsers()} />
+                  <button onClick={handleSearchUsers} disabled={searching} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">{searching ? <Loader2 size={16} className="animate-spin" /> : 'Search'}</button>
                 </div>
-                
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {searching ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-                    </div>
-                  ) : searchResults.length > 0 ? (
-                    searchResults.map((user) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer group"
-                        onClick={() => {
-                          setShowSearchModal(false);
-                          navigate(`/profile/${user.id}`);
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                            {user.name?.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 transition">
-                              {user.name}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {user.school || 'No school'} • {user.role === 'student' ? 'Student' : user.role === 'tutor' ? 'Tutor' : 'Lecturer'}
-                            </p>
-                          </div>
-                        </div>
-                        <button className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-1">
-                          View <ChevronRight size={14} />
-                        </button>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <select value={searchFilters.role} onChange={(e) => setSearchFilters(prev => ({ ...prev, role: e.target.value }))} className="px-2 py-1.5 text-sm bg-slate-100 rounded-lg">
+                    <option value="all">All Roles</option>
+                    <option value="student">Students</option>
+                    <option value="tutor">Tutors</option>
+                    <option value="lecturer">Lecturers</option>
+                  </select>
+                  <select value={searchFilters.school} onChange={(e) => setSearchFilters(prev => ({ ...prev, school: e.target.value }))} className="px-2 py-1.5 text-sm bg-slate-100 rounded-lg">
+                    <option value="">All Schools</option>
+                    {allSchools.map(school => (<option key={school} value={school}>{school}</option>))}
+                  </select>
+                </div>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {searching ? <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-indigo-600" /></div>
+                  : searchResults.length > 0 ? searchResults.map((user) => (
+                    <div key={user.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition cursor-pointer" onClick={() => { setShowSearchModal(false); navigate(`/profile/${user.id}`); }}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{user.name?.charAt(0).toUpperCase()}</div>
+                        <div><p className="font-medium text-sm">{user.name}</p><p className="text-xs text-slate-500">{user.role === 'student' ? 'Student' : user.role === 'tutor' ? 'Tutor' : 'Lecturer'}{user.school && ` • ${user.school}`}</p></div>
                       </div>
-                    ))
-                  ) : searchTerm && !searching ? (
-                    <div className="text-center py-12">
-                      <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                      <p className="text-slate-500">No users found</p>
-                      <p className="text-xs text-slate-400 mt-1">Try a different search term</p>
+                      <ChevronRight size={14} className="text-slate-400" />
                     </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Search className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                      <p className="text-slate-500">Search for users by name, email, or school</p>
-                    </div>
-                  )}
+                  )) : searchTerm && !searching ? <div className="text-center py-8"><Users className="w-8 h-8 text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No users found</p></div>
+                  : <div className="text-center py-8"><Search className="w-8 h-8 text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">Search for users by name, email, or school</p></div>}
                 </div>
               </div>
             </motion.div>
@@ -1075,57 +1031,22 @@ function PublicProfileViewer() {
       <AnimatePresence>
         {showFollowersModal && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden shadow-2xl"
-            >
-              <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                  Followers ({followersList.length})
-                </h3>
-                <button 
-                  onClick={() => setShowFollowersModal(false)} 
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
-                >
-                  <X size={20} />
-                </button>
+            <motion.div className="bg-white dark:bg-slate-800 rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden shadow-2xl">
+              <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-indigo-50 to-purple-50">
+                <h3 className="text-lg font-semibold">Followers ({followersList.length})</h3>
+                <button onClick={() => setShowFollowersModal(false)} className="p-1.5 hover:bg-slate-200 rounded-lg"><X size={18} /></button>
               </div>
-              <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-                {followersList.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-500">No followers yet</p>
-                  </div>
-                ) : (
-                  followersList.map((follower) => (
-                    <div
-                      key={follower.id}
-                      className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer group"
-                      onClick={() => {
-                        setShowFollowersModal(false);
-                        navigate(`/profile/${follower.id}`);
-                      }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                          {follower.name?.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 transition">
-                            {follower.name}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {follower.role === 'student' ? 'Student' : 
-                             follower.role === 'tutor' ? 'Tutor' : 'Lecturer'}
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronRight size={18} className="text-slate-400 group-hover:text-indigo-600 transition" />
+              <div className="p-4 space-y-2 max-h-96 overflow-y-auto">
+                {followersList.length === 0 ? <div className="text-center py-8"><Users className="w-8 h-8 text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No followers yet</p></div>
+                : followersList.map((follower) => (
+                  <div key={follower.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition cursor-pointer" onClick={() => { setShowFollowersModal(false); navigate(`/profile/${follower.id}`); }}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{follower.name?.charAt(0).toUpperCase()}</div>
+                      <div><p className="font-medium text-sm">{follower.name}</p><p className="text-xs text-slate-500">{follower.role === 'student' ? 'Student' : follower.role === 'tutor' ? 'Tutor' : 'Lecturer'}</p></div>
                     </div>
-                  ))
-                )}
+                    <ChevronRight size={14} className="text-slate-400" />
+                  </div>
+                ))}
               </div>
             </motion.div>
           </div>
@@ -1136,57 +1057,22 @@ function PublicProfileViewer() {
       <AnimatePresence>
         {showFollowingModal && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full max-h-[80vh] overflow-hidden shadow-2xl"
-            >
-              <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                  Following ({followingList.length})
-                </h3>
-                <button 
-                  onClick={() => setShowFollowingModal(false)} 
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
-                >
-                  <X size={20} />
-                </button>
+            <motion.div className="bg-white dark:bg-slate-800 rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden shadow-2xl">
+              <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-indigo-50 to-purple-50">
+                <h3 className="text-lg font-semibold">Following ({followingList.length})</h3>
+                <button onClick={() => setShowFollowingModal(false)} className="p-1.5 hover:bg-slate-200 rounded-lg"><X size={18} /></button>
               </div>
-              <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-                {followingList.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-500">Not following anyone yet</p>
-                  </div>
-                ) : (
-                  followingList.map((followed) => (
-                    <div
-                      key={followed.id}
-                      className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer group"
-                      onClick={() => {
-                        setShowFollowingModal(false);
-                        navigate(`/profile/${followed.id}`);
-                      }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                          {followed.name?.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 transition">
-                            {followed.name}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {followed.role === 'student' ? 'Student' : 
-                             followed.role === 'tutor' ? 'Tutor' : 'Lecturer'}
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronRight size={18} className="text-slate-400 group-hover:text-indigo-600 transition" />
+              <div className="p-4 space-y-2 max-h-96 overflow-y-auto">
+                {followingList.length === 0 ? <div className="text-center py-8"><UserPlus className="w-8 h-8 text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">Not following anyone yet</p></div>
+                : followingList.map((followed) => (
+                  <div key={followed.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition cursor-pointer" onClick={() => { setShowFollowingModal(false); navigate(`/profile/${followed.id}`); }}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{followed.name?.charAt(0).toUpperCase()}</div>
+                      <div><p className="font-medium text-sm">{followed.name}</p><p className="text-xs text-slate-500">{followed.role === 'student' ? 'Student' : followed.role === 'tutor' ? 'Tutor' : 'Lecturer'}</p></div>
                     </div>
-                  ))
-                )}
+                    <ChevronRight size={14} className="text-slate-400" />
+                  </div>
+                ))}
               </div>
             </motion.div>
           </div>
@@ -1197,33 +1083,13 @@ function PublicProfileViewer() {
       <AnimatePresence>
         {showShareMenu && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
-            >
-              <h3 className="text-xl font-semibold mb-4 text-slate-900 dark:text-white">Share Profile</h3>
-              <div className="flex gap-2 mb-4">
-                <input
-                  type="text"
-                  value={`${window.location.origin}/profile/${userId}`}
-                  readOnly
-                  className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm text-slate-900 dark:text-white"
-                />
-                <button
-                  onClick={handleCopyProfileLink}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                >
-                  <Copy size={18} />
-                </button>
+            <motion.div className="bg-white dark:bg-slate-800 rounded-xl p-4 max-w-sm w-full shadow-2xl">
+              <h3 className="text-lg font-semibold mb-3">Share Profile</h3>
+              <div className="flex gap-2 mb-3">
+                <input type="text" value={`${window.location.origin}/profile/${userId}`} readOnly className="flex-1 px-3 py-2 text-sm bg-slate-100 rounded-lg" />
+                <button onClick={handleCopyProfileLink} className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><Copy size={16} /></button>
               </div>
-              <button
-                onClick={() => setShowShareMenu(false)}
-                className="w-full py-2 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition font-medium"
-              >
-                Close
-              </button>
+              <button onClick={() => setShowShareMenu(false)} className="w-full py-2 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Close</button>
             </motion.div>
           </div>
         )}

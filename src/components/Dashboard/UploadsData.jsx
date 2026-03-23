@@ -1,17 +1,17 @@
 // UploadsData.jsx
-// Multi-step upload form with Firebase Storage (resumable), progress, pause/resume/cancel
-// All input fields in Step 2 now fully implemented
-// ── ADDED: Debug logging + auth check before addDoc to help diagnose permissions error
-// ── ADDED: preview screenshots upload (3-5 images required for non-video)
+// Modern redesign with enhanced UI/UX - all original functionality preserved
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, X, FileText, Video, BookOpen, ScrollText,
-  ArrowRight, Check, ArrowLeft 
+  ArrowRight, Check, ArrowLeft, CloudUpload, FileCheck,
+  Image, PlayCircle, File, AlertCircle, ChevronRight,
+  ChevronLeft, Download, Eye, Layers, Sparkles, Trash2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { motion, AnimatePresence } from 'framer-motion';
 
-// ── Firebase ────────────────────────────────────────────────────────────────
+// Firebase imports
 import { db, storage, auth } from '@/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -29,19 +29,76 @@ function UploadsData() {
     file: null,
     preview: null,
   });
-  const [previewImages, setPreviewImages] = useState([]);             // File[]
-  const [previewImagePreviews, setPreviewImagePreviews] = useState([]); // string[] data urls
+  const [previewImages, setPreviewImages] = useState([]);
+  const [previewImagePreviews, setPreviewImagePreviews] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [dragPreviewActive, setDragPreviewActive] = useState(false);
   const uploadTaskRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const previewInputRef = useRef(null);
 
   const categories = [
-    { value: 'Past Questions',    icon: ScrollText, label: 'Past Questions',    color: 'from-amber-500 to-orange-600',  accept: '.pdf,.doc,.docx' },
-    { value: 'PDF Notes',         icon: FileText,   label: 'PDF Notes',         color: 'from-blue-500 to-cyan-600',    accept: '.pdf,.doc,.docx' },
-    { value: 'Video Tutorials',   icon: Video,      label: 'Video Tutorials',   color: 'from-purple-500 to-pink-600',  accept: '.mp4,.avi,.mov,.webm' },
-    { value: 'Technical Reviews', icon: BookOpen,   label: 'Technical Reviews', color: 'from-emerald-500 to-teal-600',  accept: '.pdf,.doc,.docx' },
+    { 
+      value: 'Past Questions', 
+      icon: ScrollText, 
+      label: 'Past Questions', 
+      color: 'from-amber-500 to-orange-600',
+      bgGradient: 'from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20',
+      borderColor: 'border-amber-200 dark:border-amber-800',
+      iconColor: 'text-amber-600',
+      accept: '.pdf,.doc,.docx',
+      description: 'Share past exam papers and practice questions'
+    },
+    { 
+      value: 'PDF Notes', 
+      icon: FileText, 
+      label: 'PDF Notes', 
+      color: 'from-blue-500 to-cyan-600',
+      bgGradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20',
+      borderColor: 'border-blue-200 dark:border-blue-800',
+      iconColor: 'text-blue-600',
+      accept: '.pdf,.doc,.docx',
+      description: 'Share lecture notes, summaries, and study guides'
+    },
+    { 
+      value: 'Video Tutorials', 
+      icon: Video, 
+      label: 'Video Tutorials', 
+      color: 'from-purple-500 to-pink-600',
+      bgGradient: 'from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20',
+      borderColor: 'border-purple-200 dark:border-purple-800',
+      iconColor: 'text-purple-600',
+      accept: '.mp4,.avi,.mov,.webm',
+      description: 'Upload educational video content and tutorials'
+    },
+    { 
+      value: 'Technical Reviews', 
+      icon: BookOpen, 
+      label: 'Technical Reviews', 
+      color: 'from-emerald-500 to-teal-600',
+      bgGradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20',
+      borderColor: 'border-emerald-200 dark:border-emerald-800',
+      iconColor: 'text-emerald-600',
+      accept: '.pdf,.doc,.docx',
+      description: 'Share research papers, reviews, and technical articles'
+    },
   ];
+
+  // Animation variants
+  const pageVariants = {
+    initial: { opacity: 0, x: 100 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: -100 }
+  };
+
+  const fadeInUp = {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.5 }
+  };
 
   const handleCategorySelect = (cat) => {
     setSelectedCategory(cat);
@@ -67,6 +124,54 @@ function UploadsData() {
       setFormData(prev => ({ ...prev, file, preview: reader.result }));
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleDragOver = (e, type = 'file') => {
+    e.preventDefault();
+    if (type === 'file') setDragActive(true);
+    else setDragPreviewActive(true);
+  };
+
+  const handleDragLeave = (e, type = 'file') => {
+    e.preventDefault();
+    if (type === 'file') setDragActive(false);
+    else setDragPreviewActive(false);
+  };
+
+  const handleDrop = (e, type = 'file') => {
+    e.preventDefault();
+    if (type === 'file') setDragActive(false);
+    else setDragPreviewActive(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    if (type === 'file') {
+      const file = files[0];
+      if (!selectedCategory) return;
+
+      const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+      if (!selectedCategory.accept.split(',').includes(fileExt)) {
+        toast.error(`Invalid file type. Allowed: ${selectedCategory.accept}`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        setFormData(prev => ({ ...prev, file, preview: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    } else {
+      const validFiles = files.filter(f => f.type.startsWith('image/'));
+      if (validFiles.length !== files.length) {
+        toast.error("Only image files (.jpg, .png, .webp) allowed for previews");
+        return;
+      }
+
+      const previews = validFiles.map(file => URL.createObjectURL(file));
+      setPreviewImages(prev => [...prev, ...validFiles].slice(0, 5));
+      setPreviewImagePreviews(prev => [...prev, ...previews].slice(0, 5));
+    }
   };
 
   const handlePreviewImagesChange = (e) => {
@@ -143,7 +248,6 @@ function UploadsData() {
         try {
           const publicUrl = await getDownloadURL(storageRef);
 
-          // Upload preview images
           let previewUrls = [];
           if (previewImages.length > 0) {
             previewUrls = await Promise.all(
@@ -157,14 +261,7 @@ function UploadsData() {
             );
           }
 
-          // ── Debug logging to confirm auth state right before Firestore write ──
           console.log("Saving to Firestore — current user:", auth.currentUser?.uid || "(no user!)");
-          console.log("Document data preview:", {
-            title: formData.title,
-            course: formData.course,
-            school: formData.school,
-            uid: auth.currentUser?.uid,
-          });
 
           if (!auth.currentUser) {
             throw new Error("User no longer authenticated at save time");
@@ -183,7 +280,7 @@ function UploadsData() {
             file_size: file.size,
             mime_type: file.type,
             public_url: publicUrl,
-            previewImages: previewUrls, // added field
+            previewImages: previewUrls,
             uid: auth.currentUser.uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -231,341 +328,513 @@ function UploadsData() {
     setPreviewImagePreviews([]);
   };
 
-  // ────────────────────────────────────────────────
-  //  RENDER
-  // ────────────────────────────────────────────────
+  // Step Progress Indicator
+  const StepIndicator = () => (
+    <div className="mb-12">
+      <div className="flex items-center justify-between max-w-2xl mx-auto">
+        {[1, 2, 3, 4].map((s, idx) => (
+          <React.Fragment key={s}>
+            <div className="flex flex-col items-center">
+              <motion.div
+                animate={{
+                  scale: step === s ? 1.1 : 1,
+                  backgroundColor: step >= s ? '#4F46E5' : '#E2E8F0'
+                }}
+                className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all ${
+                  step >= s ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                }`}
+              >
+                {step > s ? <Check size={20} /> : s}
+              </motion.div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 hidden sm:block">
+                {s === 1 ? 'Category' : s === 2 ? 'Details' : s === 3 ? 'Upload' : 'Complete'}
+              </p>
+            </div>
+            {s < 4 && (
+              <div className={`flex-1 h-1 mx-4 rounded-full transition-all ${
+                step > s ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
+              }`} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <div className="p-4 sm:p-6 md:p-10 lg:p-12 max-w-4xl mx-auto">
+  // Category Selection Step
+  const CategoryStep = () => (
+    <motion.div
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="text-center mb-10">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-4">
+            Share Knowledge
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400 text-lg max-w-2xl mx-auto">
+            Choose what type of educational material you want to share with the community
+          </p>
+        </motion.div>
+      </div>
 
-        {/* Progress Steps */}
-        <div className="mb-8 sm:mb-12">
-          <div className="flex items-center justify-between">
-            {[1, 2, 3, 4].map(s => (
-              <div key={s} className="flex items-center flex-1">
-                <div className={`w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold transition-all shrink-0 text-sm sm:text-base ${
-                  step >= s
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
-                }`}>
-                  {step > s ? <Check size={18} className="sm:size-6" /> : s}
-                </div>
-                {s < 4 && (
-                  <div className={`h-1 flex-1 mx-2 sm:mx-4 ${
-                    step >= s ? 'bg-gradient-to-r from-blue-600 to-purple-600' : 'bg-slate-300 dark:bg-slate-600'
-                  }`} />
-                )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {categories.map((cat, idx) => {
+          const Icon = cat.icon;
+          return (
+            <motion.button
+              key={cat.value}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              onClick={() => handleCategorySelect(cat)}
+              whileHover={{ scale: 1.02, y: -4 }}
+              whileTap={{ scale: 0.98 }}
+              className={`group relative overflow-hidden rounded-2xl p-8 text-left transition-all bg-gradient-to-br ${cat.bgGradient} border-2 ${cat.borderColor} hover:shadow-2xl`}
+            >
+              <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                <ChevronRight className="w-6 h-6 text-slate-400" />
               </div>
-            ))}
+              <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cat.color} text-white mb-4 shadow-lg`}>
+                <Icon size={28} />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">{cat.label}</h3>
+              <p className="text-slate-600 dark:text-slate-400 text-sm">{cat.description}</p>
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+                <File size={12} />
+                <span>Supports: {cat.accept.toUpperCase()}</span>
+              </div>
+            </motion.button>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+
+  // Details Form Step
+  const DetailsStep = () => (
+    <motion.div
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory.color} text-white`}>
+            {selectedCategory && <selectedCategory.icon size={20} />}
           </div>
-          <div className="flex justify-between mt-2 sm:mt-4 text-xs sm:text-sm text-slate-600 dark:text-slate-400 px-1">
-            <span>Category</span><span>Details</span><span>File</span><span>Done</span>
-          </div>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
+            Material Details
+          </h2>
+        </div>
+        <p className="text-slate-600 dark:text-slate-400">
+          Provide comprehensive information about your {selectedCategory?.label.toLowerCase()}
+        </p>
+      </div>
+
+      <form className="space-y-6">
+        <motion.div variants={fadeInUp}>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            Title <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleInputChange}
+            placeholder="e.g., CHE 101 Organic Chemistry 2023/2024 Past Questions"
+            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+          />
+        </motion.div>
+
+        <motion.div variants={fadeInUp}>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            Course Code / Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="course"
+            value={formData.course}
+            onChange={handleInputChange}
+            placeholder="e.g., CHE 101, Introduction to Organic Chemistry"
+            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+          />
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <motion.div variants={fadeInUp}>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              School / University <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="school"
+              value={formData.school}
+              onChange={handleInputChange}
+              placeholder="e.g., University of Port Harcourt"
+              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+            />
+          </motion.div>
+
+          <motion.div variants={fadeInUp}>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Department
+            </label>
+            <input
+              type="text"
+              name="department"
+              value={formData.department}
+              onChange={handleInputChange}
+              placeholder="e.g., Pure and Industrial Chemistry"
+              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+            />
+          </motion.div>
         </div>
 
-        {/* STEP 1 – Category Selection */}
-        {step === 1 && (
-          <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-6 text-center">
-              What are you uploading?
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              {categories.map(cat => (
-                <button
-                  key={cat.value}
-                  onClick={() => handleCategorySelect(cat)}
-                  className={`group relative overflow-hidden rounded-2xl p-6 sm:p-8 text-left transition-all hover:shadow-xl hover:scale-[1.02] bg-gradient-to-br ${cat.color} text-white`}
-                >
-                  <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity bg-black/10" />
-                  <cat.icon size={40} className="mb-4" />
-                  <h3 className="text-xl sm:text-2xl font-bold">{cat.label}</h3>
-                </button>
-              ))}
+        <motion.div variants={fadeInUp}>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            Description
+          </label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
+            rows={4}
+            placeholder="Add any additional notes, semester/year, or special instructions..."
+            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-y"
+          />
+        </motion.div>
+      </form>
+
+      <div className="flex justify-between gap-4 mt-10">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setStep(1)}
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2"
+        >
+          <ArrowLeft size={18} /> Back
+        </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => {
+            if (!formData.title.trim() || !formData.course.trim() || !formData.school.trim()) {
+              toast.error("Please fill in all required fields: Title, Course, School");
+              return;
+            }
+            setStep(3);
+          }}
+          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2"
+        >
+          Continue to Upload <ArrowRight size={18} />
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+
+  // File Upload Step
+  const UploadStep = () => {
+    const isVideo = selectedCategory?.value === 'Video Tutorials';
+    const previewRequired = !isVideo && previewImages.length < 3;
+
+    return (
+      <motion.div
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        variants={pageVariants}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory.color} text-white`}>
+              {selectedCategory && <selectedCategory.icon size={20} />}
             </div>
-          </div>
-        )}
-
-        {/* STEP 2 – Material Details */}
-        {step === 2 && (
-          <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-4 sm:mb-6">
-              Enter Material Details
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
+              Upload Files
             </h2>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-6 sm:mb-8">
-              {selectedCategory?.label} → Fill in the information below
-            </p>
-
-            <form className="space-y-5 sm:space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Title <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  value={formData.title}
-                  onChange={handleInputChange}
-                  placeholder="e.g. CHE 101 Organic Chemistry 2023/2024 Past Questions"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Course Code / Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="course"
-                  value={formData.course}
-                  onChange={handleInputChange}
-                  placeholder="e.g. CHE 101, Introduction to Organic Chemistry"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                    School / University <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="school"
-                    value={formData.school}
-                    onChange={handleInputChange}
-                    placeholder="e.g. University of Port Harcourt"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    name="department"
-                    value={formData.department}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Pure and Industrial Chemistry"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Description (optional)
-                </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows={4}
-                  placeholder="Any extra notes, semester/year, special instructions..."
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-y"
-                />
-              </div>
-            </form>
-
-            <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6 mt-8 sm:mt-12">
-              <button
-                onClick={() => setStep(1)}
-                className="px-6 py-3 sm:px-8 sm:py-4 bg-slate-200 dark:bg-slate-700 rounded-xl font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <ArrowLeft size={16} /> Back
-              </button>
-
-              <button
-                onClick={() => {
-                  if (!formData.title.trim() || !formData.course.trim() || !formData.school.trim()) {
-                    toast.error("Please fill in all required fields: Title, Course, School");
-                    return;
-                  }
-                  setStep(3);
-                }}
-                className="px-8 py-3 sm:px-10 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                Continue to File Upload <ArrowRight size={18} />
-              </button>
-            </div>
           </div>
-        )}
+          <p className="text-slate-600 dark:text-slate-400">
+            Upload your main file and preview images
+          </p>
+        </div>
 
-        {/* STEP 3 – File Upload */}
-        {step === 3 && (
-          <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-7 md:p-9 lg:p-12 border border-slate-200/50 dark:border-slate-700/50">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-800 dark:text-white mb-4 sm:mb-6">
-              Upload Your File
-            </h2>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-6 sm:mb-8">
-              {selectedCategory?.label} — resumable upload to Firebase Storage
-            </p>
-
-            <div className="space-y-6">
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 sm:p-10 text-center">
-                <input
-                  type="file"
-                  accept={selectedCategory?.accept}
-                  onChange={handleFileChange}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-3">
-                  <Upload size={48} className="text-blue-600 dark:text-blue-400" />
-                  <div>
-                    <p className="text-lg font-medium text-slate-800 dark:text-white">
-                      Click to select file or drag & drop
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                      {selectedCategory?.accept.replace(/,/g, ', ')}
-                    </p>
-                  </div>
-                </label>
-              </div>
-
-              {formData.file && (
-                <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl flex items-center gap-4">
+        <div className="space-y-8">
+          {/* Main File Upload */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Main File <span className="text-red-500">*</span>
+            </label>
+            <div
+              onDragOver={(e) => handleDragOver(e, 'file')}
+              onDragLeave={(e) => handleDragLeave(e, 'file')}
+              onDrop={(e) => handleDrop(e, 'file')}
+              className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
+                dragActive
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
+                  : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500'
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={selectedCategory?.accept}
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              
+              {formData.file ? (
+                <div className="flex items-center gap-4 text-left">
                   {formData.preview?.startsWith('data:video') ? (
                     <video src={formData.preview} className="w-20 h-20 object-cover rounded" controlsList="nodownload" />
                   ) : formData.preview ? (
                     <img src={formData.preview} alt="preview" className="w-20 h-20 object-cover rounded" />
                   ) : (
-                    <FileText size={48} className="text-blue-600" />
+                    <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950 dark:to-purple-950 rounded-lg flex items-center justify-center">
+                      <FileText size={32} className="text-indigo-600" />
+                    </div>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{formData.file.name}</p>
+                  <div className="flex-1">
+                    <p className="font-medium text-slate-800 dark:text-white truncate">{formData.file.name}</p>
                     <p className="text-sm text-slate-500">
                       {(formData.file.size / 1024 / 1024).toFixed(2)} MB
                     </p>
                   </div>
                   <button
-                    onClick={() => setFormData(prev => ({ ...prev, file: null, preview: null }))}
-                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFormData(prev => ({ ...prev, file: null, preview: null }));
+                    }}
+                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full transition"
                   >
                     <X size={20} />
                   </button>
                 </div>
+              ) : (
+                <div>
+                  <CloudUpload className="w-16 h-16 mx-auto text-slate-400 mb-4" />
+                  <p className="text-slate-600 dark:text-slate-400">Click or drag & drop to upload</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Supports: {selectedCategory?.accept.toUpperCase()}
+                  </p>
+                </div>
               )}
+            </div>
+          </div>
 
-              {/* ── Added: Preview screenshots upload UI ── */}
-              <div className="mt-8">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  {selectedCategory?.value === 'Video Tutorials' ? 'Optional' : 'Required'}: Upload 3–5 preview screenshots
-                  {selectedCategory?.value !== 'Video Tutorials' && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  onChange={handlePreviewImagesChange}
-                  className="hidden"
-                  id="preview-images"
-                />
-                <label htmlFor="preview-images" className="cursor-pointer block border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                  <Upload size={32} className="mx-auto text-slate-500 mb-2" />
-                  <p className="text-slate-600 dark:text-slate-300">Click to select screenshots or drag & drop</p>
-                  <p className="text-xs text-slate-500 mt-1">JPEG, PNG, WebP • max 5</p>
-                </label>
-
-                {previewImagePreviews.length > 0 && (
-                  <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 gap-3">
-                    {previewImagePreviews.map((src, idx) => (
-                      <div key={idx} className="relative">
-                        <img src={src} alt={`preview ${idx + 1}`} className="w-full h-24 object-cover rounded border border-slate-200 dark:border-slate-700" />
-                        <button
-                          onClick={() => removePreviewImage(idx)}
-                          className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          {/* Preview Images Upload */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Preview Screenshots
+              {!isVideo && <span className="text-red-500 ml-1">* (3-5 images)</span>}
+              {isVideo && <span className="text-slate-500 ml-1">(Optional)</span>}
+            </label>
+            <div
+              onDragOver={(e) => handleDragOver(e, 'preview')}
+              onDragLeave={(e) => handleDragLeave(e, 'preview')}
+              onDrop={(e) => handleDrop(e, 'preview')}
+              className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
+                dragPreviewActive
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
+                  : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
+              }`}
+              onClick={() => previewInputRef.current?.click()}
+            >
+              <input
+                ref={previewInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={handlePreviewImagesChange}
+                className="hidden"
+              />
+              <div>
+                <Image className="w-12 h-12 mx-auto text-slate-400 mb-3" />
+                <p className="text-slate-600 dark:text-slate-400">Click or drag images here</p>
+                <p className="text-sm text-slate-500">JPEG, PNG, WebP • Up to 5 images</p>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6 mt-8 sm:mt-12">
-              <button
-                onClick={() => setStep(2)}
-                disabled={uploading && !isPaused}
-                className="px-6 py-3 sm:px-8 sm:py-4 bg-slate-200 dark:bg-slate-700 rounded-xl font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base"
-              >
-                <ArrowLeft size={16} /> Back
-              </button>
-
-              {uploading ? (
-                <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full sm:w-auto flex-1">
-                  <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-xl p-4">
-                    <div className="w-full bg-slate-300 dark:bg-slate-600 rounded-full h-3 mb-2">
-                      <div
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 h-3 rounded-full transition-all duration-300"
-                        style={{ width: `${progress}%` }}
+            {previewImagePreviews.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                  Selected Images ({previewImagePreviews.length}/5)
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {previewImagePreviews.map((src, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="relative group"
+                    >
+                      <img
+                        src={src}
+                        alt={`preview ${idx + 1}`}
+                        className="w-full h-24 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
                       />
-                    </div>
-                    <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
-                      <span>{progress}%</span>
-                      <span>{isPaused ? 'Paused' : 'Uploading...'}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={togglePauseResume}
-                      className={`flex-1 px-6 py-3 rounded-xl font-medium text-white transition-all flex items-center justify-center gap-2 min-w-[110px] ${
-                        isPaused ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'
-                      }`}
-                    >
-                      {isPaused ? 'Resume' : 'Pause'}
-                    </button>
-                    <button
-                      onClick={cancelUpload}
-                      className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 min-w-[110px]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => removePreviewImage(idx)}
+                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </motion.div>
+                  ))}
                 </div>
-              ) : (
-                <button
-                  onClick={startUpload}
-                  disabled={!formData.file || (selectedCategory?.value !== 'Video Tutorials' && previewImages.length < 3)}
-                  className="px-8 py-3 sm:px-10 sm:py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
-                >
-                  Start Upload <Upload size={18} />
-                </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* STEP 4 – Success */}
-        {step === 4 && (
-          <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-2xl p-8 sm:p-12 text-center border border-slate-200/50 dark:border-slate-700/50">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <Check size={48} className="text-green-600 dark:text-green-400" />
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white mb-4">
-              Upload Complete!
-            </h2>
-            <p className="text-slate-600 dark:text-slate-300 mb-8 max-w-md mx-auto">
-              Your {selectedCategory?.label.toLowerCase()} has been successfully uploaded and saved.
-            </p>
-            <button
-              onClick={resetForm}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium hover:shadow-xl transition-all inline-flex items-center gap-2"
+          {/* Upload Progress */}
+          {uploading && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-6"
             >
-              Upload Another File <Upload size={18} />
-            </button>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Uploading...
+                </span>
+                <span className="text-sm font-semibold text-indigo-600">{progress}%</span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 mb-4 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={togglePauseResume}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition"
+                >
+                  {isPaused ? 'Resume' : 'Pause'}
+                </button>
+                <button
+                  onClick={cancelUpload}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </div>
+
+        <div className="flex justify-between gap-4 mt-10">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setStep(2)}
+            disabled={uploading && !isPaused}
+            className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            <ArrowLeft size={18} /> Back
+          </motion.button>
+
+          {!uploading ? (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={startUpload}
+              disabled={!formData.file || previewRequired}
+              className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CloudUpload size={18} />
+              Start Upload
+            </motion.button>
+          ) : (
+            <div className="px-8 py-3 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-xl">
+              Upload in progress...
+            </div>
+          )}
+        </div>
+
+        {previewRequired && !uploading && (
+          <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Please upload at least 3 preview screenshots to continue
+            </p>
           </div>
         )}
+      </motion.div>
+    );
+  };
 
+  // Success Step
+  const SuccessStep = () => (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="text-center"
+    >
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+        className="w-28 h-28 mx-auto mb-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl"
+      >
+        <Check size={48} className="text-white" />
+      </motion.div>
+      
+      <h2 className="text-3xl md:text-4xl font-bold text-slate-800 dark:text-white mb-4">
+        Upload Complete! 🎉
+      </h2>
+      <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-md mx-auto">
+        Your {selectedCategory?.label.toLowerCase()} has been successfully uploaded and shared with the community.
+      </p>
+      
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={resetForm}
+          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all inline-flex items-center gap-2"
+        >
+          <Upload size={18} />
+          Upload Another File
+        </motion.button>
+        
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => window.location.href = '/dashboard'}
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all inline-flex items-center gap-2"
+        >
+          Go to Dashboard
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+      <div className="max-w-5xl mx-auto px-4 py-8 md:py-12 lg:py-16">
+        <StepIndicator />
+        
+        <AnimatePresence mode="wait">
+          {step === 1 && <CategoryStep key="category" />}
+          {step === 2 && <DetailsStep key="details" />}
+          {step === 3 && <UploadStep key="upload" />}
+          {step === 4 && <SuccessStep key="success" />}
+        </AnimatePresence>
       </div>
     </div>
   );
