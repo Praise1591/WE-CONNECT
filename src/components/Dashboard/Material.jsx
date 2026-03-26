@@ -1,4 +1,4 @@
-// Material.jsx - Complete with Fixed Follow Functionality
+// Material.jsx - Complete with Fixed Mobile Responsiveness
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -322,7 +322,7 @@ function Material() {
     } catch (err) { console.error(err); toast.error("Failed to update favorites"); }
   };
 
-  // FIXED: Handle follow/unfollow with proper error handling
+  // Handle follow/unfollow
   const handleFollowUser = async (userId, userName) => {
     if (!currentUser) {
       toast.info("Please sign in to follow users");
@@ -334,7 +334,6 @@ function Material() {
       return;
     }
     
-    // Set loading state
     setFollowingLoading(prev => ({ ...prev, [userId]: true }));
     
     try {
@@ -342,7 +341,6 @@ function Material() {
       const isCurrentlyFollowing = followingStatus[userId];
       
       if (!isCurrentlyFollowing) {
-        // Add to current user's following
         const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
         batch.set(followingRef, {
           followedAt: serverTimestamp(),
@@ -351,7 +349,6 @@ function Material() {
           userRole: userProfiles[userId]?.role || 'user'
         });
         
-        // Add to target user's followers
         const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
         batch.set(followerRef, {
           followedAt: serverTimestamp(),
@@ -360,7 +357,6 @@ function Material() {
           userRole: profile?.role || 'user'
         });
         
-        // Create notification for the user being followed
         const notificationRef = doc(collection(db, `users/${userId}/notifications`));
         batch.set(notificationRef, {
           type: 'new_follower',
@@ -376,11 +372,9 @@ function Material() {
         setFollowingStatus(prev => ({ ...prev, [userId]: true }));
         toast.success(`Now following ${userName}`);
       } else {
-        // Remove from current user's following
         const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
         batch.delete(followingRef);
         
-        // Remove from target user's followers
         const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
         batch.delete(followerRef);
         
@@ -389,12 +383,10 @@ function Material() {
         toast.success(`Unfollowed ${userName}`);
       }
       
-      // Trigger notification update
       window.dispatchEvent(new CustomEvent('notificationUpdate'));
       
     } catch (err) {
       console.error("Error following/unfollowing user:", err);
-      // Provide user-friendly error message
       if (err.code === 'permission-denied') {
         toast.error("You don't have permission to follow/unfollow users.");
       } else if (err.code === 'not-found') {
@@ -545,23 +537,23 @@ function Material() {
   };
 
   const renderPreviewContent = () => {
-    if (previewLoading) return <div className="flex-1 flex items-center justify-center"><Loader2 className="h-14 w-14 animate-spin text-indigo-600" /></div>;
+    if (previewLoading) return <div className="flex-1 flex items-center justify-center"><Loader2 className="h-10 w-10 sm:h-14 sm:w-14 animate-spin text-indigo-600" /></div>;
     if (previewError) return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <AlertCircle size={72} className="text-red-400 mb-6" />
-        <p className="text-xl font-medium">{previewError}</p>
-        <button onClick={() => openPreview(previewMaterial)} className="mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl">Try Again</button>
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-4 sm:p-8">
+        <AlertCircle size={48} className="sm:w-16 sm:h-16 text-red-400 mb-4 sm:mb-6" />
+        <p className="text-base sm:text-xl font-medium">{previewError}</p>
+        <button onClick={() => openPreview(previewMaterial)} className="mt-4 sm:mt-6 px-4 sm:px-6 py-2 sm:py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg sm:rounded-xl text-sm sm:text-base">Try Again</button>
       </div>
     );
     if (!previewUrl) return null;
-    if (fileType === 'video') return <video src={previewUrl} controls autoPlay playsInline className="w-full h-full max-h-[70vh] object-contain rounded-lg" controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} />;
-    if (fileType === 'image') return <img src={previewUrl} alt="Preview" className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg" onContextMenu={(e) => e.preventDefault()} />;
-    if (fileType === 'pdf') return <iframe ref={pdfIframeRef} src={previewUrl} className="w-full h-[70vh] rounded-lg border-0" title="PDF Preview" sandbox="allow-same-origin allow-scripts allow-popups allow-forms" />;
+    if (fileType === 'video') return <video src={previewUrl} controls autoPlay playsInline className="w-full h-full max-h-[50vh] sm:max-h-[70vh] object-contain rounded-lg" controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} />;
+    if (fileType === 'image') return <img src={previewUrl} alt="Preview" className="max-w-full max-h-[50vh] sm:max-h-[70vh] object-contain rounded-lg shadow-lg" onContextMenu={(e) => e.preventDefault()} />;
+    if (fileType === 'pdf') return <iframe ref={pdfIframeRef} src={previewUrl} className="w-full h-[50vh] sm:h-[70vh] rounded-lg border-0" title="PDF Preview" sandbox="allow-same-origin allow-scripts allow-popups allow-forms" />;
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <FileArchive size={72} className="text-slate-400 mb-6" />
-        <p className="text-xl font-medium">Preview Not Available</p>
-        <button onClick={() => handleDownload(previewMaterial)} className="mt-6 px-6 py-3 bg-indigo-600 text-white rounded-xl flex items-center gap-2"><Download size={18} />Download to View</button>
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-4 sm:p-8">
+        <FileArchive size={48} className="sm:w-16 sm:h-16 text-slate-400 mb-4 sm:mb-6" />
+        <p className="text-base sm:text-xl font-medium">Preview Not Available</p>
+        <button onClick={() => handleDownload(previewMaterial)} className="mt-4 sm:mt-6 px-4 sm:px-6 py-2 sm:py-3 bg-indigo-600 text-white rounded-lg sm:rounded-xl flex items-center gap-2 text-sm sm:text-base"><Download size={16} className="sm:w-5 sm:h-5" />Download to View</button>
       </div>
     );
   };
@@ -569,9 +561,9 @@ function Material() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin text-indigo-600" />
-          <p className="text-slate-600 dark:text-slate-400 font-medium">Loading {materialId ? 'material' : 'materials'}...</p>
+        <div className="flex flex-col items-center gap-3 sm:gap-4 px-4">
+          <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-indigo-600" />
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 font-medium">Loading {materialId ? 'material' : 'materials'}...</p>
         </div>
       </div>
     );
@@ -580,11 +572,11 @@ function Material() {
   if (materialId && materials.length === 0 && !loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Material Not Found</h2>
-          <p className="text-slate-600 dark:text-slate-400 mb-6">The material you're looking for doesn't exist or has been removed.</p>
-          <button onClick={() => navigate('/materials')} className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition">Browse All Materials</button>
+        <div className="text-center max-w-md px-4">
+          <AlertCircle className="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-3 sm:mb-4" />
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mb-2">Material Not Found</h2>
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-4 sm:mb-6">The material you're looking for doesn't exist or has been removed.</p>
+          <button onClick={() => navigate('/materials')} className="px-5 sm:px-6 py-2 sm:py-3 bg-indigo-600 text-white rounded-lg sm:rounded-xl hover:bg-indigo-700 transition text-sm sm:text-base">Browse All Materials</button>
         </div>
       </div>
     );
@@ -592,59 +584,75 @@ function Material() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-purple-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20">
-      {/* Hero Section */}
+      {/* Hero Section - Mobile Optimized */}
       {!materialId && (
         <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
           <div className="absolute inset-0 bg-black/20" />
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16 text-center">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full text-white/90 text-sm mb-6">
-              <Sparkles size={16} />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 md:py-16 text-center">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/20 backdrop-blur-sm rounded-full text-white/90 text-xs sm:text-sm mb-4 sm:mb-6">
+              <Sparkles size={12} className="sm:w-4 sm:h-4" />
               <span>Curated Learning Resources</span>
             </motion.div>
-            <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-3xl md:text-5xl font-bold text-white mb-4 tracking-tight">
+            <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-2xl sm:text-3xl md:text-5xl font-bold text-white mb-3 sm:mb-4 tracking-tight px-2">
               Premium Educational Materials
             </motion.h1>
-            <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="text-base md:text-lg text-white/90 max-w-2xl mx-auto">
+            <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="text-sm sm:text-base md:text-lg text-white/90 max-w-2xl mx-auto px-4">
               Access past questions, lecture notes, video tutorials, and technical reviews from Nigeria's top universities
             </motion.p>
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-wrap justify-center gap-3 mt-6">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-white/80 text-xs md:text-sm"><TrendingUp size={14} /><span>1,000+ Materials</span></div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-white/80 text-xs md:text-sm"><Users size={14} /><span>50,000+ Students</span></div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-white/80 text-xs md:text-sm"><Award size={14} /><span>Top Universities</span></div>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="flex flex-wrap justify-center gap-2 sm:gap-3 mt-4 sm:mt-6">
+              <div className="flex items-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 bg-white/10 rounded-full text-white/80 text-[10px] sm:text-xs md:text-sm">
+                <TrendingUp size={10} className="sm:w-3 sm:h-3 md:w-4 md:h-4" />
+                <span>1,000+ Materials</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 bg-white/10 rounded-full text-white/80 text-[10px] sm:text-xs md:text-sm">
+                <Users size={10} className="sm:w-3 sm:h-3 md:w-4 md:h-4" />
+                <span>50,000+ Students</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 bg-white/10 rounded-full text-white/80 text-[10px] sm:text-xs md:text-sm">
+                <Award size={10} className="sm:w-3 sm:h-3 md:w-4 md:h-4" />
+                <span>Top Universities</span>
+              </div>
             </motion.div>
           </div>
-          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-slate-50 dark:from-slate-950 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 h-8 sm:h-12 bg-gradient-to-t from-slate-50 dark:from-slate-950 to-transparent" />
         </div>
       )}
 
       {materialId && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <button onClick={() => navigate('/materials')} className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 mb-6 transition">
-            <ChevronRight size={20} className="rotate-180" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <button onClick={() => navigate('/materials')} className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 mb-4 sm:mb-6 transition text-sm sm:text-base">
+            <ChevronRight size={16} className="sm:w-5 sm:h-5 rotate-180" />
             <span>Back to all materials</span>
           </button>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 relative z-10">
-        {/* Control Bar */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-4 sm:-mt-6 relative z-10">
+        {/* Control Bar - Mobile Optimized */}
         {!materialId && (
-          <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl rounded-xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 p-3 sm:p-4 mb-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl rounded-xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 p-2 sm:p-3 md:p-4 mb-4 sm:mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-2">
-                <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 transition text-sm">
-                  <Filter size={16} />
+                <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-100 transition text-xs sm:text-sm">
+                  <Filter size={14} className="sm:w-4 sm:h-4" />
                   <span className="hidden sm:inline">Filters</span>
-                  <ChevronDown size={14} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={12} className="sm:w-3.5 sm:h-3.5 transition-transform" />
                 </button>
                 <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700/50 rounded-lg p-1">
-                  <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition ${viewMode === 'grid' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}><Grid3x3 size={16} /></button>
-                  <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition ${viewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}><List size={16} /></button>
+                  <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition ${viewMode === 'grid' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}>
+                    <Grid3x3 size={14} className="sm:w-4 sm:h-4" />
+                  </button>
+                  <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition ${viewMode === 'list' ? 'bg-white dark:bg-slate-600 shadow-sm' : ''}`}>
+                    <List size={14} className="sm:w-4 sm:h-4" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400"><Clock size={14} /><span>{filteredAndSortedMaterials.length} materials</span></div>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="px-2 py-1.5 sm:px-3 sm:py-2 bg-slate-100 dark:bg-slate-700 border-0 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                  <Clock size={12} className="sm:w-3.5 sm:h-3.5" />
+                  <span>{filteredAndSortedMaterials.length} materials</span>
+                </div>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="px-2 py-1.5 sm:px-3 sm:py-2 bg-slate-100 dark:bg-slate-700 border-0 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500">
                   <option value="newest">Newest</option>
                   <option value="popular">Popular</option>
                   <option value="trending">Trending</option>
@@ -657,22 +665,30 @@ function Material() {
 
         {/* Filters Panel */}
         {!materialId && showFilters && (
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <Schools onFiltersChange={handleFiltersChange} />
           </div>
         )}
 
-        {/* Materials Grid/List */}
+        {/* Materials Grid/List - Mobile Optimized */}
         {filteredAndSortedMaterials.length === 0 ? (
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-12 text-center border border-slate-200/70 dark:border-slate-700/60">
-            <div className="mx-auto w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center mb-4"><Eye className="h-8 w-8 text-slate-400" /></div>
-            <h3 className="text-xl font-semibold text-slate-800 dark:text-slate-200">No matches found</h3>
-            <p className="mt-2 text-slate-500 dark:text-slate-400">Try adjusting your filters</p>
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-8 sm:p-12 text-center border border-slate-200/70 dark:border-slate-700/60">
+            <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center mb-3 sm:mb-4">
+              <Eye className="h-6 w-6 sm:h-8 sm:w-8 text-slate-400" />
+            </div>
+            <h3 className="text-lg sm:text-xl font-semibold text-slate-800 dark:text-slate-200">No matches found</h3>
+            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-slate-500 dark:text-slate-400">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className={viewMode === 'grid' && !materialId ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6" : materialId ? "max-w-4xl mx-auto" : "space-y-3"}>
+          <div className={
+            viewMode === 'grid' && !materialId 
+              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5" 
+              : materialId 
+                ? "max-w-4xl mx-auto" 
+                : "space-y-2 sm:space-y-3"
+          }>
             {filteredAndSortedMaterials.map((material, idx) => {
-              const { icon: CatIcon, bg: catBg, text: catText, price: categoryPrice } = getCategoryInfo(material.category);
+              const { icon: CatIcon, bg: catBg, text: catText } = getCategoryInfo(material.category);
               const isFavorited = favoritedIds.has(material.id);
               const isDownloading = downloadingId === material.id;
               const priceInCoins = getMaterialPriceInCoins(material.category);
@@ -685,42 +701,52 @@ function Material() {
               // Single Material View
               if (materialId) {
                 return (
-                  <div key={material.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
-                    <div className="relative bg-slate-100 dark:bg-slate-900 min-h-[400px] flex items-center justify-center p-8">{renderPreviewContent()}</div>
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${catBg} ${catText} text-sm font-medium`}><CatIcon size={14} /><span>{material.category || 'Material'}</span></div>
-                        {!isOwner && <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium shadow-lg"><Zap size={14} /><span>{priceInCoins} coin{priceInCoins !== 1 ? 's' : ''} (₦{priceInNGN})</span></div>}
+                  <div key={material.id} className="bg-white dark:bg-slate-800 rounded-xl sm:rounded-2xl shadow-xl border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
+                    <div className="relative bg-slate-100 dark:bg-slate-900 min-h-[250px] sm:min-h-[400px] flex items-center justify-center p-4 sm:p-8">
+                      {renderPreviewContent()}
+                    </div>
+                    <div className="p-4 sm:p-6">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+                        <div className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full ${catBg} ${catText} text-xs sm:text-sm font-medium`}>
+                          <CatIcon size={12} className="sm:w-3.5 sm:h-3.5" />
+                          <span>{material.category || 'Material'}</span>
+                        </div>
+                        {!isOwner && (
+                          <div className="flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs sm:text-sm font-medium shadow-lg">
+                            <Zap size={10} className="sm:w-3 sm:h-3" />
+                            <span>{priceInCoins} coin{priceInCoins !== 1 ? 's' : ''} (₦{priceInNGN})</span>
+                          </div>
+                        )}
                       </div>
-                      <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-3">{material.title}</h1>
-                      <div className="flex items-center gap-4 mb-4 text-sm text-slate-500">
-                        <span className="flex items-center gap-1"><Download size={14} />{material.downloads || 0} downloads</span>
-                        <span className="flex items-center gap-1"><Star size={14} className="text-amber-500" />{material.averageRating?.toFixed(1) || 0}/5 ({material.reviewCount || 0} reviews)</span>
-                        <span className="flex items-center gap-1"><Calendar size={14} />{formatDate(material.createdAt)}</span>
+                      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2 sm:mb-3">{material.title}</h1>
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-3 sm:mb-4 text-xs sm:text-sm text-slate-500">
+                        <span className="flex items-center gap-1"><Download size={12} className="sm:w-3.5 sm:h-3.5" />{material.downloads || 0} downloads</span>
+                        <span className="flex items-center gap-1"><Star size={12} className="sm:w-3.5 sm:h-3.5 text-amber-500" />{material.averageRating?.toFixed(1) || 0}/5 ({material.reviewCount || 0} reviews)</span>
+                        <span className="flex items-center gap-1"><Calendar size={12} className="sm:w-3.5 sm:h-3.5" />{formatDate(material.createdAt)}</span>
                       </div>
-                      <div className="flex items-center gap-3 mb-6 p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
+                      <div className="flex flex-wrap items-center gap-3 mb-4 sm:mb-6 p-3 sm:p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
                         <button onClick={() => navigate(`/profile/${material.uid}`)} className="flex items-center gap-2 hover:opacity-80">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">{getUserInitials(material.uid)}</div>
-                          <div><p className="font-medium text-slate-900 dark:text-white">{getDisplayName(material.uid)}</p><p className="text-xs text-slate-500">Uploader</p></div>
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs sm:text-sm">{getUserInitials(material.uid)}</div>
+                          <div><p className="font-medium text-sm sm:text-base text-slate-900 dark:text-white">{getDisplayName(material.uid)}</p><p className="text-[10px] sm:text-xs text-slate-500">Uploader</p></div>
                         </button>
                         {currentUser && !isOwner && (
                           <button
                             onClick={() => handleFollowUser(material.uid, getDisplayName(material.uid))}
                             disabled={isFollowingLoading}
-                            className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition ${isFollowingLoading ? 'opacity-50 cursor-wait' : isFollowingUploader ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                            className={`ml-auto flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${isFollowingLoading ? 'opacity-50 cursor-wait' : isFollowingUploader ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
                           >
-                            {isFollowingLoading ? <Loader2 size={14} className="animate-spin" /> : (isFollowingUploader ? <UserCheck size={14} /> : <UserPlus size={14} />)}
+                            {isFollowingLoading ? <Loader2 size={12} className="animate-spin" /> : (isFollowingUploader ? <UserCheck size={12} /> : <UserPlus size={12} />)}
                             {isFollowingLoading ? '...' : (isFollowingUploader ? 'Following' : 'Follow')}
                           </button>
                         )}
                       </div>
-                      <div className="flex gap-3">
-                        <button onClick={() => handleDownload(material)} disabled={isDownloading || (!isOwner && !canAfford)} className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition ${isDownloading ? 'bg-indigo-100 text-indigo-700 animate-pulse' : isOwner ? 'bg-emerald-100 text-emerald-700' : canAfford ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-md' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-                          {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                      <div className="flex gap-2 sm:gap-3">
+                        <button onClick={() => handleDownload(material)} disabled={isDownloading || (!isOwner && !canAfford)} className={`flex-1 py-2 sm:py-3 rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base flex items-center justify-center gap-2 transition ${isDownloading ? 'bg-indigo-100 text-indigo-700 animate-pulse' : isOwner ? 'bg-emerald-100 text-emerald-700' : canAfford ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-md' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                          {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                           {isOwner ? 'Download for Free' : `Download for ${priceInCoins} Coin${priceInCoins !== 1 ? 's' : ''} (₦{priceInNGN})`}
                         </button>
-                        <button onClick={() => toggleFavorite(material)} className={`px-4 py-3 rounded-xl transition ${isFavorited ? 'bg-red-50 text-red-500' : 'bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-500'}`}>
-                          <Heart size={20} fill={isFavorited ? "currentColor" : "none"} />
+                        <button onClick={() => toggleFavorite(material)} className={`px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl transition ${isFavorited ? 'bg-red-50 text-red-500' : 'bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-500'}`}>
+                          <Heart size={16} className="sm:w-5 sm:h-5" fill={isFavorited ? "currentColor" : "none"} />
                         </button>
                       </div>
                     </div>
@@ -728,44 +754,84 @@ function Material() {
                 );
               }
 
-              // Grid View
+              // Grid View - Mobile Optimized
               if (viewMode === 'grid') {
                 return (
-                  <motion.div key={material.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="group bg-white dark:bg-slate-800 rounded-xl shadow-sm hover:shadow-xl border border-slate-200/70 dark:border-slate-700/60 overflow-hidden transition-all duration-300 hover:-translate-y-1 cursor-pointer" onClick={() => navigate(`/materials/${material.id}`)}>
-                    <div className="relative h-28 bg-gradient-to-r from-indigo-500/10 to-purple-500/10">
-                      <div className={`absolute top-3 left-3 flex items-center gap-1 px-2 py-1 rounded-full ${catBg} ${catText} text-xs font-medium`}><CatIcon size={12} /><span>{material.category || 'Material'}</span></div>
-                      <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-full text-white text-xs"><Eye size={10} /><span>{material.downloads || 0}</span></div>
-                      {!isOwner && <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-medium shadow-lg"><Zap size={10} /><span>{priceInCoins}</span></div>}
+                  <motion.div
+                    key={material.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="group bg-white dark:bg-slate-800 rounded-lg sm:rounded-xl shadow-sm hover:shadow-xl border border-slate-200/70 dark:border-slate-700/60 overflow-hidden transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+                    onClick={() => navigate(`/materials/${material.id}`)}
+                  >
+                    <div className="relative h-24 sm:h-28 bg-gradient-to-r from-indigo-500/10 to-purple-500/10">
+                      <div className={`absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full ${catBg} ${catText} text-[10px] sm:text-xs font-medium`}>
+                        <CatIcon size={10} className="sm:w-3 sm:h-3" />
+                        <span>{material.category || 'Material'}</span>
+                      </div>
+                      <div className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 flex items-center gap-1 bg-black/50 backdrop-blur-sm px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full text-white text-[10px] sm:text-xs">
+                        <Eye size={8} className="sm:w-2.5 sm:h-2.5" />
+                        <span>{material.downloads || 0}</span>
+                      </div>
+                      {!isOwner && (
+                        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[10px] sm:text-xs font-medium shadow-lg">
+                          <Zap size={8} className="sm:w-2.5 sm:h-2.5" />
+                          <span>{priceInCoins}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/profile/${material.uid}`); }} className="flex items-center gap-2 hover:opacity-80 group">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md">{getUserInitials(material.uid)}</div>
-                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 transition truncate max-w-[100px]">{getDisplayName(material.uid)}</span>
+                    <div className="p-3 sm:p-4">
+                      <div className="flex items-center justify-between mb-2 sm:mb-3">
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/profile/${material.uid}`); }} className="flex items-center gap-1.5 sm:gap-2 hover:opacity-80 group">
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] sm:text-xs font-bold shadow-md">
+                            {getUserInitials(material.uid)}
+                          </div>
+                          <span className="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 transition truncate max-w-[80px] sm:max-w-[100px]">
+                            {getDisplayName(material.uid)}
+                          </span>
                         </button>
                         {currentUser && !isOwner && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleFollowUser(material.uid, getDisplayName(material.uid)); }}
                             disabled={isFollowingLoading}
-                            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium transition ${isFollowingLoading ? 'opacity-50 cursor-wait' : isFollowingUploader ? 'text-green-600' : 'text-slate-500 hover:text-indigo-600'}`}
+                            className={`flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-lg text-[10px] sm:text-xs font-medium transition ${isFollowingLoading ? 'opacity-50 cursor-wait' : isFollowingUploader ? 'text-green-600' : 'text-slate-500 hover:text-indigo-600'}`}
                           >
-                            {isFollowingLoading ? <Loader2 size={10} className="animate-spin" /> : (isFollowingUploader ? <UserCheck size={10} /> : <UserPlus size={10} />)}
+                            {isFollowingLoading ? <Loader2 size={8} className="animate-spin" /> : (isFollowingUploader ? <UserCheck size={8} /> : <UserPlus size={8} />)}
                             <span>{isFollowingLoading ? '...' : (isFollowingUploader ? 'Following' : 'Follow')}</span>
                           </button>
                         )}
                       </div>
-                      <h3 className="font-semibold text-slate-900 dark:text-white line-clamp-2 mb-2 text-sm sm:text-base">{material.title || 'Untitled Material'}</h3>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="flex items-center gap-0.5">{[...Array(5)].map((_, i) => (<Star key={i} size={12} className={i + 1 <= (material.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"} />))}</div>
-                        <span className="text-xs text-slate-500">({material.reviewCount || 0} reviews)</span>
+                      <h3 className="font-semibold text-slate-900 dark:text-white line-clamp-2 mb-1.5 sm:mb-2 text-xs sm:text-sm md:text-base">
+                        {material.title || 'Untitled Material'}
+                      </h3>
+                      <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+                        <div className="flex items-center gap-0.5">
+                          {[1,2,3,4,5].map(star => (
+                            <Star key={star} size={10} className={`sm:w-2.5 sm:h-2.5 ${star <= (material.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                          ))}
+                        </div>
+                        <span className="text-[10px] sm:text-xs text-slate-500">({material.reviewCount || 0})</span>
                       </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700">
-                        <button onClick={(e) => { e.stopPropagation(); openPreview(material); }} className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition"><Eye size={12} />Preview</button>
+                      <div className="flex items-center justify-between pt-1.5 sm:pt-2 border-t border-slate-100 dark:border-slate-700">
+                        <button onClick={(e) => { e.stopPropagation(); openPreview(material); }} className="flex items-center gap-1 text-[10px] sm:text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition">
+                          <Eye size={10} className="sm:w-2.5 sm:h-2.5" />
+                          Preview
+                        </button>
                         <div className="flex items-center gap-1">
-                          <button onClick={(e) => { e.stopPropagation(); toggleFavorite(material); }} className={`p-1.5 rounded-lg transition ${isFavorited ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}><Heart size={14} fill={isFavorited ? "currentColor" : "none"} /></button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDownload(material); }} disabled={isDownloading || (!isOwner && !canAfford)} className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition ${isDownloading ? 'bg-indigo-100 text-indigo-700 animate-pulse' : isOwner ? 'bg-emerald-100 text-emerald-700' : canAfford ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-md' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-                            {isDownloading ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
-                            {isOwner ? 'Free' : `${priceInCoins}`}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleFavorite(material); }}
+                            className={`p-1 sm:p-1.5 rounded-lg transition ${isFavorited ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}
+                          >
+                            <Heart size={12} className="sm:w-3 sm:h-3" fill={isFavorited ? "currentColor" : "none"} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDownload(material); }}
+                            disabled={isDownloading || (!isOwner && !canAfford)}
+                            className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition ${isDownloading ? 'bg-indigo-100 text-indigo-700 animate-pulse' : isOwner ? 'bg-emerald-100 text-emerald-700' : canAfford ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-md' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                          >
+                            {isDownloading ? <Loader2 size={8} className="animate-spin" /> : <Download size={8} />}
+                            {isOwner ? 'Free' : priceInCoins}
                           </button>
                         </div>
                       </div>
@@ -774,26 +840,56 @@ function Material() {
                 );
               }
 
-              // List View
+              // List View - Mobile Optimized
               return (
-                <motion.div key={material.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200/70 dark:border-slate-700/60 p-3 hover:shadow-md transition cursor-pointer" onClick={() => navigate(`/materials/${material.id}`)}>
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg bg-gradient-to-r ${getCategoryInfo(material.category).color} flex-shrink-0`}>{React.createElement(getCategoryInfo(material.category).icon, { size: 20, className: "text-white" })}</div>
+                <motion.div
+                  key={material.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.03 }}
+                  className="bg-white dark:bg-slate-800 rounded-lg sm:rounded-xl shadow-sm border border-slate-200/70 dark:border-slate-700/60 p-2 sm:p-3 hover:shadow-md transition cursor-pointer"
+                  onClick={() => navigate(`/materials/${material.id}`)}
+                >
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className={`p-1.5 sm:p-2 rounded-lg bg-gradient-to-r ${getCategoryInfo(material.category).color} flex-shrink-0`}>
+                      {React.createElement(getCategoryInfo(material.category).icon, { size: 16, className: "sm:w-5 sm:h-5 text-white" })}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/profile/${material.uid}`); }} className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{getDisplayName(material.uid)}</button>
+                      <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-0.5 sm:mb-1">
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/profile/${material.uid}`); }} className="text-xs sm:text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                          {getDisplayName(material.uid)}
+                        </button>
                         {currentUser && !isOwner && (
-                          <button onClick={(e) => { e.stopPropagation(); handleFollowUser(material.uid, getDisplayName(material.uid)); }} disabled={isFollowingLoading} className={`text-xs ${isFollowingLoading ? 'opacity-50' : 'text-slate-500 hover:text-indigo-600'}`}>
-                            {isFollowingLoading ? '...' : (isFollowingUploader ? 'Following' : 'Follow')}
+                          <button onClick={(e) => { e.stopPropagation(); handleFollowUser(material.uid, getDisplayName(material.uid)); }} className="text-[10px] sm:text-xs text-slate-500 hover:text-indigo-600">
+                            {isFollowingUploader ? 'Following' : 'Follow'}
                           </button>
                         )}
-                        <div className="flex items-center gap-0.5 ml-2">{[...Array(5)].map((_, i) => (<Star key={i} size={10} className={i + 1 <= (material.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"} />))}<span className="text-xs text-slate-500 ml-1">({material.reviewCount || 0})</span></div>
+                        <div className="flex items-center gap-0.5 ml-0 sm:ml-2">
+                          {[1,2,3,4,5].map(star => (
+                            <Star key={star} size={8} className={`sm:w-2.5 sm:h-2.5 ${star <= (material.averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                          ))}
+                          <span className="text-[10px] sm:text-xs text-slate-500 ml-0.5 sm:ml-1">({material.reviewCount || 0})</span>
+                        </div>
                       </div>
-                      <h3 className="font-medium text-slate-900 dark:text-white truncate text-sm sm:text-base">{material.title}</h3>
-                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-slate-500"><span>{material.course || 'General'}</span><span>•</span><span>{material.downloads || 0} downloads</span><span>•</span><span className="flex items-center gap-1"><Calendar size={10} />{formatDate(material.createdAt)}</span></div>
+                      <h3 className="font-medium text-slate-900 dark:text-white truncate text-xs sm:text-sm">{material.title}</h3>
+                      <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-slate-500">
+                        <span>{material.course || 'General'}</span>
+                        <span>•</span>
+                        <span>{material.downloads || 0} downloads</span>
+                        <span>•</span>
+                        <span className="flex items-center gap-0.5"><Calendar size={8} className="sm:w-2.5 sm:h-2.5" />{formatDate(material.createdAt)}</span>
+                      </div>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); openPreview(material); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 hover:text-indigo-600 transition">View</button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDownload(material); }} disabled={isDownloading || (!isOwner && !canAfford)} className={`px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 transition ${isOwner ? 'bg-emerald-100 text-emerald-700' : canAfford ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>{isOwner ? 'Free' : `${priceInCoins}`}</button>
+                    <button onClick={(e) => { e.stopPropagation(); openPreview(material); }} className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-indigo-100 hover:text-indigo-600 transition whitespace-nowrap">
+                      View
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDownload(material); }}
+                      disabled={isDownloading || (!isOwner && !canAfford)}
+                      className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex-shrink-0 transition whitespace-nowrap ${isOwner ? 'bg-emerald-100 text-emerald-700' : canAfford ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                    >
+                      {isOwner ? 'Free' : `${priceInCoins}`}
+                    </button>
                   </div>
                 </motion.div>
               );
@@ -802,81 +898,208 @@ function Material() {
         )}
       </div>
 
-      {/* Preview Modal */}
+      {/* Preview Modal - Mobile Optimized */}
       {previewMaterial && (
-        <div className={`fixed inset-0 z-[999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 ${isFullscreen ? 'p-0' : ''}`}>
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className={`bg-white dark:bg-slate-900 w-full rounded-2xl overflow-hidden flex flex-col ${isFullscreen ? 'h-screen w-screen rounded-none' : 'max-w-6xl max-h-[90vh]'}`}>
-            <div className="px-5 py-3 border-b flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
-              <div><h2 className="font-semibold text-lg">{previewMaterial.title}</h2><div className="flex items-center gap-2 mt-0.5"><p className="text-xs text-slate-500">{previewMaterial.course} • {previewMaterial.school}</p><div className="flex items-center gap-1"><Star size={12} className="text-amber-500 fill-amber-500" /><span className="text-xs font-medium">{averageRating || '0'}</span><span className="text-xs text-slate-400">({reviewCount} reviews)</span></div></div></div>
-              <div className="flex gap-1"><button onClick={() => setIsFullscreen(!isFullscreen)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition"><Maximize2 size={16} /></button><button onClick={() => setPreviewMaterial(null)} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition"><X size={16} /></button></div>
+        <div className={`fixed inset-0 z-[999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4 ${isFullscreen ? 'p-0' : ''}`}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className={`bg-white dark:bg-slate-900 w-full rounded-xl sm:rounded-2xl overflow-hidden flex flex-col ${isFullscreen ? 'h-screen w-screen rounded-none' : 'max-w-6xl max-h-[90vh]'}`}
+          >
+            <div className="px-3 sm:px-5 py-2 sm:py-3 border-b flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
+              <div>
+                <h2 className="font-semibold text-sm sm:text-lg line-clamp-1">{previewMaterial.title}</h2>
+                <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
+                  <p className="text-[10px] sm:text-xs text-slate-500">{previewMaterial.course} • {previewMaterial.school}</p>
+                  <div className="flex items-center gap-0.5 sm:gap-1">
+                    <Star size={10} className="sm:w-3 sm:h-3 text-amber-500 fill-amber-500" />
+                    <span className="text-[10px] sm:text-xs font-medium">{averageRating || '0'}</span>
+                    <span className="text-[10px] sm:text-xs text-slate-400">({reviewCount})</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-0.5 sm:gap-1">
+                <button onClick={() => setIsFullscreen(!isFullscreen)} className="p-1 sm:p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
+                  <Maximize2 size={14} className="sm:w-4 sm:h-4" />
+                </button>
+                <button onClick={() => setPreviewMaterial(null)} className="p-1 sm:p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
+                  <X size={14} className="sm:w-4 sm:h-4" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
               <div className={`${isFullscreen ? 'flex-1' : 'lg:w-2/3'} flex flex-col relative bg-slate-50 dark:bg-slate-950`}>
-                <div className="flex-1 overflow-auto p-4">{renderPreviewContent()}</div>
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm pointer-events-none whitespace-nowrap">Preview Mode – Full Download Requires Coins</div>
+                <div className="flex-1 overflow-auto p-2 sm:p-4">{renderPreviewContent()}</div>
+                <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-full backdrop-blur-sm pointer-events-none whitespace-nowrap">
+                  Preview Mode – Full Download Requires Coins
+                </div>
               </div>
-              <div className={`${isFullscreen ? 'w-80' : 'lg:w-1/3'} border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800`}>
-                <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
-                  <div className="flex items-center justify-between">
-                    <div><div className="flex items-center gap-2"><div className="text-3xl font-bold text-amber-600">{averageRating || '0'}</div><div className="text-sm text-slate-500">out of 5</div></div><div className="flex items-center gap-1 mt-1">{[...Array(5)].map((_, i) => (<Star key={i} size={16} className={i + 1 <= (averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"} />))}</div><p className="text-xs text-slate-500 mt-1">{reviewCount} review{reviewCount !== 1 ? 's' : ''}</p></div>
-                    <button onClick={() => { if (!currentUser) { toast.info("Please sign in to review"); return; } setShowReviewModal(true); }} className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition">Write a Review</button>
+              <div className={`${isFullscreen ? 'w-64 sm:w-80' : 'lg:w-1/3'} border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800`}>
+                <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <div className="text-2xl sm:text-3xl font-bold text-amber-600">{averageRating || '0'}</div>
+                        <div className="text-xs sm:text-sm text-slate-500">out of 5</div>
+                      </div>
+                      <div className="flex items-center gap-0.5 mt-1">
+                        {[1,2,3,4,5].map(star => (
+                          <Star key={star} size={12} className={`sm:w-3.5 sm:h-3.5 ${star <= (averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                        ))}
+                      </div>
+                      <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1">{reviewCount} review{reviewCount !== 1 ? 's' : ''}</p>
+                    </div>
+                    <button
+                      onClick={() => { if (!currentUser) { toast.info("Please sign in to review"); return; } setShowReviewModal(true); }}
+                      className="px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:shadow-lg transition whitespace-nowrap"
+                    >
+                      Write a Review
+                    </button>
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2"><MessageCircle size={16} />Community Reviews</h4>
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
+                  <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base">
+                    <MessageCircle size={14} className="sm:w-4 sm:h-4" />
+                    Community Reviews
+                  </h4>
                   {reviews.length === 0 ? (
-                    <div className="text-center py-8"><MessageCircle size={40} className="text-slate-300 mx-auto mb-3" /><p className="text-slate-500 text-sm">No reviews yet. Be the first to review!</p></div>
+                    <div className="text-center py-6 sm:py-8">
+                      <MessageCircle size={32} className="sm:w-10 sm:h-10 text-slate-300 mx-auto mb-2 sm:mb-3" />
+                      <p className="text-xs sm:text-sm text-slate-500">No reviews yet. Be the first to review!</p>
+                    </div>
                   ) : (
                     reviews.slice(0, showAllReviews ? undefined : 3).map((review, idx) => (
-                      <motion.div key={review.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }} className="bg-slate-50 dark:bg-slate-700/30 rounded-xl p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{review.userName?.charAt(0).toUpperCase() || 'U'}</div>
+                      <motion.div
+                        key={review.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="bg-slate-50 dark:bg-slate-700/30 rounded-lg sm:rounded-xl p-2 sm:p-3"
+                      >
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] sm:text-xs font-bold flex-shrink-0">
+                            {review.userName?.charAt(0).toUpperCase() || 'U'}
+                          </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between flex-wrap gap-1"><p className="font-medium text-sm text-slate-900 dark:text-white">{review.userName}</p><span className="text-xs text-slate-400">{formatDate(review.createdAt)}</span></div>
-                            <div className="flex items-center gap-0.5 mt-1">{[...Array(5)].map((_, i) => (<Star key={i} size={12} className={i + 1 <= (review.rating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"} />))}</div>
-                            {review.comment && <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">{review.comment}</p>}
+                            <div className="flex flex-wrap items-center justify-between gap-1">
+                              <p className="font-medium text-xs sm:text-sm text-slate-900 dark:text-white">{review.userName}</p>
+                              <span className="text-[10px] sm:text-xs text-slate-400">{formatDate(review.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 mt-0.5">
+                              {[1,2,3,4,5].map(star => (
+                                <Star key={star} size={10} className={`sm:w-2.5 sm:h-2.5 ${star <= (review.rating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                              ))}
+                            </div>
+                            {review.comment && (
+                              <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 mt-1 sm:mt-2 leading-relaxed">
+                                {review.comment}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </motion.div>
                     ))
                   )}
-                  {reviews.length > 3 && !showAllReviews && (<button onClick={() => setShowAllReviews(true)} className="w-full py-2 text-center text-sm text-indigo-600 hover:text-indigo-700 font-medium">View all {reviews.length} reviews →</button>)}
+                  {reviews.length > 3 && !showAllReviews && (
+                    <button onClick={() => setShowAllReviews(true)} className="w-full py-1.5 sm:py-2 text-center text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+                      View all {reviews.length} reviews →
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
-            <div className="px-5 py-2 border-t text-center text-xs text-slate-500 bg-white dark:bg-slate-900">
-              <div className="flex items-center justify-between"><span>Preview Mode – Full Download Requires Coins</span><button onClick={() => handleDownload(previewMaterial)} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition">Download for {getMaterialPriceInCoins(previewMaterial.category)} coin{getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(previewMaterial.category)})</button></div>
+            <div className="px-3 sm:px-5 py-1.5 sm:py-2 border-t text-center text-[10px] sm:text-xs text-slate-500 bg-white dark:bg-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>Preview Mode – Full Download Requires Coins</span>
+                <button onClick={() => handleDownload(previewMaterial)} className="px-2 sm:px-3 py-1 bg-indigo-600 text-white rounded-lg text-[10px] sm:text-xs font-medium hover:bg-indigo-700 transition whitespace-nowrap">
+                  Download for {getMaterialPriceInCoins(previewMaterial.category)} coin{getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(previewMaterial.category)})
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
       )}
 
-      {/* Review Modal */}
+      {/* Review Modal - Mobile Optimized */}
       <AnimatePresence>
         {showReviewModal && (
           <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowReviewModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full overflow-hidden" onClick={e => e.stopPropagation()}>
-              <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
-                <div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Rate & Review</h3><button onClick={() => setShowReviewModal(false)} className="p-1 hover:bg-slate-200 rounded-lg"><X size={18} /></button></div>
-                <p className="text-sm text-slate-500 mt-1">{previewMaterial?.title}</p>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-800 rounded-xl sm:rounded-2xl max-w-md w-full overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base sm:text-lg font-semibold">Rate & Review</h3>
+                  <button onClick={() => setShowReviewModal(false)} className="p-1 hover:bg-slate-200 rounded-lg">
+                    <X size={16} className="sm:w-5 sm:h-5" />
+                  </button>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-1">{previewMaterial?.title}</p>
               </div>
-              <div className="p-5">
-                <div className="text-center mb-5"><p className="text-sm text-slate-600 dark:text-slate-400 mb-2">Your Rating</p><div className="flex justify-center gap-2" onMouseLeave={() => setHoveredStar(0)}>{[1,2,3,4,5].map((star) => (<button key={star} onClick={() => setUserRating(star)} onMouseEnter={() => setHoveredStar(star)} className="focus:outline-none transition-transform hover:scale-110"><Star size={32} className={`transition-all ${star <= (hoveredStar || userRating) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} /></button>))}</div></div>
-                <div className="mb-5"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Your Review (Optional)</label><textarea value={userComment} onChange={(e) => setUserComment(e.target.value)} rows={4} placeholder="Share your experience with this material..." className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition resize-none" /></div>
-                <button onClick={handleSubmitReview} disabled={submittingReview || userRating === 0} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2">{submittingReview ? <Loader2 className="h-5 w-5 animate-spin" /> : <ThumbsUp size={18} />}{submittingReview ? 'Submitting...' : 'Submit Review'}</button>
+              <div className="p-4 sm:p-5">
+                <div className="text-center mb-4 sm:mb-5">
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-2">Your Rating</p>
+                  <div className="flex justify-center gap-1.5 sm:gap-2" onMouseLeave={() => setHoveredStar(0)}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setUserRating(star)}
+                        onMouseEnter={() => setHoveredStar(star)}
+                        className="focus:outline-none transition-transform hover:scale-110"
+                      >
+                        <Star size={24} className={`sm:w-8 sm:h-8 transition-all ${star <= (hoveredStar || userRating) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-4 sm:mb-5">
+                  <label className="block text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 sm:mb-2">
+                    Your Review (Optional)
+                  </label>
+                  <textarea
+                    value={userComment}
+                    onChange={(e) => setUserComment(e.target.value)}
+                    rows={3}
+                    placeholder="Share your experience with this material..."
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg sm:rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition resize-none"
+                  />
+                </div>
+                <button
+                  onClick={handleSubmitReview}
+                  disabled={submittingReview || userRating === 0}
+                  className="w-full py-2 sm:py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-lg sm:rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
+                >
+                  {submittingReview ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <ThumbsUp size={14} className="sm:w-5 sm:h-5" />}
+                  {submittingReview ? 'Submitting...' : 'Submit Review'}
+                </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Download Confirmation Modal */}
+      {/* Download Confirmation Modal - Mobile Optimized */}
       {confirmDownload && (
         <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDownload(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-5 max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-3"><div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full"><Zap size={20} className="text-amber-600" /></div><h3 className="text-lg font-semibold">Confirm Purchase</h3></div>
-            <p className="text-slate-600 dark:text-slate-300 mb-5">"{confirmDownload.title}" costs <span className="font-bold text-indigo-600">{getMaterialPriceInCoins(confirmDownload.category)} coin{getMaterialPriceInCoins(confirmDownload.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(confirmDownload.category)})</span>. The uploader will receive 60% in diamonds.</p>
-            <div className="flex gap-3 justify-end"><button onClick={() => setConfirmDownload(null)} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-sm">Cancel</button><button onClick={confirmAndProcessPaidDownload} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-1">Pay & Download <ChevronRight size={14} /></button></div>
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-4 sm:p-5 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 sm:gap-3 mb-3">
+              <div className="p-1.5 sm:p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+                <Zap size={16} className="sm:w-5 sm:h-5 text-amber-600" />
+              </div>
+              <h3 className="text-base sm:text-lg font-semibold">Confirm Purchase</h3>
+            </div>
+            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 mb-4 sm:mb-5">
+              "{confirmDownload.title}" costs <span className="font-bold text-indigo-600">{getMaterialPriceInCoins(confirmDownload.category)} coin{getMaterialPriceInCoins(confirmDownload.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(confirmDownload.category)})</span>. The uploader will receive 60% in diamonds.
+            </p>
+            <div className="flex gap-2 sm:gap-3 justify-end">
+              <button onClick={() => setConfirmDownload(null)} className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-sm">Cancel</button>
+              <button onClick={confirmAndProcessPaidDownload} className="px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-1">Pay & Download <ChevronRight size={14} /></button>
+            </div>
           </div>
         </div>
       )}

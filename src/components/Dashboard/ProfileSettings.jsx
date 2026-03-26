@@ -110,53 +110,15 @@ function ProfileSettings() {
     const loadProfile = async () => {
       try {
         const profileRef = doc(db, 'profiles', user.uid);
-        let profileData = null;
         
-        // Initial data fetch
-        const profileSnap = await getDoc(profileRef);
-        
-        if (profileSnap.exists()) {
-          profileData = profileSnap.data();
-          setRole(profileData.role || 'student');
-          setMemberSince(profileData.createdAt?.toDate?.()?.toLocaleDateString() || '2024');
-          setForm({
-            name: profileData.name || user.displayName || '',
-            email: user.email || '',
-            phone: profileData.phone || '',
-            address: profileData.address || '',
-            gender: profileData.gender || '',
-            bio: profileData.bio || '',
-            website: profileData.website || '',
-            linkedin: profileData.linkedin || '',
-            twitter: profileData.twitter || '',
-            github: profileData.github || '',
-            matricNumber: profileData.matricNumber || '',
-            school: profileData.school || '',
-            faculty: profileData.faculty || '',
-            department: profileData.department || '',
-            graduationYear: profileData.graduationYear || '',
-            specialization: profileData.specialization || '',
-            yearsExperience: profileData.yearsExperience || '',
-            certifications: profileData.certifications || '',
-            title: profileData.title || '',
-            yearsTeaching: profileData.yearsTeaching || '',
-            researchInterests: profileData.researchInterests || '',
-            publications: profileData.publications || '',
-            achievements: profileData.achievements || '',
-          });
-          setPreviewUrl(profileData.photoURL || user.photoURL || null);
-          setProfileViews(profileData.profileViews || 0);
-          setFollowing(profileData.following || []);
-          setFollowers(profileData.followers || []);
-        }
-        
-        // Set up real-time listener for updates
+        // Set up real-time listener for profile updates
         const unsubscribe = onSnapshot(profileRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
             setRole(data.role || 'student');
             setMemberSince(data.createdAt?.toDate?.()?.toLocaleDateString() || '2024');
-            setForm(prev => ({ ...prev,
+            setForm(prev => ({
+              ...prev,
               name: data.name || user.displayName || '',
               email: user.email || '',
               phone: data.phone || '',
@@ -185,6 +147,15 @@ function ProfileSettings() {
             setProfileViews(data.profileViews || 0);
             setFollowing(data.following || []);
             setFollowers(data.followers || []);
+            
+            // Dispatch custom event for header to update
+            window.dispatchEvent(new CustomEvent('profileUpdated', { 
+              detail: { 
+                photoURL: data.photoURL,
+                name: data.name,
+                role: data.role
+              } 
+            }));
           }
         });
 
@@ -202,7 +173,7 @@ function ProfileSettings() {
           totalDownloads: totalDownloads,
           totalFavorites: 0,
           averageRating: avgRating,
-          profileViews: profileData?.profileViews || 0
+          profileViews: 0
         });
         
         setLoading(false);
@@ -307,11 +278,21 @@ function ProfileSettings() {
       await updateDoc(doc(db, 'profiles', user.uid), updates);
       await updateProfile(user, { displayName: form.name.trim(), photoURL });
 
+      // Update localStorage
       const cachedProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
       localStorage.setItem('userProfile', JSON.stringify({
         ...cachedProfile,
         name: form.name.trim(),
         photoURL,
+      }));
+
+      // Dispatch custom event for header to update immediately
+      window.dispatchEvent(new CustomEvent('profileUpdated', { 
+        detail: { 
+          photoURL: photoURL,
+          name: form.name.trim(),
+          role: role
+        } 
       }));
 
       setSaveSuccess(true);
@@ -332,12 +313,10 @@ function ProfileSettings() {
       const user = auth.currentUser;
       const profileRef = doc(db, 'profiles', user.uid);
       
-      // Remove from current user's following list
       await updateDoc(profileRef, {
         following: arrayRemove(userId)
       });
       
-      // Remove current user from that user's followers list
       const targetUserRef = doc(db, 'profiles', userId);
       await updateDoc(targetUserRef, {
         followers: arrayRemove(user.uid)
@@ -843,7 +822,6 @@ function ProfileSettings() {
         />
       </div>
       
-      {/* Stats Display */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
         <div className="bg-indigo-50 dark:bg-indigo-950/30 rounded-xl p-4 text-center">
           <Upload className="w-5 h-5 text-indigo-600 mx-auto mb-2" />
@@ -934,7 +912,7 @@ function ProfileSettings() {
             Start following users to see their activity and materials
           </p>
           <button
-            onClick={() => navigate('/explore')}
+            onClick={() => navigate('/connect')}
             className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
           >
             Explore Users
@@ -953,7 +931,7 @@ function ProfileSettings() {
               </p>
             </div>
             <button
-              onClick={() => navigate('/explore')}
+              onClick={() => navigate('/connect')}
               className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
             >
               Find more people
@@ -969,7 +947,6 @@ function ProfileSettings() {
             className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md transition"
           >
             <div className="flex items-center gap-4">
-              {/* Avatar */}
               <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0">
                 {user.photoURL ? (
                   <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
@@ -980,7 +957,6 @@ function ProfileSettings() {
                 )}
               </div>
 
-              {/* User Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h4 className="text-base font-semibold text-slate-900 dark:text-white">
@@ -1005,7 +981,6 @@ function ProfileSettings() {
                 )}
               </div>
 
-              {/* Actions */}
               <div className="flex gap-2">
                 <button
                   onClick={() => navigate(`/profile/${user.id}`)}
