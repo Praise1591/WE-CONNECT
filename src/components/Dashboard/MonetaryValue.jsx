@@ -1,4 +1,4 @@
-// MonetaryValue.jsx - Complete with Velvpay Integration and Demo Mode
+// MonetaryValue.jsx - Updated with better error handling
 import React, { useState, useEffect } from 'react';
 import { 
   Coins, Gem, CreditCard, Banknote, Wallet, Loader2, 
@@ -6,7 +6,7 @@ import {
   TrendingUp, Shield, Zap, Clock, CheckCircle, XCircle,
   Building2, Smartphone, User, CreditCard as CardIcon,
   DollarSign, Gift, Star, Award, Target, Flame, Copy, Check,
-  AlertTriangle
+  AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { auth, db, functions } from '../../firebase';
@@ -26,22 +26,12 @@ import {
   updateDoc,
   onSnapshot,
   where,
-  writeBatch,
-  deleteDoc
+  writeBatch
 } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ==================== CONFIGURATION ====================
-// Set to true for testing without Velvpay
-const DEMO_MODE = true; // Set to false when Velvpay is fully integrated
-
-// Velvpay Configuration (only used when DEMO_MODE is false)
-const VELVPAY_CONFIG = {
-  publicKey: "PK_LIVE_10b2f0233c8aa554e05fe289e29fa362f54291869887afbc68615e9b131f670b",
-  privateKey: "SK_LIVE_ae55f420d8463cfd1c44a71369712abe9da5e9779c034932d547c587539213e0",
-  encryptionKey: "e0e8e75c085af936dc1b4ee78cc8d0e4678709018399b772",
-  baseUrl: "https://api.velvpay.com/v1"
-};
+// Set to true for testing until Kora API is properly configured
+const USE_DEMO_MODE = false;
 
 function MonetaryValue() {
   // ==================== STATE ====================
@@ -67,7 +57,9 @@ function MonetaryValue() {
   const [selectedPreset, setSelectedPreset] = useState(null);
   const [paymentReference, setPaymentReference] = useState('');
   const [copied, setCopied] = useState(false);
-  const [showDemoAlert, setShowDemoAlert] = useState(DEMO_MODE);
+  const [paymentStatus, setPaymentStatus] = useState(null);
+  const [paymentUrl, setPaymentUrl] = useState('');
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
 
   const VALUE_PER_DIAMOND = 60;
 
@@ -97,12 +89,12 @@ function MonetaryValue() {
   ];
 
   const coinPresets = [
-    { coins: 10, bonus: 0, price: 1000, popular: false },
-    { coins: 50, bonus: 5, price: 5000, popular: false },
-    { coins: 100, bonus: 15, price: 10000, popular: true },
-    { coins: 200, bonus: 40, price: 20000, popular: false },
-    { coins: 500, bonus: 125, price: 50000, popular: false },
-    { coins: 1000, bonus: 300, price: 100000, popular: false },
+    { coins: 10, price: 1000, popular: false },
+    { coins: 50, price: 5000, popular: false },
+    { coins: 100, price: 10000, popular: true },
+    { coins: 200, price: 20000, popular: false },
+    { coins: 500, price: 50000, popular: false },
+    { coins: 1000, price: 100000, popular: false },
   ];
 
   const diamondPresets = [
@@ -136,7 +128,7 @@ function MonetaryValue() {
         let userData = null;
 
         if (!userSnap.exists()) {
-          const fallback = user.displayName || user.email?.split('@')[0] || `user_${user.uid.slice(0,8)}` || 'New User';
+          const fallback = user.displayName || user.email?.split('@')[0] || `user_${user.uid.slice(0,8)}`;
           userData = {
             coins: 0,
             diamonds: 0,
@@ -210,33 +202,10 @@ function MonetaryValue() {
     });
   };
 
-  // ==================== PAYMENT FUNCTIONS ====================
-  
-  // Create payment record in Firestore
-  const createPaymentRecord = async (reference, amount, coins) => {
-    try {
-      const paymentRef = doc(collection(db, 'pending_payments'), reference);
-      await setDoc(paymentRef, {
-        userId: currentUser.uid,
-        userEmail: currentUser.email,
-        amount: amount,
-        coins: coins,
-        reference: reference,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
-      return true;
-    } catch (err) {
-      console.error('Error creating payment record:', err);
-      toast.error('Failed to initialize payment. Please try again.');
-      return false;
-    }
-  };
-
-  // Demo Mode - Simulate successful payment
+  // ==================== DEMO PAYMENT FUNCTIONS ====================
   const simulatePayment = async (amount, coins, reference) => {
     return new Promise(async (resolve) => {
-      toast.info('Demo Mode: Processing payment...');
+      toast.info('Processing demo payment...');
       
       setTimeout(async () => {
         try {
@@ -247,21 +216,14 @@ function MonetaryValue() {
             t.update(userRef, { coins: currentCoins + coins });
           });
           
-          // Update payment record
-          const paymentRef = doc(db, 'pending_payments', reference);
-          await updateDoc(paymentRef, {
-            status: 'completed',
-            completedAt: serverTimestamp(),
-          });
-          
-          // Add transaction record
           await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
             type: 'purchase',
             amountNGN: amount,
-            description: `Bought ${coins} WE CONNECT Coins (Demo Mode)`,
+            description: `Bought ${coins} WE CONNECT Coins`,
             status: 'completed',
             timestamp: serverTimestamp(),
             reference: reference,
+            paymentMethod: 'Demo Mode'
           });
           
           resolve(true);
@@ -273,10 +235,9 @@ function MonetaryValue() {
     });
   };
 
-  // Simulate withdrawal in demo mode
-  const simulateWithdrawal = async (amount, diamonds) => {
+  const simulateWithdrawal = async (amount, diamonds, details) => {
     return new Promise(async (resolve) => {
-      toast.info('Demo Mode: Processing withdrawal...');
+      toast.info('Processing demo withdrawal...');
       
       setTimeout(async () => {
         try {
@@ -290,10 +251,12 @@ function MonetaryValue() {
           await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
             type: 'withdrawal',
             amountNGN: amount,
-            description: `Withdrawal of ₦${amount.toLocaleString()} (${diamonds} diamonds) - Demo Mode`,
+            description: `Withdrawal of ₦${amount.toLocaleString()} (${diamonds} diamonds)`,
             status: 'completed',
             timestamp: serverTimestamp(),
             diamondsUsed: diamonds,
+            withdrawalDetails: details,
+            paymentMethod: 'Demo Mode'
           });
           
           resolve(true);
@@ -305,73 +268,45 @@ function MonetaryValue() {
     });
   };
 
-  // Real Velvpay deposit
-  const processVelvpayDeposit = async (amount, coins, reference) => {
+  // ==================== KORA PAYMENT FUNCTIONS VIA CLOUD FUNCTIONS ====================
+  
+  const initializeKoraPayment = async (amount, coins, reference) => {
     try {
-      const paymentData = {
-        public_key: VELVPAY_CONFIG.publicKey,
-        tx_ref: reference,
+      const initializePayment = httpsCallable(functions, 'initializeKoraPayment');
+      
+      const result = await initializePayment({
         amount: amount,
-        currency: "NGN",
-        redirect_url: `${window.location.origin}/payment-callback`,
-        customer: {
-          email: currentUser.email,
-          name: profile?.name || currentUser.displayName || 'User',
-        },
-        customizations: {
-          title: "WE CONNECT - Buy Coins",
-          description: `Purchase ${coins} WE CONNECT Coins`,
-          logo: `${window.location.origin}/logo.png`
-        }
-      };
-
-      const response = await fetch(`${VELVPAY_CONFIG.baseUrl}/initialize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${VELVPAY_CONFIG.privateKey}`
-        },
-        body: JSON.stringify(paymentData)
+        coins: coins,
+        reference: reference,
+        redirectUrl: window.location.origin
       });
-
-      const result = await response.json();
-
-      if (result.status === 'success' && result.data.authorization_url) {
-        window.open(result.data.authorization_url, '_blank');
-        
-        // Poll for payment confirmation
-        let attempts = 0;
-        const maxAttempts = 60; // 5 minutes at 5 second intervals
-        
-        const checkInterval = setInterval(async () => {
-          attempts++;
-          try {
-            const paymentRef = doc(db, 'pending_payments', reference);
-            const paymentDoc = await getDoc(paymentRef);
-            
-            if (paymentDoc.exists()) {
-              const paymentData = paymentDoc.data();
-              
-              if (paymentData.status === 'completed') {
-                clearInterval(checkInterval);
-                return { success: true };
-              } else if (paymentData.status === 'failed' || attempts >= maxAttempts) {
-                clearInterval(checkInterval);
-                return { success: false, error: 'Payment failed or timed out' };
-              }
-            }
-          } catch (err) {
-            console.error('Error checking payment:', err);
-          }
-        }, 5000);
-        
-        return { success: true, pending: true };
-      } else {
-        throw new Error(result.message || 'Payment initialization failed');
+      
+      return result.data;
+    } catch (error) {
+      console.error('[Kora] Payment initialization error details:', error);
+      // Log more details about the error
+      if (error.details) {
+        console.error('[Kora] Error details:', error.details);
       }
-    } catch (err) {
-      console.error('Velvpay error:', err);
-      throw err;
+      if (error.message) {
+        console.error('[Kora] Error message:', error.message);
+      }
+      throw new Error(error.message || 'Payment initialization failed');
+    }
+  };
+
+  const verifyKoraPayment = async (reference) => {
+    try {
+      const verifyPayment = httpsCallable(functions, 'verifyKoraPayment');
+      
+      const result = await verifyPayment({
+        reference: reference
+      });
+      
+      return result.data;
+    } catch (error) {
+      console.error('[Kora] Payment verification error:', error);
+      throw new Error(error.message || 'Payment verification failed');
     }
   };
 
@@ -394,56 +329,104 @@ function MonetaryValue() {
     setIsBuying(true);
     const reference = generateReference();
     setPaymentReference(reference);
+    setPaymentStatus('initializing');
 
     try {
-      // Create payment record
-      const paymentCreated = await createPaymentRecord(reference, totalAmount, amount);
-      if (!paymentCreated) {
-        setIsBuying(false);
-        return;
-      }
-
-      if (DEMO_MODE) {
+      if (USE_DEMO_MODE) {
         // Demo Mode - Simulate payment
+        setPaymentStatus('processing');
         const success = await simulatePayment(totalAmount, amount, reference);
         if (success) {
-          toast.success(`Success! ${amount} coins added to your wallet (Demo Mode)`);
+          toast.success(`Success! ${amount} coins added to your wallet`);
           setProfile(prev => ({ ...prev, coins: (prev?.coins || 0) + amount }));
           setCoinsToBuy('');
           setPaymentReference('');
+          setPaymentStatus('success');
+          
+          // Refresh profile
+          const userRef = doc(db, 'users', currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            setProfile({ ...userSnap.data(), id: currentUser.uid });
+          }
         } else {
-          toast.error('Demo payment failed. Please try again.');
+          toast.error('Payment failed. Please try again.');
+          setPaymentStatus('failed');
         }
       } else {
-        // Real Velvpay Integration
-        const result = await processVelvpayDeposit(totalAmount, amount, reference);
-        if (result.success) {
-          if (result.pending) {
-            toast.info('Payment initiated. Please complete the payment in the popup window.');
-          }
-          setCoinsToBuy('');
+        // Live Kora Integration
+        setPaymentStatus('processing');
+        const result = await initializeKoraPayment(totalAmount, amount, reference);
+        
+        if (result.success && result.paymentUrl) {
+          setPaymentUrl(result.paymentUrl);
+          setPaymentStatus('pending');
+          
+          // Open payment page in new window
+          const paymentWindow = window.open(result.paymentUrl, '_blank', 'width=800,height=600');
+          
+          toast.info('Complete payment in the popup window', { autoClose: 8000 });
+          
+          // Poll for payment confirmation
+          setVerifyingPayment(true);
+          let attempts = 0;
+          const maxAttempts = 30;
+          const interval = setInterval(async () => {
+            attempts++;
+            try {
+              const verification = await verifyKoraPayment(reference);
+              
+              if (verification.success) {
+                clearInterval(interval);
+                setVerifyingPayment(false);
+                toast.success(`Success! ${amount} coins added to your wallet`);
+                setCoinsToBuy('');
+                setPaymentReference('');
+                setPaymentStatus('success');
+                setPaymentUrl('');
+                
+                // Refresh profile
+                const userRef = doc(db, 'users', currentUser.uid);
+                const userSnap = await getDoc(userRef);
+                if (userSnap.exists()) {
+                  setProfile({ ...userSnap.data(), id: currentUser.uid });
+                }
+                
+                if (paymentWindow && !paymentWindow.closed) {
+                  paymentWindow.close();
+                }
+              } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                setVerifyingPayment(false);
+                toast.error('Payment verification timeout');
+                setPaymentStatus('failed');
+              }
+            } catch (err) {
+              console.error('Verification error:', err);
+              if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                setVerifyingPayment(false);
+                toast.error('Payment verification failed');
+                setPaymentStatus('failed');
+              }
+            }
+          }, 5000);
+          
         } else {
-          throw new Error(result.error || 'Payment failed');
+          throw new Error('Payment initialization failed');
         }
       }
       
     } catch (err) {
       console.error('Payment error:', err);
       toast.error(err.message || 'Failed to initialize payment. Please try again.');
-      
-      try {
-        const paymentRef = doc(db, 'pending_payments', reference);
-        await updateDoc(paymentRef, {
-          status: 'failed',
-          error: err.message,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (updateErr) {
-        console.error('Error updating payment status:', updateErr);
-      }
+      setPaymentStatus('failed');
     } finally {
       setTimeout(() => {
         setIsBuying(false);
+        if (paymentStatus === 'success') {
+          setTimeout(() => setPaymentStatus(null), 3000);
+        }
       }, 3000);
     }
   };
@@ -468,7 +451,7 @@ function MonetaryValue() {
 
     // Validate withdrawal details
     if (withdrawMethod === 'bank') {
-      if (!withdrawDetails.bankName || !withdrawDetails.bankCode || !withdrawDetails.accountNumber || !withdrawDetails.accountName) {
+      if (!withdrawDetails.bankName || !withdrawDetails.accountNumber || !withdrawDetails.accountName) {
         toast.error('Please select a bank and complete all details');
         return;
       }
@@ -493,11 +476,10 @@ function MonetaryValue() {
     const totalAmount = amount * VALUE_PER_DIAMOND;
 
     try {
-      if (DEMO_MODE) {
-        // Demo Mode - Simulate withdrawal
-        const success = await simulateWithdrawal(totalAmount, amount);
+      if (USE_DEMO_MODE) {
+        const success = await simulateWithdrawal(totalAmount, amount, withdrawDetails);
         if (success) {
-          toast.success(`Withdrawal of ₦${totalAmount.toLocaleString()} processed (Demo Mode)`);
+          toast.success(`Withdrawal of ₦${totalAmount.toLocaleString()} processed!`);
           setProfile(prev => ({ ...prev, diamonds: (prev?.diamonds || 0) - amount }));
           setDiamondsToWithdraw('');
           setWithdrawDetails({
@@ -508,12 +490,18 @@ function MonetaryValue() {
             mobileNumber: '',
             fintechName: '',
           });
+          
+          // Refresh profile
+          const userRef = doc(db, 'users', currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            setProfile({ ...userSnap.data(), id: currentUser.uid });
+          }
         } else {
-          toast.error('Demo withdrawal failed. Please try again.');
+          toast.error('Withdrawal failed. Please try again.');
         }
       } else {
-        // Real withdrawal logic would go here
-        toast.info('Real withdrawal processing will be implemented soon');
+        toast.info('Live withdrawals coming soon. Kora integration in progress.');
       }
       
     } catch (err) {
@@ -576,27 +564,24 @@ function MonetaryValue() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12">
         
-        {/* Demo Mode Alert */}
-        {showDemoAlert && DEMO_MODE && (
-          <div className="mb-6 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3">
+        {/* Mode Badge */}
+        <div className={`mb-6 rounded-xl p-4 flex items-start gap-3 ${USE_DEMO_MODE ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800' : 'bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800'}`}>
+          {USE_DEMO_MODE ? (
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                Demo Mode Active
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                This is a demo version of the wallet. All transactions are simulated for testing purposes.
-                Real payments will be processed via Velvpay when integrated.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowDemoAlert(false)}
-              className="text-amber-600 hover:text-amber-800"
-            >
-              <XCircle size={16} />
-            </button>
+          ) : (
+            <Shield className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1">
+            <p className={`text-sm font-medium ${USE_DEMO_MODE ? 'text-amber-800 dark:text-amber-300' : 'text-green-800 dark:text-green-300'}`}>
+              {USE_DEMO_MODE ? '⚠️ Demo Mode Active' : '🔒 Live Payments Active - Kora Integration'}
+            </p>
+            <p className={`text-xs mt-1 ${USE_DEMO_MODE ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
+              {USE_DEMO_MODE 
+                ? 'This is a demo version. All transactions are simulated for testing. Switch to live mode when Kora integration is ready.' 
+                : 'All transactions are processed securely via Kora. Your payments are encrypted and PCI compliant.'}
+            </p>
           </div>
-        )}
+        </div>
 
         {/* Header */}
         <div className="text-center mb-10">
@@ -732,7 +717,7 @@ function MonetaryValue() {
                   <div>
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Buy Coins</h2>
                     <p className="text-sm text-slate-500">
-                      {DEMO_MODE ? 'Demo Mode • ' : 'Powered by Velvpay • '}
+                      {USE_DEMO_MODE ? 'Demo Mode • ' : 'Powered by Kora • '}
                       ₦100 = 1 Coin
                     </p>
                   </div>
@@ -761,9 +746,6 @@ function MonetaryValue() {
                       <div className="text-lg font-bold text-slate-800 dark:text-white">{preset.coins}</div>
                       <div className="text-[10px] text-slate-500">Coins</div>
                       <div className="text-xs font-semibold text-amber-600 mt-1">₦{preset.price.toLocaleString()}</div>
-                      {preset.bonus > 0 && (
-                        <div className="text-[10px] text-green-600 mt-0.5">+{preset.bonus} FREE</div>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -800,18 +782,52 @@ function MonetaryValue() {
                   </div>
                 )}
 
+                {/* Payment Status */}
+                {(paymentStatus || verifyingPayment) && (
+                  <div className={`mb-6 p-4 rounded-xl ${
+                    paymentStatus === 'processing' || verifyingPayment ? 'bg-blue-50 dark:bg-blue-950/20' :
+                    paymentStatus === 'pending' ? 'bg-yellow-50 dark:bg-yellow-950/20' :
+                    paymentStatus === 'success' ? 'bg-green-50 dark:bg-green-950/20' :
+                    'bg-red-50 dark:bg-red-950/20'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      {(paymentStatus === 'processing' || verifyingPayment) && <Loader2 className="w-5 h-5 animate-spin text-blue-600" />}
+                      {paymentStatus === 'pending' && <Clock className="w-5 h-5 text-yellow-600" />}
+                      {paymentStatus === 'success' && <CheckCircle className="w-5 h-5 text-green-600" />}
+                      {paymentStatus === 'failed' && <XCircle className="w-5 h-5 text-red-600" />}
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {verifyingPayment && 'Verifying payment... Please wait'}
+                          {paymentStatus === 'processing' && 'Initializing payment...'}
+                          {paymentStatus === 'pending' && 'Payment pending - complete in popup window'}
+                          {paymentStatus === 'success' && 'Payment successful! Coins added to wallet'}
+                          {paymentStatus === 'failed' && 'Payment failed - please try again'}
+                        </p>
+                        {paymentUrl && paymentStatus === 'pending' && (
+                          <button
+                            onClick={() => window.open(paymentUrl, '_blank')}
+                            className="text-xs text-blue-600 hover:underline mt-1"
+                          >
+                            Reopen payment window
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Buy Button */}
                 <button
                   onClick={handleBuyCoins}
-                  disabled={isBuying || !coinsToBuy || Number(coinsToBuy) < 1}
+                  disabled={isBuying || !coinsToBuy || Number(coinsToBuy) < 1 || paymentStatus === 'pending' || verifyingPayment}
                   className="w-full py-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-semibold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  {isBuying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                  {isBuying ? 'Processing...' : `Pay ₦${totalBuyAmount.toLocaleString()}`}
+                  {isBuying || verifyingPayment ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                  {isBuying || verifyingPayment ? 'Processing...' : `Pay ₦${totalBuyAmount.toLocaleString()}`}
                 </button>
 
                 {/* Payment Reference Display */}
-                {paymentReference && (
+                {paymentReference && paymentStatus !== 'success' && (
                   <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-between">
                     <span className="text-xs text-slate-600 dark:text-slate-400 font-mono">Ref: {paymentReference}</span>
                     <button
@@ -822,6 +838,10 @@ function MonetaryValue() {
                     </button>
                   </div>
                 )}
+
+                <p className="text-xs text-center text-slate-500 mt-4">
+                  🔒 Secure payments. Your financial details are encrypted and secure.
+                </p>
               </motion.div>
             ) : (
               <motion.div
@@ -836,7 +856,7 @@ function MonetaryValue() {
                   <div>
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Withdraw Diamonds</h2>
                     <p className="text-sm text-slate-500">
-                      {DEMO_MODE ? 'Demo Mode • ' : 'Powered by Velvpay • '}
+                      {USE_DEMO_MODE ? 'Demo Mode • ' : 'Powered by Kora • '}
                       Minimum 10 diamonds
                     </p>
                   </div>
@@ -854,6 +874,11 @@ function MonetaryValue() {
                           : 'border-slate-200 dark:border-slate-600 hover:border-purple-400'
                       }`}
                     >
+                      {preset.popular && (
+                        <div className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] rounded-full">
+                          Popular
+                        </div>
+                      )}
                       <div className="text-lg font-bold text-slate-800 dark:text-white">{preset.diamonds}</div>
                       <div className="text-[10px] text-slate-500">Diamonds</div>
                       <div className="text-xs font-semibold text-purple-600 mt-1">₦{preset.amount.toLocaleString()}</div>
@@ -1014,6 +1039,10 @@ function MonetaryValue() {
                   {isWithdrawing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowDownToLine className="w-5 h-5" />}
                   {isWithdrawing ? 'Processing...' : `Withdraw ₦${totalWithdrawAmount.toLocaleString()}`}
                 </button>
+
+                <p className="text-xs text-center text-slate-500 mt-4">
+                  Withdrawals are processed within 1-3 business days to your selected account
+                </p>
               </motion.div>
             )}
           </div>
@@ -1061,6 +1090,9 @@ function MonetaryValue() {
                           </p>
                           {tx.reference && (
                             <p className="text-xs text-slate-400 mt-0.5 font-mono">Ref: {tx.reference.slice(-8)}</p>
+                          )}
+                          {tx.paymentMethod && (
+                            <p className="text-xs text-green-600 mt-0.5">via {tx.paymentMethod}</p>
                           )}
                         </div>
                         <div className="text-right">

@@ -92,7 +92,7 @@ function PublicProfileViewer() {
     const loadAllData = async () => {
       setLoading(true);
       try {
-        // Load profile
+        // 1. Load profile from 'profiles' collection
         const profileRef = doc(db, 'profiles', userId);
         const profileDoc = await getDoc(profileRef);
         
@@ -110,7 +110,7 @@ function PublicProfileViewer() {
           lastActive: profileData.lastActive?.toDate?.() || new Date()
         });
         
-        // Load materials stats
+        // 2. Load materials stats
         const materialsRef = collection(db, 'materials');
         const materialsQuery = query(materialsRef, where('uid', '==', userId));
         const materialsSnap = await getDocs(materialsQuery);
@@ -119,16 +119,49 @@ function PublicProfileViewer() {
         const totalDownloads = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().downloads || 0), 0);
         const avgRating = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().averageRating || 0), 0) / (totalUploads || 1);
         
-        // Get followers and following counts
+        // 3. Get followers count - from 'users' collection's followers subcollection
         const followersRef = collection(db, 'users', userId, 'followers');
-        const followersSnap = await getDocs(followersRef);
-        const followersCount = followersSnap.size;
+        let followersCount = 0;
+        let followersListData = [];
+        try {
+          const followersSnap = await getDocs(followersRef);
+          followersCount = followersSnap.size;
+          
+          for (const docSnap of followersSnap.docs) {
+            const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+            if (userProfile.exists()) {
+              followersListData.push({ id: docSnap.id, ...userProfile.data() });
+            }
+          }
+          setFollowersList(followersListData);
+        } catch (err) {
+          console.error("Error loading followers:", err);
+        }
         
+        // 4. Get following count - from 'users' collection's following subcollection
         const followingRef = collection(db, 'users', userId, 'following');
-        const followingSnap = await getDocs(followingRef);
-        const followingCount = followingSnap.size;
+        let followingCount = 0;
+        let followingListData = [];
+        try {
+          const followingSnap = await getDocs(followingRef);
+          followingCount = followingSnap.size;
+          
+          for (const docSnap of followingSnap.docs) {
+            const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+            if (userProfile.exists()) {
+              followingListData.push({ 
+                id: docSnap.id, 
+                ...userProfile.data(),
+                followedAt: docSnap.data().followedAt?.toDate?.() || new Date()
+              });
+            }
+          }
+          setFollowingList(followingListData);
+        } catch (err) {
+          console.error("Error loading following:", err);
+        }
         
-        // Get recent materials
+        // 5. Get recent materials
         const recentMaterials = uploadedMaterials
           .sort((a, b) => {
             const dateA = a.data().createdAt?.toDate?.() || new Date(0);
@@ -142,12 +175,16 @@ function PublicProfileViewer() {
             createdAt: doc.data().createdAt?.toDate?.() || new Date()
           }));
         
-        // Check if current user follows this profile
+        // 6. Check if current user follows this profile
         let isFollowingStatus = false;
         if (currentUser && currentUser.uid !== userId) {
-          const followRef = doc(db, 'users', currentUser.uid, 'following', userId);
-          const followDoc = await getDoc(followRef);
-          isFollowingStatus = followDoc.exists();
+          try {
+            const followRef = doc(db, 'users', currentUser.uid, 'following', userId);
+            const followDoc = await getDoc(followRef);
+            isFollowingStatus = followDoc.exists();
+          } catch (err) {
+            console.error("Error checking follow status:", err);
+          }
         }
         
         setStats({
@@ -163,39 +200,20 @@ function PublicProfileViewer() {
         setAllMaterials(recentMaterials);
         setIsFollowing(isFollowingStatus);
         
-        // Increment profile views
+        // 7. Increment profile views (only if not the owner - SILENT FAIL)
         if (currentUser?.uid !== userId) {
-          await updateDoc(profileRef, {
-            profileViews: increment(1),
-            lastActive: serverTimestamp()
-          });
-        }
-        
-        // Load followers list
-        const followersListData = [];
-        for (const docSnap of followersSnap.docs) {
-          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
-          if (userProfile.exists()) {
-            followersListData.push({ id: docSnap.id, ...userProfile.data() });
-          }
-        }
-        setFollowersList(followersListData);
-        
-        // Load following list (people this user is following)
-        const followingListData = [];
-        for (const docSnap of followingSnap.docs) {
-          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
-          if (userProfile.exists()) {
-            followingListData.push({ 
-              id: docSnap.id, 
-              ...userProfile.data(),
-              followedAt: docSnap.data().followedAt?.toDate?.() || new Date()
+          try {
+            await updateDoc(profileRef, {
+              profileViews: increment(1),
+              lastActive: serverTimestamp()
             });
+          } catch (err) {
+            // Silent fail - don't show error to user, just log it
+            console.warn("Could not increment profile views:", err.message);
           }
         }
-        setFollowingList(followingListData);
         
-        // Load recent activity
+        // 8. Load recent activity
         setLoadingActivity(true);
         const activityQuery = query(
           materialsRef,
@@ -217,7 +235,7 @@ function PublicProfileViewer() {
         
       } catch (err) {
         console.error("Error loading profile:", err);
-        setError("Failed to load profile");
+        setError("Failed to load profile: " + err.message);
       } finally {
         setLoading(false);
       }
@@ -233,40 +251,54 @@ function PublicProfileViewer() {
     const followersUnsub = onSnapshot(
       collection(db, 'users', userId, 'followers'),
       async () => {
-        const followersRef = collection(db, 'users', userId, 'followers');
-        const followersSnap = await getDocs(followersRef);
-        setStats(prev => ({ ...prev, followers: followersSnap.size }));
-        
-        const followersListData = [];
-        for (const docSnap of followersSnap.docs) {
-          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
-          if (userProfile.exists()) {
-            followersListData.push({ id: docSnap.id, ...userProfile.data() });
+        try {
+          const followersRef = collection(db, 'users', userId, 'followers');
+          const followersSnap = await getDocs(followersRef);
+          setStats(prev => ({ ...prev, followers: followersSnap.size }));
+          
+          const followersListData = [];
+          for (const docSnap of followersSnap.docs) {
+            const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+            if (userProfile.exists()) {
+              followersListData.push({ id: docSnap.id, ...userProfile.data() });
+            }
           }
+          setFollowersList(followersListData);
+        } catch (err) {
+          console.error("Error in followers listener:", err);
         }
-        setFollowersList(followersListData);
+      },
+      (error) => {
+        console.error("Followers listener error:", error);
       }
     );
     
     const followingUnsub = onSnapshot(
       collection(db, 'users', userId, 'following'),
       async () => {
-        const followingRef = collection(db, 'users', userId, 'following');
-        const followingSnap = await getDocs(followingRef);
-        setStats(prev => ({ ...prev, following: followingSnap.size }));
-        
-        const followingListData = [];
-        for (const docSnap of followingSnap.docs) {
-          const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
-          if (userProfile.exists()) {
-            followingListData.push({ 
-              id: docSnap.id, 
-              ...userProfile.data(),
-              followedAt: docSnap.data().followedAt?.toDate?.() || new Date()
-            });
+        try {
+          const followingRef = collection(db, 'users', userId, 'following');
+          const followingSnap = await getDocs(followingRef);
+          setStats(prev => ({ ...prev, following: followingSnap.size }));
+          
+          const followingListData = [];
+          for (const docSnap of followingSnap.docs) {
+            const userProfile = await getDoc(doc(db, 'profiles', docSnap.id));
+            if (userProfile.exists()) {
+              followingListData.push({ 
+                id: docSnap.id, 
+                ...userProfile.data(),
+                followedAt: docSnap.data().followedAt?.toDate?.() || new Date()
+              });
+            }
           }
+          setFollowingList(followingListData);
+        } catch (err) {
+          console.error("Error in following listener:", err);
         }
-        setFollowingList(followingListData);
+      },
+      (error) => {
+        console.error("Following listener error:", error);
       }
     );
     
@@ -291,6 +323,7 @@ function PublicProfileViewer() {
     try {
       const batch = writeBatch(db);
       
+      // Add to current user's following
       const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
       batch.set(followingRef, {
         followedAt: serverTimestamp(),
@@ -298,6 +331,7 @@ function PublicProfileViewer() {
         userPhoto: profile?.photoURL
       });
       
+      // Add to target user's followers
       const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
       batch.set(followerRef, {
         followedAt: serverTimestamp(),
@@ -305,6 +339,7 @@ function PublicProfileViewer() {
         userPhoto: currentUser.photoURL
       });
       
+      // Create notification for the user being followed
       const notificationRef = doc(collection(db, `users/${userId}/notifications`));
       batch.set(notificationRef, {
         type: 'new_follower',
@@ -322,7 +357,7 @@ function PublicProfileViewer() {
       toast.success(`Now following ${profile?.name}`);
     } catch (err) {
       console.error("Error following user:", err);
-      toast.error("Failed to follow user");
+      toast.error("Failed to follow user: " + err.message);
     } finally {
       setFollowingInProgress(false);
     }
@@ -346,7 +381,7 @@ function PublicProfileViewer() {
       toast.success(`Unfollowed ${profile?.name}`);
     } catch (err) {
       console.error("Error unfollowing user:", err);
-      toast.error("Failed to unfollow user");
+      toast.error("Failed to unfollow user: " + err.message);
     } finally {
       setFollowingInProgress(false);
     }
@@ -368,7 +403,6 @@ function PublicProfileViewer() {
       
       await batch.commit();
       
-      // Update the following list
       setFollowingList(prev => prev.filter(user => user.id !== targetUserId));
       setStats(prev => ({ ...prev, following: prev.following - 1 }));
       toast.success(`Unfollowed ${targetName}`);
@@ -518,7 +552,7 @@ function PublicProfileViewer() {
             Profile Not Found
           </h2>
           <p className="text-slate-600 dark:text-slate-400 mb-6">
-            The user profile you're looking for doesn't exist or may have been deleted.
+            {error || "The user profile you're looking for doesn't exist or may have been deleted."}
           </p>
           <button
             onClick={() => navigate('/')}

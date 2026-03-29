@@ -14,7 +14,9 @@ import {
   signInWithRedirect,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signOut 
+  signOut,
+  sendPasswordResetEmail,     // Added
+  sendEmailVerification       // Added
 } from "firebase/auth";
 
 import { 
@@ -63,6 +65,8 @@ export {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
+  sendPasswordResetEmail,     // Added
+  sendEmailVerification       // Added
 };
 
 // Firestore helpers

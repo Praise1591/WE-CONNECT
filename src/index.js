@@ -2,10 +2,295 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const { FieldValue } = require('firebase-admin/firestore');
+const axios = require('axios');
 
 admin.initializeApp();
 
 const db = admin.firestore();
+
+// ==================== KORA PAYMENT CONFIGURATION ====================
+const KORA_CONFIG = {
+  publicKey: "pk_live_a5CFeJDZmtbeSWSXkU5re3U8NKZxCGHpr1xTMFVX",
+  secretKey: "sk_live_pdCzR7vu3XfVtNRay6MiMLRzxCYkoMqYGXusQFpR",
+  encryptionKey: "9m12Mgs6xvVS9FJ1gcobTAVTjm84MySs",
+  baseUrl: "https://api.kora.com/v1"
+};
+
+// ==================== KORA PAYMENT FUNCTIONS ====================
+
+// Initialize Kora Payment
+exports.initializeKoraPayment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+  }
+
+  const { amount, coins, reference, redirectUrl } = data;
+  const userId = context.auth.uid;
+  const userEmail = context.auth.token.email;
+  const userName = context.auth.token.name || context.auth.token.email?.split('@')[0] || 'User';
+  
+  try {
+    console.log('[Kora] Initializing payment for user:', userId);
+    console.log('[Kora] Amount:', amount, 'Coins:', coins, 'Reference:', reference);
+    
+    const paymentData = {
+      amount: amount,
+      currency: "NGN",
+      reference: reference,
+      customer: {
+        email: userEmail,
+        name: userName,
+      },
+      metadata: {
+        userId: userId,
+        coins: coins,
+        type: 'coin_purchase'
+      },
+      redirect_url: `${redirectUrl}/payment-callback`,
+      channels: ["card", "bank_transfer", "ussd", "qr"]
+    };
+
+    const response = await axios.post(
+      `${KORA_CONFIG.baseUrl}/payments/initialize`,
+      paymentData,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${KORA_CONFIG.secretKey}`,
+          'x-api-key': KORA_CONFIG.publicKey
+        },
+        timeout: 30000
+      }
+    );
+
+    const result = response.data;
+    console.log('[Kora] Payment init response:', result.status);
+
+    if (result.status === 'success' && result.data.payment_url) {
+      // Save transaction to Firestore
+      const transactionRef = db
+        .collection('users')
+        .doc(userId)
+        .collection('transactions')
+        .doc(reference);
+      
+      await transactionRef.set({
+        type: 'purchase',
+        amountNGN: amount,
+        coins: coins,
+        description: `Purchase of ${coins} WE CONNECT Coins`,
+        status: 'pending',
+        reference: reference,
+        paymentMethod: 'Kora',
+        timestamp: FieldValue.serverTimestamp(),
+        koraPaymentId: result.data.payment_id
+      });
+
+      return {
+        success: true,
+        paymentUrl: result.data.payment_url,
+        paymentId: result.data.payment_id
+      };
+    } else {
+      throw new Error(result.message || 'Payment initialization failed');
+    }
+  } catch (error) {
+    console.error('[Kora] Payment initialization error:', error.message);
+    if (error.response) {
+      console.error('[Kora] Error response:', error.response.data);
+    }
+    throw new functions.https.HttpsError('internal', error.message || 'Payment initialization failed');
+  }
+});
+
+// Verify Kora Payment
+exports.verifyKoraPayment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+  }
+
+  const { reference } = data;
+  const userId = context.auth.uid;
+  
+  try {
+    console.log('[Kora] Verifying payment:', reference);
+    
+    const response = await axios.get(
+      `${KORA_CONFIG.baseUrl}/payments/verify/${reference}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${KORA_CONFIG.secretKey}`,
+          'x-api-key': KORA_CONFIG.publicKey
+        },
+        timeout: 30000
+      }
+    );
+
+    const result = response.data;
+    console.log('[Kora] Verification response status:', result.status);
+
+    if (result.status === 'success') {
+      const paymentStatus = result.data.status;
+      
+      if (paymentStatus === 'success') {
+        // Get the transaction
+        const transactionRef = db
+          .collection('users')
+          .doc(userId)
+          .collection('transactions')
+          .doc(reference);
+        
+        const transactionDoc = await transactionRef.get();
+        
+        if (transactionDoc.exists && transactionDoc.data().status === 'pending') {
+          const transactionData = transactionDoc.data();
+          
+          // Update user's coins in transaction
+          const userRef = db.collection('users').doc(userId);
+          await db.runTransaction(async (t) => {
+            const userDoc = await t.get(userRef);
+            const currentCoins = userDoc.data()?.coins || 0;
+            t.update(userRef, { coins: currentCoins + transactionData.coins });
+          });
+          
+          // Update transaction record
+          await transactionRef.update({
+            status: 'completed',
+            completedAt: FieldValue.serverTimestamp(),
+            koraVerificationData: result.data
+          });
+          
+          return { success: true, message: 'Payment verified and coins added' };
+        } else if (transactionDoc.exists && transactionDoc.data().status === 'completed') {
+          return { success: true, message: 'Payment already processed' };
+        }
+      } else if (paymentStatus === 'pending') {
+        return { success: false, pending: true, message: 'Payment still pending' };
+      } else {
+        // Update failed transaction
+        const transactionRef = db
+          .collection('users')
+          .doc(userId)
+          .collection('transactions')
+          .doc(reference);
+        
+        await transactionRef.update({
+          status: 'failed',
+          failedAt: FieldValue.serverTimestamp(),
+          failureReason: paymentStatus
+        });
+        
+        return { success: false, status: paymentStatus, message: `Payment ${paymentStatus}` };
+      }
+    }
+    
+    return { success: false, message: 'Verification failed' };
+  } catch (error) {
+    console.error('[Kora] Payment verification error:', error.message);
+    if (error.response) {
+      console.error('[Kora] Error response:', error.response.data);
+    }
+    throw new functions.https.HttpsError('internal', error.message || 'Payment verification failed');
+  }
+});
+
+// Process Kora Withdrawal
+exports.processKoraWithdrawal = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+  }
+
+  const { amount, diamonds, withdrawalMethod, withdrawalDetails } = data;
+  const userId = context.auth.uid;
+  const reference = `WC_WD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  try {
+    console.log('[Kora] Processing withdrawal for user:', userId);
+    console.log('[Kora] Amount:', amount, 'Diamonds:', diamonds);
+    
+    const withdrawalData = {
+      amount: amount,
+      currency: "NGN",
+      reference: reference,
+      destination: {
+        type: withdrawalMethod === 'bank' ? 'bank_account' : 'mobile_money',
+        bank_code: withdrawalMethod === 'bank' ? withdrawalDetails.bankCode : null,
+        account_number: withdrawalMethod === 'bank' ? withdrawalDetails.accountNumber : withdrawalDetails.mobileNumber,
+        account_name: withdrawalDetails.accountName,
+        bank_name: withdrawalMethod === 'bank' ? withdrawalDetails.bankName : null,
+        provider: withdrawalMethod === 'mobile' ? withdrawalDetails.fintechName : null
+      },
+      metadata: {
+        userId: userId,
+        diamonds: diamonds,
+        type: 'diamond_withdrawal'
+      }
+    };
+
+    const response = await axios.post(
+      `${KORA_CONFIG.baseUrl}/transactions/transfer`,
+      withdrawalData,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${KORA_CONFIG.secretKey}`,
+          'x-api-key': KORA_CONFIG.publicKey
+        },
+        timeout: 30000
+      }
+    );
+
+    const result = response.data;
+    console.log('[Kora] Withdrawal response:', result.status);
+
+    if (result.status === 'success') {
+      // Deduct diamonds from user's wallet
+      const userRef = db.collection('users').doc(userId);
+      await db.runTransaction(async (t) => {
+        const userDoc = await t.get(userRef);
+        const currentDiamonds = userDoc.data()?.diamonds || 0;
+        
+        if (currentDiamonds < diamonds) {
+          throw new Error('Insufficient diamonds');
+        }
+        
+        t.update(userRef, { diamonds: currentDiamonds - diamonds });
+      });
+      
+      // Add withdrawal transaction
+      await db
+        .collection('users')
+        .doc(userId)
+        .collection('transactions')
+        .add({
+          type: 'withdrawal',
+          amountNGN: amount,
+          description: `Withdrawal of ₦${amount.toLocaleString()} (${diamonds} diamonds)`,
+          status: 'completed',
+          timestamp: FieldValue.serverTimestamp(),
+          diamondsUsed: diamonds,
+          reference: reference,
+          withdrawalDetails: withdrawalDetails,
+          koraReference: result.data.reference,
+          paymentMethod: 'Kora'
+        });
+      
+      return {
+        success: true,
+        message: 'Withdrawal initiated successfully',
+        reference: result.data.reference
+      };
+    } else {
+      throw new Error(result.message || 'Withdrawal failed');
+    }
+  } catch (error) {
+    console.error('[Kora] Withdrawal error:', error.message);
+    if (error.response) {
+      console.error('[Kora] Error response:', error.response.data);
+    }
+    throw new functions.https.HttpsError('internal', error.message || 'Withdrawal failed');
+  }
+});
 
 // ==================== USER FOLLOW SYSTEM ====================
 
@@ -25,7 +310,6 @@ exports.followUser = functions.https.onCall(async (data, context) => {
   try {
     const batch = db.batch();
     
-    // Check if user exists
     const userRef = db.collection('profiles').doc(targetUserId);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
@@ -34,7 +318,6 @@ exports.followUser = functions.https.onCall(async (data, context) => {
     
     const userData = userDoc.data();
     
-    // Add to current user's following
     const followingRef = db.collection('users').doc(currentUserId).collection('following').doc(targetUserId);
     batch.set(followingRef, {
       followedAt: FieldValue.serverTimestamp(),
@@ -43,7 +326,6 @@ exports.followUser = functions.https.onCall(async (data, context) => {
       userRole: userData.role || 'student'
     });
     
-    // Add to target user's followers
     const followerRef = db.collection('users').doc(targetUserId).collection('followers').doc(currentUserId);
     batch.set(followerRef, {
       followedAt: FieldValue.serverTimestamp(),
@@ -52,7 +334,6 @@ exports.followUser = functions.https.onCall(async (data, context) => {
       userRole: userData.role || 'student'
     });
     
-    // Create notification
     const notificationRef = db.collection('users').doc(targetUserId).collection('notifications').doc();
     batch.set(notificationRef, {
       type: 'new_follower',
@@ -66,7 +347,6 @@ exports.followUser = functions.https.onCall(async (data, context) => {
     
     await batch.commit();
     
-    // Update follower count in profile
     const profileRef = db.collection('profiles').doc(targetUserId);
     await profileRef.update({
       followers: FieldValue.increment(1)
@@ -100,7 +380,6 @@ exports.unfollowUser = functions.https.onCall(async (data, context) => {
     
     await batch.commit();
     
-    // Update follower count in profile
     const profileRef = db.collection('profiles').doc(targetUserId);
     await profileRef.update({
       followers: FieldValue.increment(-1)
@@ -215,7 +494,6 @@ exports.searchUsers = functions.https.onCall(async (data, context) => {
   try {
     let query = db.collection('profiles');
     
-    // Apply filters
     if (role && role !== 'all') {
       query = query.where('role', '==', role);
     }
@@ -244,7 +522,6 @@ exports.searchUsers = functions.https.onCall(async (data, context) => {
       }
     });
     
-    // Sort by relevance
     results.sort((a, b) => {
       const aNameMatch = a.name?.toLowerCase().includes(searchLower);
       const bNameMatch = b.name?.toLowerCase().includes(searchLower);
@@ -270,7 +547,6 @@ exports.getUserProfile = functions.https.onCall(async (data, context) => {
   const { userId } = data;
   
   try {
-    // Get profile
     const profileRef = db.collection('profiles').doc(userId);
     const profileDoc = await profileRef.get();
     
@@ -280,30 +556,25 @@ exports.getUserProfile = functions.https.onCall(async (data, context) => {
     
     const profile = profileDoc.data();
     
-    // Get stats
     const materialsRef = db.collection('materials');
     const materialsQuery = await materialsRef.where('uid', '==', userId).get();
     const totalUploads = materialsQuery.size;
     const totalDownloads = materialsQuery.docs.reduce((sum, doc) => sum + (doc.data().downloads || 0), 0);
     const avgRating = materialsQuery.docs.reduce((sum, doc) => sum + (doc.data().averageRating || 0), 0) / (totalUploads || 1);
     
-    // Get followers count
     const followersRef = db.collection('users').doc(userId).collection('followers');
     const followersSnap = await followersRef.get();
     const followersCount = followersSnap.size;
     
-    // Get following count
     const followingRef = db.collection('users').doc(userId).collection('following');
     const followingSnap = await followingRef.get();
     const followingCount = followingSnap.size;
     
-    // Increment profile views
     await profileRef.update({
       profileViews: FieldValue.increment(1),
       lastActive: FieldValue.serverTimestamp()
     });
     
-    // Get recent materials
     const recentMaterials = materialsQuery.docs
       .sort((a, b) => b.data().createdAt - a.data().createdAt)
       .slice(0, 6)
@@ -313,7 +584,6 @@ exports.getUserProfile = functions.https.onCall(async (data, context) => {
         createdAt: doc.data().createdAt?.toDate?.() || new Date()
       }));
     
-    // Check if current user follows this profile
     let isFollowing = false;
     if (context.auth.uid !== userId) {
       const followRef = db.collection('users').doc(context.auth.uid).collection('following').doc(userId);
@@ -388,7 +658,6 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
   const userId = context.auth.uid;
   
   try {
-    // Get users that current user follows
     const followingRef = db.collection('users').doc(userId).collection('following');
     const followingSnap = await followingRef.get();
     const followingIds = followingSnap.docs.map(doc => doc.id);
@@ -397,7 +666,6 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
       return { materials: [] };
     }
     
-    // Get materials from followed users
     let query = db.collection('materials')
       .where('uid', 'in', followingIds)
       .orderBy('createdAt', 'desc')
@@ -434,12 +702,10 @@ exports.notifyFollowers = functions.firestore
     const uploaderId = material.uid;
     
     try {
-      // Get uploader's profile
       const uploaderRef = db.collection('profiles').doc(uploaderId);
       const uploaderDoc = await uploaderRef.get();
       const uploaderName = uploaderDoc.exists ? uploaderDoc.data().name : 'Someone';
       
-      // Get followers
       const followersRef = db.collection('users').doc(uploaderId).collection('followers');
       const followersSnap = await followersRef.get();
       
