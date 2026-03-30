@@ -9,9 +9,7 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ==================== KORA PAYMENT CONFIGURATION ====================
-// IMPORTANT: Do NOT hardcode API keys here!
-// Set them using Firebase Functions config:
-// firebase functions:config:set kora.public_key="pk_live_xxx" kora.secret_key="sk_live_xxx" kora.encryption_key="xxx"
+
 const KORA_CONFIG = {
   publicKey: functions.config().kora?.public_key,
   secretKey: functions.config().kora?.secret_key,
