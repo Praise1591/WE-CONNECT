@@ -15,6 +15,8 @@ import {
   db, 
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -54,6 +56,87 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
+
+  // Handle redirect result after Google sign-in
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        console.log("[Google Redirect] Checking for redirect result...");
+        const result = await getRedirectResult(auth);
+        
+        if (result) {
+          console.log("[Google Redirect] Redirect result found, processing...");
+          const user = result.user;
+          
+          // Process the user profile
+          const profileRef = doc(db, 'profiles', user.uid);
+          const profileDoc = await getDoc(profileRef);
+          
+          let userProfile;
+          
+          if (!profileDoc.exists()) {
+            console.log("[Google Redirect] Creating new profile for:", user.uid);
+            const profileData = {
+              name: user.displayName || 'User',
+              email: user.email,
+              role: 'student',
+              photoURL: user.photoURL || null,
+              createdAt: serverTimestamp(),
+              coins: 0,
+              diamonds: 0,
+              emailVerified: user.emailVerified,
+            };
+            await setDoc(profileRef, profileData);
+            
+            userProfile = {
+              id: user.uid,
+              email: user.email,
+              name: user.displayName || 'User',
+              role: 'student',
+              photoURL: user.photoURL || null,
+              coins: 0,
+              diamonds: 0,
+              emailVerified: user.emailVerified,
+            };
+          } else {
+            console.log("[Google Redirect] Existing profile found");
+            const profileData = profileDoc.data();
+            userProfile = {
+              id: user.uid,
+              email: user.email,
+              name: profileData.name || user.displayName || 'User',
+              role: profileData.role || 'student',
+              photoURL: user.photoURL || profileData.photoURL,
+              coins: profileData.coins || 0,
+              diamonds: profileData.diamonds || 0,
+              emailVerified: user.emailVerified,
+            };
+          }
+          
+          console.log("[Google Redirect] Login successful, navigating...");
+          handleSuccessfulLogin(userProfile);
+        } else {
+          console.log("[Google Redirect] No redirect result found");
+        }
+      } catch (error) {
+        console.error("[Google Redirect Error]", error);
+        let message = 'Google sign-in failed. Please try again.';
+        
+        if (error.code === 'auth/network-request-failed') {
+          message = 'Network error. Please check your internet connection.';
+        } else if (error.code === 'auth/popup-blocked') {
+          message = 'Popup was blocked. Using redirect method instead.';
+        } else {
+          message = error.message || 'Authentication failed. Please try again.';
+        }
+        
+        toast.error(message);
+        setLoading(false);
+      }
+    };
+    
+    handleRedirectResult();
+  }, []); // Empty dependency array - run once on mount
 
   // Improved navigation handler with state management
   const handleSuccessfulLogin = (userProfile) => {
@@ -149,78 +232,52 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     }
   };
 
+  // Modified Google sign-in to use redirect method (fixes popup blocker)
   const handleGoogleSignIn = async () => {
     if (loading || navigationInProgress) return;
     
     setLoading(true);
     try {
-      console.log("[Google] Attempting Google sign in...");
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-
-      console.log("[Google] Signed in successfully:", user.uid);
-      console.log("[Google] Email verified:", user.emailVerified);
-
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileDoc = await getDoc(profileRef);
-
-      let userProfile;
-
-      if (!profileDoc.exists()) {
-        console.log("[Google] Creating new profile");
-        const profileData = {
-          name: user.displayName || 'User',
-          email: user.email,
-          role: 'student',
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-        await setDoc(profileRef, profileData);
-        console.log("[Google] Profile created");
-        
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: user.displayName || 'User',
-          role: 'student',
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-      } else {
-        console.log("[Google] Profile exists, fetching data");
-        const profileData = profileDoc.data();
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: profileData.name || user.displayName || 'User',
-          role: profileData.role || 'student',
-          photoURL: user.photoURL || profileData.photoURL,
-          coins: profileData.coins || 0,
-          diamonds: profileData.diamonds || 0,
-          emailVerified: user.emailVerified,
-        };
-      }
-
-      console.log("[Google] User profile prepared:", userProfile);
-      handleSuccessfulLogin(userProfile);
-
+      console.log("[Google] Attempting Google sign in with redirect method...");
+      
+      // Add custom parameters to improve UX
+      googleProvider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      
+      // Use redirect instead of popup - this bypasses popup blockers
+      await signInWithRedirect(auth, googleProvider);
+      
+      // Note: The page will redirect to Google, then back to your app
+      // The result will be handled in the useEffect above
+      console.log("[Google] Redirect initiated, page will redirect to Google...");
+      
+      // We don't set loading to false here because the page will redirect
+      // The loading state will be reset when the page returns
+      
     } catch (error) {
       console.error("[GOOGLE AUTH ERROR]", error);
       let message = 'Google sign-in failed. Please try again.';
+      
       if (error.code === 'auth/network-request-failed') {
         message = 'Network error. Please check your internet connection.';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        message = 'Sign-in cancelled.';
       } else if (error.code === 'auth/popup-blocked') {
-        message = 'Popup was blocked. Please allow popups for this site.';
+        message = 'Popup was blocked. Trying redirect method...';
+        // Attempt redirect as fallback
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectError) {
+          console.error("[Redirect Fallback Error]", redirectError);
+          message = 'Please allow popups for this site or try using email/password sign-in.';
+        }
+      } else {
+        message = error.message || 'Authentication failed. Please try again.';
       }
-      toast.error(message);
-    } finally {
+      
+      toast.error(message, {
+        duration: 5000,
+      });
       setLoading(false);
     }
   };
@@ -253,8 +310,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
       
     } catch (error) {
       console.error("[PASSWORD RESET ERROR] Full error:", error);
-      console.error("[PASSWORD RESET ERROR] Error code:", error.code);
-      console.error("[PASSWORD RESET ERROR] Error message:", error.message);
       
       let message = 'Failed to send reset email. Please try again.';
       
@@ -271,9 +326,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         case 'auth/network-request-failed':
           message = 'Network error. Please check your internet connection.';
           break;
-        case 'auth/configuration-not-found':
-          message = 'Email/password sign-in is not enabled. Please contact support.';
-          break;
         default:
           message = error.message || 'Failed to send reset email. Please try again later.';
       }
@@ -284,30 +336,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
       
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Test password reset configuration
-  const testPasswordReset = async () => {
-    console.log("[Password Reset Test] Checking Firebase configuration...");
-    try {
-      const currentUser = auth.currentUser;
-      console.log("[Password Reset Test] Auth instance:", !!auth);
-      console.log("[Password Reset Test] Current user:", currentUser?.email || 'Not logged in');
-      
-      const testEmail = resetEmail.trim();
-      if (!testEmail) {
-        toast.error('Please enter an email address to test');
-        return;
-      }
-      
-      console.log("[Password Reset Test] Attempting test send to:", testEmail);
-      await sendPasswordResetEmail(auth, testEmail);
-      console.log("[Password Reset Test] Test email sent successfully!");
-      toast.success(`Test email sent to ${testEmail}! Check if you received it.`);
-    } catch (error) {
-      console.error("[Password Reset Test] Error:", error);
-      toast.error(`Test failed: ${error.message}`);
     }
   };
 
@@ -547,25 +575,10 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     setGender(null);
   };
 
-  // Test navigation function for debugging
-  const testNavigation = () => {
-    console.log("[Test] Testing navigation directly...");
-    const testProfile = {
-      id: 'test',
-      email: 'test@example.com',
-      name: 'Test User',
-      role: 'student',
-      coins: 0,
-      diamonds: 0,
-      emailVerified: true,
-    };
-    handleSuccessfulLogin(testProfile);
-  };
-
   return (
     <div className="relative bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-w-4xl w-full border border-indigo-100/40 dark:border-indigo-900/30">
       
-      {/* Header - Mobile Optimized */}
+      {/* Header */}
       <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-700 px-5 sm:px-8 md:px-12 py-6 sm:py-8 md:py-14 text-center text-white overflow-hidden rounded-t-2xl sm:rounded-t-3xl">
         <div className="absolute inset-0 bg-[url('/weconnect-logo.png')] bg-[length:100px] sm:bg-[length:140px] opacity-[0.07] mix-blend-multiply pointer-events-none" />
         <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tight drop-shadow-2xl mb-2 sm:mb-3">
@@ -582,7 +595,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         </p>
       </div>
 
-      {/* Content - Mobile Optimized with max height */}
+      {/* Content */}
       <div className="p-4 sm:p-6 md:p-10 lg:p-12 space-y-6 sm:space-y-10 max-h-[70vh] sm:max-h-[76vh] overflow-y-auto">
         
         {showResetPassword ? (
@@ -639,15 +652,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                     {loading ? 'Sending...' : 'Send Reset Link'}
                   </span>
                 </motion.button>
-
-                {/* Test button for debugging */}
-                <button
-                  type="button"
-                  onClick={testPasswordReset}
-                  className="w-full py-2 text-center text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                >
-                  Test Email Configuration
-                </button>
 
                 <button
                   type="button"
@@ -926,22 +930,13 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
               </div>
 
               {isLogin && (
-                <div className="flex justify-between items-center">
+                <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => setShowResetPassword(true)}
                     className="text-xs sm:text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors font-medium"
                   >
                     Forgot Password?
-                  </button>
-                  
-                  {/* Test button for debugging navigation */}
-                  <button
-                    type="button"
-                    onClick={testNavigation}
-                    className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-                  >
-                    Test Nav
                   </button>
                 </div>
               )}
