@@ -14,17 +14,25 @@ export default defineConfig({
   },
 
   server: {
-    // Comment out or remove the proxy block entirely for local development
-    // proxy: {
-    //   '/api': {
-    //     target: 'http://localhost:3000',
-    //     changeOrigin: true,
-    //     rewrite: (path) => path.replace(/^\/api/, ''),
-    //     secure: false,
-    //   },
-    // },
+    historyApiFallback: true, // CRITICAL for React Router
+    port: 5173,
+    open: true,
+    strictPort: false,
+    hmr: {
+      overlay: true,
+    },
+  },
 
-    // Optional: only keep proxy if you actually run a separate backend
-    // (e.g. for production or when you start a real server on 3000)
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+        },
+      },
+    },
   },
 })
