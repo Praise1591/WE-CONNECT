@@ -9,12 +9,21 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ==================== KORA PAYMENT CONFIGURATION ====================
+
 const KORA_CONFIG = {
-  publicKey: "pk_live_a5CFeJDZmtbeSWSXkU5re3U8NKZxCGHpr1xTMFVX",
-  secretKey: "sk_live_pdCzR7vu3XfVtNRay6MiMLRzxCYkoMqYGXusQFpR",
-  encryptionKey: "9m12Mgs6xvVS9FJ1gcobTAVTjm84MySs",
+  publicKey: functions.config().kora?.public_key,
+  secretKey: functions.config().kora?.secret_key,
+  encryptionKey: functions.config().kora?.encryption_key,
   baseUrl: "https://api.kora.com/v1"
 };
+
+// Log configuration status (without exposing keys)
+console.log('[Kora] Configuration loaded:', {
+  publicKeySet: !!KORA_CONFIG.publicKey,
+  secretKeySet: !!KORA_CONFIG.secretKey,
+  encryptionKeySet: !!KORA_CONFIG.encryptionKey,
+  baseUrl: KORA_CONFIG.baseUrl
+});
 
 // ==================== KORA PAYMENT FUNCTIONS ====================
 
@@ -22,6 +31,12 @@ const KORA_CONFIG = {
 exports.initializeKoraPayment = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+  }
+
+  // Check if Kora is configured
+  if (!KORA_CONFIG.publicKey || !KORA_CONFIG.secretKey) {
+    console.error('[Kora] Missing API keys - please configure with: firebase functions:config:set kora.public_key=... kora.secret_key=...');
+    throw new functions.https.HttpsError('failed-precondition', 'Payment service not configured. Please contact support.');
   }
 
   const { amount, coins, reference, redirectUrl } = data;
@@ -699,7 +714,7 @@ exports.notifyFollowers = functions.firestore
   .document('materials/{materialId}')
   .onCreate(async (snap, context) => {
     const material = snap.data();
-    const uploaderId = material.uid;
+    const uploaderId = material.uid; // FIXED: Added this line to define uploaderId
     
     try {
       const uploaderRef = db.collection('profiles').doc(uploaderId);
