@@ -39,6 +39,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     email: '', password: '', confirmPassword: '', phone: '', address: '',
   });
   const [loading, setLoading] = useState(false);
+  const [navigationInProgress, setNavigationInProgress] = useState(false);
   const navigate = useNavigate();
 
   const googleProvider = new GoogleAuthProvider();
@@ -52,6 +53,176 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // Improved navigation handler with state management
+  const handleSuccessfulLogin = (userProfile) => {
+    console.log("[Navigation] Starting post-login navigation process");
+    console.log("[Navigation] User profile:", userProfile);
+    
+    // Prevent multiple navigation attempts
+    if (navigationInProgress) {
+      console.log("[Navigation] Navigation already in progress, skipping");
+      return;
+    }
+    
+    setNavigationInProgress(true);
+    
+    try {
+      // Save to localStorage with timestamp for validation
+      const profileWithTimestamp = {
+        ...userProfile,
+        lastLogin: Date.now(),
+        isLoggedIn: true
+      };
+      localStorage.setItem('userProfile', JSON.stringify(profileWithTimestamp));
+      console.log("[Navigation] Profile saved to localStorage with timestamp");
+      
+      // Dispatch custom event for real-time updates
+      const loginEvent = new CustomEvent('userLoggedIn', { 
+        detail: profileWithTimestamp,
+        bubbles: true 
+      });
+      window.dispatchEvent(loginEvent);
+      console.log("[Navigation] UserLoggedIn event dispatched");
+      
+      // Show success message
+      toast.success(`Welcome back, ${userProfile.name || 'User'}!`, {
+        duration: 3000,
+        icon: '🎉',
+      });
+      
+      // Close modal if provided
+      if (onClose && typeof onClose === 'function') {
+        console.log("[Navigation] Closing modal");
+        onClose();
+      }
+      
+      // Call onLoginSuccess callback if provided
+      if (onLoginSuccess && typeof onLoginSuccess === 'function') {
+        console.log("[Navigation] Calling onLoginSuccess callback");
+        onLoginSuccess(userProfile);
+      }
+      
+      // Navigate with a slight delay to ensure modal closes and state updates
+      setTimeout(() => {
+        console.log("[Navigation] Attempting to navigate to /dashboard");
+        
+        try {
+          // Use React Router navigation
+          navigate('/dashboard', { 
+            replace: true,
+            state: { 
+              fromLogin: true, 
+              userProfile: userProfile,
+              timestamp: Date.now()
+            }
+          });
+          console.log("[Navigation] React Router navigation successful");
+          
+          // Force a final check - if still on same page after 1 second, try hard navigation
+          setTimeout(() => {
+            if (window.location.pathname !== '/dashboard') {
+              console.log("[Navigation] React Router navigation didn't update URL, using hard navigation");
+              window.location.href = '/dashboard';
+            }
+            setNavigationInProgress(false);
+          }, 1000);
+          
+        } catch (navError) {
+          console.error("[Navigation] Navigation error:", navError);
+          // Fallback to hard navigation
+          window.location.href = '/dashboard';
+          setNavigationInProgress(false);
+        }
+      }, 300);
+      
+    } catch (error) {
+      console.error("[Navigation] Error in handleSuccessfulLogin:", error);
+      setNavigationInProgress(false);
+      toast.error("Login successful but navigation failed. Please refresh the page.");
+      
+      // Last resort fallback
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1000);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (loading || navigationInProgress) return;
+    
+    setLoading(true);
+    try {
+      console.log("[Google] Attempting Google sign in...");
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      console.log("[Google] Signed in successfully:", user.uid);
+      console.log("[Google] Email verified:", user.emailVerified);
+
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileDoc = await getDoc(profileRef);
+
+      let userProfile;
+
+      if (!profileDoc.exists()) {
+        console.log("[Google] Creating new profile");
+        const profileData = {
+          name: user.displayName || 'User',
+          email: user.email,
+          role: 'student',
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+        await setDoc(profileRef, profileData);
+        console.log("[Google] Profile created");
+        
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || 'User',
+          role: 'student',
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+      } else {
+        console.log("[Google] Profile exists, fetching data");
+        const profileData = profileDoc.data();
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: profileData.name || user.displayName || 'User',
+          role: profileData.role || 'student',
+          photoURL: user.photoURL || profileData.photoURL,
+          coins: profileData.coins || 0,
+          diamonds: profileData.diamonds || 0,
+          emailVerified: user.emailVerified,
+        };
+      }
+
+      console.log("[Google] User profile prepared:", userProfile);
+      handleSuccessfulLogin(userProfile);
+
+    } catch (error) {
+      console.error("[GOOGLE AUTH ERROR]", error);
+      let message = 'Google sign-in failed. Please try again.';
+      if (error.code === 'auth/network-request-failed') {
+        message = 'Network error. Please check your internet connection.';
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        message = 'Sign-in cancelled.';
+      } else if (error.code === 'auth/popup-blocked') {
+        message = 'Popup was blocked. Please allow popups for this site.';
+      }
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Password reset handler with detailed logging
@@ -140,126 +311,11 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     }
   };
 
-  // Function to handle navigation after successful login
-  const handleSuccessfulLogin = (userProfile) => {
-    console.log("[Navigation] Starting post-login navigation process");
-    console.log("[Navigation] User profile:", userProfile);
-    
-    // Save to localStorage
-    localStorage.setItem('userProfile', JSON.stringify(userProfile));
-    console.log("[Navigation] Profile saved to localStorage");
-    
-    // Show success message
-    toast.success('Welcome back!');
-    
-    // Close the modal if onClose is provided
-    if (onClose) {
-      console.log("[Navigation] Closing modal");
-      onClose();
-    }
-    
-    // Call onLoginSuccess callback if provided
-    if (onLoginSuccess) {
-      console.log("[Navigation] Calling onLoginSuccess callback");
-      onLoginSuccess(userProfile);
-    }
-    
-    // Navigate to dashboard with a slight delay to ensure modal closes
-    console.log("[Navigation] Scheduling navigation to /dashboard in 300ms");
-    setTimeout(() => {
-      console.log("[Navigation] Navigating to /dashboard now");
-      try {
-        navigate('/dashboard', { replace: true });
-        console.log("[Navigation] Navigation called successfully");
-        
-        // Dispatch custom event for any listeners
-        window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
-        console.log("[Navigation] UserLoggedIn event dispatched");
-        
-        // Force a hard reload if needed (uncomment if navigation doesn't work)
-        // window.location.href = '/dashboard';
-      } catch (navError) {
-        console.error("[Navigation] Navigation error:", navError);
-        // Fallback to hard navigation
-        window.location.href = '/dashboard';
-      }
-    }, 300);
-  };
-
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    try {
-      console.log("[Google] Attempting Google sign in...");
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-
-      console.log("[Google] Signed in successfully:", user.uid);
-      console.log("[Google] Email verified:", user.emailVerified);
-
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileDoc = await getDoc(profileRef);
-
-      let userProfile;
-
-      if (!profileDoc.exists()) {
-        console.log("[Google] Creating new profile");
-        const profileData = {
-          name: user.displayName || 'User',
-          email: user.email,
-          role: 'student',
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-        await setDoc(profileRef, profileData);
-        console.log("[Google] Profile created");
-        
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: user.displayName || 'User',
-          role: 'student',
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-      } else {
-        console.log("[Google] Profile exists, fetching data");
-        const profileData = profileDoc.data();
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: profileData.name || user.displayName || 'User',
-          role: profileData.role || 'student',
-          photoURL: user.photoURL || profileData.photoURL,
-          coins: profileData.coins || 0,
-          diamonds: profileData.diamonds || 0,
-          emailVerified: user.emailVerified,
-        };
-      }
-
-      console.log("[Google] User profile prepared:", userProfile);
-      handleSuccessfulLogin(userProfile);
-
-    } catch (error) {
-      console.error("[GOOGLE AUTH ERROR]", error);
-      let message = 'Google sign-in failed. Please try again.';
-      if (error.code === 'auth/network-request-failed') {
-        message = 'Network error. Please check your internet connection.';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        message = 'Sign-in cancelled.';
-      }
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (loading || navigationInProgress) return;
+    
     setLoading(true);
 
     try {
@@ -348,7 +404,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         toast.success('Account created! Please verify your email address to continue.');
         toast.success('Check your inbox for verification link');
         
-        if (onClose) onClose();
+        if (onClose && typeof onClose === 'function') onClose();
         
         setTimeout(() => {
           console.log("[Signup] Redirecting to home after signup");
@@ -894,12 +950,12 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 type="submit"
-                disabled={loading}
+                disabled={loading || navigationInProgress}
                 className="w-full py-3 sm:py-4 md:py-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold text-sm sm:text-base md:text-lg rounded-xl sm:rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 group relative overflow-hidden"
               >
                 <span className="relative z-10 flex items-center gap-2">
-                  {loading ? 'Processing…' : (isLogin ? 'Sign In' : 'Create Free Account')}
-                  {!loading && <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />}
+                  {loading ? 'Processing…' : (navigationInProgress ? 'Redirecting...' : (isLogin ? 'Sign In' : 'Create Free Account'))}
+                  {!loading && !navigationInProgress && <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />}
                 </span>
                 <span className="absolute inset-0 bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500" />
               </motion.button>
@@ -919,7 +975,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
             <div className="grid grid-cols-1 gap-2 sm:gap-4">
               <button
                 onClick={handleGoogleSignIn}
-                disabled={loading}
+                disabled={loading || navigationInProgress}
                 className="flex items-center justify-center gap-1.5 sm:gap-3 py-2.5 sm:py-3 md:py-4 border border-slate-300/70 dark:border-slate-600/60 rounded-lg sm:rounded-2xl hover:bg-gradient-to-br hover:from-red-50/80 hover:to-orange-50/80 transition-all duration-300 shadow-sm hover:shadow group disabled:opacity-50"
               >
                 <Chrome className="w-4 h-4 sm:w-5 sm:h-6 text-red-600" />

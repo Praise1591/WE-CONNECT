@@ -681,26 +681,42 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
       return { materials: [] };
     }
     
-    let query = db.collection('materials')
-      .where('uid', 'in', followingIds)
-      .orderBy('createdAt', 'desc')
-      .limit(limit);
-    
-    if (startAfter) {
-      const startAfterDoc = await db.collection('materials').doc(startAfter).get();
-      query = query.startAfter(startAfterDoc);
+    // Split into chunks of 10 for the 'in' query
+    const chunks = [];
+    for (let i = 0; i < followingIds.length; i += 10) {
+      chunks.push(followingIds.slice(i, i + 10));
     }
     
-    const snapshot = await query.get();
-    const materials = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate?.() || new Date()
-    }));
+    const allMaterials = [];
+    for (const chunk of chunks) {
+      let query = db.collection('materials')
+        .where('uid', 'in', chunk)
+        .orderBy('createdAt', 'desc')
+        .limit(limit);
+      
+      if (startAfter) {
+        const startAfterDoc = await db.collection('materials').doc(startAfter).get();
+        query = query.startAfter(startAfterDoc);
+      }
+      
+      const snapshot = await query.get();
+      const materials = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.() || new Date()
+      }));
+      allMaterials.push(...materials);
+    }
+    
+    // Sort all materials by createdAt
+    allMaterials.sort((a, b) => b.createdAt - a.createdAt);
+    
+    // Limit results
+    const limitedMaterials = allMaterials.slice(0, limit);
     
     return {
-      materials,
-      lastVisible: snapshot.docs[snapshot.docs.length - 1]?.id || null
+      materials: limitedMaterials,
+      lastVisible: limitedMaterials[limitedMaterials.length - 1]?.id || null
     };
     
   } catch (error) {
@@ -713,7 +729,9 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
 exports.notifyFollowers = functions.firestore
   .document('materials/{materialId}')
   .onCreate(async (snap, context) => {
-    const material = snap.data(); 
+    const material = snap.data();
+    const uploaderId = material.uid;
+    
     try {
       const uploaderRef = db.collection('profiles').doc(uploaderId);
       const uploaderDoc = await uploaderRef.get();
@@ -741,6 +759,7 @@ exports.notifyFollowers = functions.firestore
       });
       
       await batch.commit();
+      console.log(`[Notify] Sent notifications to ${followersSnap.size} followers`);
       
     } catch (error) {
       console.error('Notify followers error:', error);
