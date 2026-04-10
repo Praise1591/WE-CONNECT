@@ -1,371 +1,361 @@
-// Header.jsx — Complete with fixed logout functionality
-import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom';
-import {
-  Menu,
-  Sun,
-  Moon,
-  Bell,
-  ChevronDown,
-  LogOut,
-  User,
-  Coins,
-  Gem,
-  Search,
-  Settings,
-  Zap,
-  X,
-  Eye
+// src/components/Layout/Header.jsx
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Menu, Bell, User, ChevronDown, LogOut, Settings, 
+  HelpCircle, Shield, Search, Moon, Sun, Coins, Star,
+  Wallet, Gift, Award, Gem
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { auth, signOut } from '../../firebase'; // Import signOut correctly
-import AuthForm from '../Dashboard/AuthForm';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
+  const { userProfile, signOut } = useAuth();
   const navigate = useNavigate();
-  const { user, profile, isAuthenticated } = useAuth();
-  
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState('login');
-  const [showSearchInput, setShowSearchInput] = useState(false);
-  const [notifications, setNotifications] = useState([]);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [darkMode, setDarkMode] = useState(false);
+  const menuRef = useRef(null);
+  const notificationRef = useRef(null);
 
-  // Theme management
+  // Check for dark mode preference
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const shouldBeDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-    setIsDarkMode(shouldBeDark);
-    document.documentElement.classList.toggle('dark', shouldBeDark);
+    const isDark = localStorage.getItem('darkMode') === 'true' || 
+                   window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    }
   }, []);
 
-  const toggleDarkMode = () => {
-    const newDark = !isDarkMode;
-    setIsDarkMode(newDark);
-    document.documentElement.classList.toggle('dark', newDark);
-    localStorage.setItem('theme', newDark ? 'dark' : 'light');
-  };
+  // Handle click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = async () => {
-    try {
-      if (!signOut) {
-        console.error('signOut is not available');
-        toast.error('Logout function not available');
-        return;
-      }
-      await signOut(auth);
-      localStorage.removeItem('userProfile');
-      setIsProfileOpen(false);
-      navigate('/', { replace: true });
-      // Dispatch logout event
-      window.dispatchEvent(new CustomEvent('userLoggedOut'));
-    } catch (error) {
-      console.error('Logout failed:', error);
-      toast.error('Failed to logout. Please try again.');
+    await signOut();
+    navigate('/');
+  };
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', newDarkMode);
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   };
 
-  const openAuth = (mode) => {
-    setAuthMode(mode);
-    setShowAuthModal(true);
+  const getUserInitials = () => {
+    const name = userProfile?.name || userProfile?.email || 'User';
+    return name.charAt(0).toUpperCase();
   };
 
-  const getUserDisplayName = () => {
-    if (!isAuthenticated) return 'Guest';
-    return profile?.name || user?.displayName || 'User';
-  };
-
-  const getUserDisplayText = () => {
-    if (!isAuthenticated) return 'Sign in to continue';
-    if (profile?.role === 'student' && profile?.school) return profile.school;
-    if (profile?.role === 'tutor' && profile?.specialization) return profile.specialization;
-    if (profile?.role === 'lecturer') {
-      if (profile?.title && profile?.school) return `${profile.title} • ${profile.school}`;
-      if (profile?.school) return profile.school;
-      if (profile?.department) return profile.department;
+  const getUserName = () => {
+    if (userProfile?.name && userProfile.name !== 'User') {
+      return userProfile.name;
     }
-    return 'Member';
+    if (userProfile?.email) {
+      return userProfile.email.split('@')[0];
+    }
+    return 'User';
   };
 
-  const getInitials = () => {
-    const name = getUserDisplayName();
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const getUserRole = () => {
+    const role = userProfile?.role || 'student';
+    return role.charAt(0).toUpperCase() + role.slice(1);
   };
+
+  // Sample notifications - replace with real data from Firebase
+  const notifications = [
+    { id: 1, title: "New material uploaded", message: "Your favorite category has new content", time: "5 min ago", read: false },
+    { id: 2, title: "Withdrawal processed", message: "Your withdrawal of ₦6,000 has been completed", time: "1 hour ago", read: false },
+    { id: 3, title: "New follower", message: "Oluwaseun started following you", time: "3 hours ago", read: true },
+  ];
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const handleViewProfile = () => {
-    if (isAuthenticated && user?.uid) {
-      navigate(`/profile/${user.uid}`);
-      setIsProfileOpen(false);
-    }
-  };
-
-  const handleSettings = () => {
-    navigate('/settings');
-    setIsProfileOpen(false);
-  };
-
   return (
-    <>
-      <header className="fixed top-0 left-0 right-0 z-40 h-14 lg:h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-lg border-b border-slate-200/50 dark:border-slate-700/50 transition-all duration-300">
-        <div className="h-full px-3 sm:px-4 lg:px-6 flex items-center justify-between">
-          {/* Left Section */}
-          <div className="flex items-center gap-2 lg:gap-3">
-            <button
-              onClick={onMobileMenuToggle}
-              className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
-            >
-              <Menu size={20} className="text-slate-700 dark:text-slate-300" />
-            </button>
-
-            <button
-              onClick={onToggleSidebar}
-              className="hidden lg:block p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
-            >
-              <Menu size={20} className="text-slate-700 dark:text-slate-300" />
-            </button>
-
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
-                <Zap size={18} className="text-white" />
-              </div>
-              <span className="text-base lg:text-lg font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent hidden sm:block">
-                WE CONNECT
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-700">
+      <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-16">
+        {/* Left Section */}
+        <div className="flex items-center gap-3">
+          {/* Mobile menu button */}
+          <button
+            onClick={onMobileMenuToggle}
+            className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <Menu className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          </button>
+          
+          {/* Desktop sidebar toggle */}
+          <button
+            onClick={onToggleSidebar}
+            className="hidden lg:block p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <Menu className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          </button>
+          
+          {/* Welcome Message */}
+          <div className="hidden md:block">
+            <h1 className="text-lg font-semibold text-slate-800 dark:text-white">
+              Welcome back,{' '}
+              <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                {getUserName()}
               </span>
+            </h1>
+            <p className="text-xs text-slate-500">
+              {getUserRole()} • {userProfile?.school || 'Ready to learn'}
+            </p>
+          </div>
+        </div>
+
+        {/* Center Section - Search Bar (Hidden on mobile) */}
+        <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search materials, tutors, or topics..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+            />
+          </div>
+        </div>
+
+        {/* Right Section */}
+        <div className="flex items-center gap-2">
+          {/* Quick Stats - Coin & Diamond Display */}
+          <div className="hidden lg:flex items-center gap-2 mr-2">
+            {/* Coins Badge */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 rounded-full border border-amber-200 dark:border-amber-800">
+              <Coins className="w-4 h-4 text-amber-500" />
+              <div>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight">Coins</p>
+                <p className="text-sm font-bold text-amber-700 dark:text-amber-300 leading-tight">
+                  {userProfile?.coins?.toLocaleString() || 0}
+                </p>
+              </div>
+            </div>
+            
+            {/* Diamonds Badge */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-950/30 rounded-full border border-purple-200 dark:border-purple-800">
+              <Gem className="w-4 h-4 text-purple-500" />
+              <div>
+                <p className="text-[10px] text-purple-600 dark:text-purple-400 leading-tight">Diamonds</p>
+                <p className="text-sm font-bold text-purple-700 dark:text-purple-300 leading-tight">
+                  {userProfile?.diamonds?.toLocaleString() || 0}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div className="flex-1 max-w-xl mx-2 sm:mx-4">
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 lg:w-5 lg:h-5" />
-              <input
-                type="text"
-                placeholder="Search materials, courses, users..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm lg:text-base"
-              />
-            </div>
-            <button 
-              onClick={() => setShowSearchInput(!showSearchInput)}
-              className="md:hidden p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={toggleDarkMode}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            {darkMode ? (
+              <Sun className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            ) : (
+              <Moon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+            )}
+          </button>
+
+          {/* Notifications */}
+          <div className="relative" ref={notificationRef}>
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              <Search size={20} className="text-slate-700 dark:text-slate-300" />
+              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              )}
             </button>
-            {showSearchInput && (
-              <div className="absolute top-full left-0 right-0 mt-2 p-3 bg-white dark:bg-slate-800 rounded-xl shadow-xl md:hidden">
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  autoFocus
-                />
+
+            {/* Notifications Dropdown */}
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50">
+                <div className="p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                  <h3 className="font-semibold text-slate-800 dark:text-white">Notifications</h3>
+                  <button className="text-xs text-indigo-600 hover:underline">Mark all read</button>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-4 text-center text-slate-500">No notifications</div>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        className={`p-3 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition cursor-pointer ${!notif.read ? 'bg-indigo-50/50 dark:bg-indigo-950/20' : ''}`}
+                      >
+                        <p className="text-sm font-medium text-slate-800 dark:text-white">{notif.title}</p>
+                        <p className="text-xs text-slate-500 mt-1">{notif.message}</p>
+                        <p className="text-xs text-slate-400 mt-1">{notif.time}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="p-2 border-t border-slate-200 dark:border-slate-700">
+                  <button className="w-full text-center text-sm text-indigo-600 py-1 hover:underline">
+                    View all notifications
+                  </button>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Right Section */}
-          <div className="flex items-center gap-1 sm:gap-2 lg:gap-3">
-            {/* Theme Toggle */}
+          {/* User Menu */}
+          <div className="relative" ref={menuRef}>
             <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center gap-2 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              {isDarkMode ? (
-                <Sun size={18} className="text-yellow-500" />
-              ) : (
-                <Moon size={18} className="text-slate-600" />
-              )}
+              <div className="w-9 h-9 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+                {getUserInitials()}
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Notifications */}
-            <button className="relative p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-              <Bell size={18} className="text-slate-700 dark:text-slate-300" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              )}
-            </button>
-
-            {/* User Profile */}
-            <div className="relative">
-              <button
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
-              >
-                <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 shadow-md flex-shrink-0">
-                  {profile?.photoURL || user?.photoURL ? (
-                    <img 
-                      src={profile?.photoURL || user?.photoURL} 
-                      alt={getUserDisplayName()} 
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white font-bold text-sm">
-                      {getInitials()}
+            {/* User Dropdown Menu */}
+            {showUserMenu && (
+              <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50">
+                {/* User Info */}
+                <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                      {getUserInitials()}
                     </div>
-                  )}
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-white">{getUserName()}</p>
+                      <p className="text-xs text-slate-500">{userProfile?.email || 'No email'}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="hidden md:block text-left">
-                  <p className="text-sm font-semibold text-slate-800 dark:text-white truncate max-w-[120px] lg:max-w-[160px]">
-                    {getUserDisplayName()}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[120px] lg:max-w-[160px]">
-                    {getUserDisplayText()}
-                  </p>
+                
+                {/* Balance Stats Row */}
+                <div className="p-3 border-b border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3">
+                  <div className="text-center p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <Coins className="w-4 h-4 text-amber-500" />
+                      <p className="text-xs text-amber-600 font-medium">Coins</p>
+                    </div>
+                    <p className="text-lg font-bold text-amber-700 dark:text-amber-300">
+                      {userProfile?.coins?.toLocaleString() || 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400">= ₦{((userProfile?.coins || 0) * 100).toLocaleString()}</p>
+                  </div>
+                  <div className="text-center p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <Gem className="w-4 h-4 text-purple-500" />
+                      <p className="text-xs text-purple-600 font-medium">Diamonds</p>
+                    </div>
+                    <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
+                      {userProfile?.diamonds?.toLocaleString() || 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400">= ₦{((userProfile?.diamonds || 0) * 60).toLocaleString()}</p>
+                  </div>
                 </div>
-                <ChevronDown 
-                  size={14} 
-                  className={`hidden md:block transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} 
-                />
-              </button>
-
-              {/* Dropdown Menu */}
-              <AnimatePresence>
-                {isProfileOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setIsProfileOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      transition={{ duration: 0.2 }}
-                      className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 z-40 overflow-hidden"
-                    >
-                      {/* User Info */}
-                      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 shadow-md">
-                            {profile?.photoURL || user?.photoURL ? (
-                              <img 
-                                src={profile?.photoURL || user?.photoURL} 
-                                alt={getUserDisplayName()} 
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-white font-bold text-lg">
-                                {getInitials()}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-bold text-slate-900 dark:text-white">
-                              {getUserDisplayName()}
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                              {getUserDisplayText()}
-                            </p>
-                          </div>
-                        </div>
-                        {isAuthenticated && (
-                          <div className="flex gap-4 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                            <div className="flex items-center gap-2">
-                              <Coins size={16} className="text-yellow-600" />
-                              <span className="font-semibold text-sm">{profile?.coins || 0}</span>
-                              <span className="text-xs text-slate-500">coins</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Gem size={16} className="text-purple-600" />
-                              <span className="font-semibold text-sm">{profile?.diamonds || 0}</span>
-                              <span className="text-xs text-slate-500">diamonds</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Menu Items */}
-                      <div className="p-2">
-                        {isAuthenticated ? (
-                          <>
-                            <button
-                              onClick={handleViewProfile}
-                              className="w-full px-4 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl flex items-center gap-3 transition-all text-sm"
-                            >
-                              <Eye size={16} />
-                              <span>View Public Profile</span>
-                            </button>
-                            <button
-                              onClick={handleSettings}
-                              className="w-full px-4 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl flex items-center gap-3 transition-all text-sm"
-                            >
-                              <Settings size={16} />
-                              <span>Profile Settings</span>
-                            </button>
-                            <button
-                              onClick={handleLogout}
-                              className="w-full px-4 py-2.5 text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl flex items-center gap-3 transition-all text-sm"
-                            >
-                              <LogOut size={16} />
-                              <span>Logout</span>
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => openAuth('login')}
-                              className="w-full px-4 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-sm font-medium"
-                            >
-                              Log In
-                            </button>
-                            <button
-                              onClick={() => openAuth('register')}
-                              className="w-full px-4 py-2.5 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-medium"
-                            >
-                              Create Account
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
+                
+                {/* Menu Items */}
+                <div className="py-2">
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/settings');
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Settings
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/monetary');
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    Wallet
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/about');
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                    Help & Support
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/admin');
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+                  >
+                    <Shield className="w-4 h-4" />
+                    Admin Panel
+                  </button>
+                  <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Mobile Search Overlay */}
-      {showSearchInput && (
-        <div className="fixed inset-0 z-50 bg-black/50 lg:hidden" onClick={() => setShowSearchInput(false)}>
-          <div className="bg-white dark:bg-slate-900 p-4" onClick={e => e.stopPropagation()}>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Search..."
-                className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                autoFocus
-              />
-              <button onClick={() => setShowSearchInput(false)} className="p-3">
-                <X size={20} />
-              </button>
-            </div>
-          </div>
+      {/* Mobile Search Bar - Only visible on mobile */}
+      <div className="md:hidden px-4 pb-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
-      )}
-
-      {/* Auth Modal */}
-      {showAuthModal && ReactDOM.createPortal(
-        <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
-          onClick={() => setShowAuthModal(false)}
-        >
-          <div
-            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <AuthForm
-              initialMode={authMode}
-              onClose={() => setShowAuthModal(false)}
-            />
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
+      </div>
+      
+      {/* Mobile Balance Summary - Only visible on mobile */}
+      <div className="md:hidden px-4 pb-3 flex gap-3">
+        <div className="flex-1 flex items-center justify-center gap-2 py-1.5 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+          <Coins className="w-4 h-4 text-amber-500" />
+          <span className="text-sm font-bold text-amber-600">{userProfile?.coins?.toLocaleString() || 0}</span>
+          <span className="text-xs text-amber-500">Coins</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center gap-2 py-1.5 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+          <Gem className="w-4 h-4 text-purple-500" />
+          <span className="text-sm font-bold text-purple-600">{userProfile?.diamonds?.toLocaleString() || 0}</span>
+          <span className="text-xs text-purple-500">Diamonds</span>
+        </div>
+      </div>
+    </header>
   );
 }
 

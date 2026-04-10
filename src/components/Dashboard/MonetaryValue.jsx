@@ -1,38 +1,23 @@
-// MonetaryValue.jsx - Demo Mode Enabled (Fully Functional)
+// MonetaryValue.jsx - Complete with Sports Betting Style Withdrawal System
 import React, { useState, useEffect } from 'react';
 import { 
-  Coins, Gem, CreditCard, Banknote, Wallet, Loader2, 
+  Coins, Gem, CreditCard, Wallet, Loader2, 
   AlertCircle, Sparkles, History, ArrowDownToLine, ArrowUpFromLine,
   TrendingUp, Shield, Zap, Clock, CheckCircle, XCircle,
-  Building2, Smartphone, User, CreditCard as CardIcon,
-  DollarSign, Gift, Star, Award, Target, Flame, Copy, Check,
-  AlertTriangle, RefreshCw
+  Building2, Smartphone, Copy, Check, Eye, Filter, Search,
+  ChevronDown, ChevronUp, Info, DollarSign, Users, Award
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { auth, db, functions } from '../../firebase';
-import { httpsCallable } from 'firebase/functions';
+import { auth, db } from '../../firebase';
 import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  collection, 
-  addDoc, 
-  query, 
-  orderBy, 
-  limit,
-  getDocs, 
-  runTransaction, 
-  serverTimestamp,
-  updateDoc,
-  onSnapshot,
-  where,
-  writeBatch
+  doc, getDoc, setDoc, collection, addDoc, query, orderBy, limit,
+  runTransaction, serverTimestamp, onSnapshot, where, getDocs,
+  updateDoc, writeBatch
 } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Set to true for demo mode (fully functional wallet)
-// Set to false when Kora API is ready for live payments
-const USE_DEMO_MODE = false;
+// Paystack Live Configuration
+const PAYSTACK_PUBLIC_KEY = 'pk_live_8e6ac6ab9876e300cc6b8d37270028aaf57f5c61';
 
 function MonetaryValue() {
   // ==================== STATE ====================
@@ -52,15 +37,22 @@ function MonetaryValue() {
   const [isBuying, setIsBuying] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [transactions, setTransactions] = useState([]);
+  const [withdrawalRequests, setWithdrawalRequests] = useState([]);
   const [loadingError, setLoadingError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('buy');
-  const [selectedPreset, setSelectedPreset] = useState(null);
   const [paymentReference, setPaymentReference] = useState('');
   const [copied, setCopied] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState(null);
-  const [paymentUrl, setPaymentUrl] = useState('');
-  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [paystackLoaded, setPaystackLoaded] = useState(false);
+  const [showWithdrawalHistory, setShowWithdrawalHistory] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [stats, setStats] = useState({
+    totalWithdrawn: 0,
+    pendingWithdrawals: 0,
+    totalDeposits: 0,
+    withdrawalCount: 0
+  });
 
   const VALUE_PER_DIAMOND = 60;
 
@@ -82,11 +74,11 @@ function MonetaryValue() {
   ];
 
   const fintechOptions = [
-    { name: 'OPay', color: '#FF6600', icon: '' },
-    { name: 'PalmPay', color: '#00C853', icon: '' },
-    { name: 'Kuda', color: '#00A8E8', icon: '' },
-    { name: 'Moniepoint', color: '#FF0000', icon: '' },
-    { name: 'Carbon', color: '#6B46C1', icon: '' },
+    { name: 'OPay', color: '#FF6600', icon: '💚' },
+    { name: 'PalmPay', color: '#00C853', icon: '🌴' },
+    { name: 'Kuda', color: '#00A8E8', icon: '💜' },
+    { name: 'Moniepoint', color: '#FF0000', icon: '🔴' },
+    { name: 'Carbon', color: '#6B46C1', icon: '⚫' },
   ];
 
   const coinPresets = [
@@ -107,7 +99,35 @@ function MonetaryValue() {
     { diamonds: 500, amount: 30000, popular: false },
   ];
 
-  // ==================== INITIALIZATION ====================
+  // Load Paystack script on mount
+  useEffect(() => {
+    if (window.PaystackPop) {
+      setPaystackLoaded(true);
+      console.log('[Paystack] Already loaded');
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://js.paystack.co/v1/inline.js';
+    script.async = true;
+    
+    script.onload = () => {
+      setTimeout(() => {
+        if (window.PaystackPop) {
+          setPaystackLoaded(true);
+          console.log('[Paystack] Ready to use');
+        }
+      }, 500);
+    };
+    
+    script.onerror = () => {
+      toast.error('Failed to load payment system. Please refresh.');
+    };
+    
+    document.body.appendChild(script);
+  }, []);
+
+  // Load user data and withdrawals
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
@@ -115,9 +135,9 @@ function MonetaryValue() {
       setLoadingError(null);
 
       if (!user) {
-        toast.info('Please log in to access wallet');
         setProfile(null);
         setTransactions([]);
+        setWithdrawalRequests([]);
         setLoading(false);
         return;
       }
@@ -144,12 +164,9 @@ function MonetaryValue() {
           userData = userSnap.data();
         }
 
-        setProfile({
-          ...userData,
-          id: user.uid,
-        });
+        setProfile({ ...userData, id: user.uid });
 
-        // Set up real-time transaction listener
+        // Real-time transaction listener
         const txRef = collection(db, 'users', user.uid, 'transactions');
         const txQuery = query(txRef, orderBy('timestamp', 'desc'), limit(50));
         
@@ -160,13 +177,45 @@ function MonetaryValue() {
             timestamp: doc.data().timestamp?.toDate?.() || new Date(doc.data().timestamp),
           }));
           setTransactions(txList);
+          
+          // Calculate stats
+          const withdrawals = txList.filter(tx => tx.type === 'withdrawal');
+          const deposits = txList.filter(tx => tx.type === 'purchase');
+          const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending' || w.status === 'processing');
+          
+          setStats({
+            totalWithdrawn: withdrawals.reduce((sum, w) => sum + (w.amountNGN || 0), 0),
+            pendingWithdrawals: pendingWithdrawals.reduce((sum, w) => sum + (w.amountNGN || 0), 0),
+            totalDeposits: deposits.reduce((sum, d) => sum + (d.amountNGN || 0), 0),
+            withdrawalCount: withdrawals.length
+          });
         });
 
-        return () => unsubscribeTx();
+        // Real-time withdrawal requests listener
+        const withdrawalRef = collection(db, 'users', user.uid, 'transactions');
+        const withdrawalQuery = query(
+          withdrawalRef, 
+          where('type', '==', 'withdrawal'),
+          orderBy('timestamp', 'desc')
+        );
         
+        const unsubscribeWithdrawals = onSnapshot(withdrawalQuery, (snapshot) => {
+          const withdrawalList = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate?.() || new Date(doc.data().timestamp),
+            processedAt: doc.data().processedAt?.toDate?.() || null
+          }));
+          setWithdrawalRequests(withdrawalList);
+        });
+
+        return () => {
+          unsubscribeTx();
+          unsubscribeWithdrawals();
+        };
       } catch (err) {
         console.error('Wallet load error:', err);
-        setLoadingError(`Failed to load wallet: ${err.message || 'Unknown error'}`);
+        setLoadingError(`Failed to load wallet: ${err.message}`);
         toast.error('Failed to load wallet');
       } finally {
         setLoading(false);
@@ -203,78 +252,78 @@ function MonetaryValue() {
     });
   };
 
-  // ==================== DEMO PAYMENT FUNCTIONS ====================
-  const simulatePayment = async (amount, coins, reference) => {
-    return new Promise(async (resolve) => {
-      toast.info('Processing demo payment...');
-      
-      setTimeout(async () => {
-        try {
-          const userRef = doc(db, 'users', currentUser.uid);
-          await runTransaction(db, async (t) => {
-            const userDoc = await t.get(userRef);
-            const currentCoins = userDoc.data().coins || 0;
-            t.update(userRef, { coins: currentCoins + coins });
-          });
-          
-          await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
-            type: 'purchase',
-            amountNGN: amount,
-            description: `Bought ${coins} WE CONNECT Coins`,
-            status: 'completed',
-            timestamp: serverTimestamp(),
-            reference: reference,
-            paymentMethod: 'Demo Mode'
-          });
-          
-          resolve(true);
-        } catch (err) {
-          console.error('Demo payment error:', err);
-          resolve(false);
-        }
-      }, 2000);
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'completed': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      case 'pending': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'processing': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'rejected': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+      default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch(status) {
+      case 'completed': return <CheckCircle size={14} />;
+      case 'pending': return <Clock size={14} />;
+      case 'processing': return <Loader2 size={14} className="animate-spin" />;
+      case 'rejected': return <XCircle size={14} />;
+      default: return <Info size={14} />;
+    }
+  };
+
+  // ==================== PAYSTACK PAYMENT ====================
+  const handlePaystackPayment = (amount, coins, reference) => {
+    return new Promise((resolve, reject) => {
+      if (!window.PaystackPop) {
+        reject(new Error('Paystack not loaded. Please refresh.'));
+        return;
+      }
+
+      try {
+        const paymentCallback = (response) => {
+          if (response.status === 'success') {
+            resolve({ status: 'success', reference: response.reference });
+          } else {
+            reject(new Error('Payment failed'));
+          }
+        };
+
+        const paymentOnClose = () => {
+          reject(new Error('Payment window closed'));
+        };
+
+        const handler = window.PaystackPop.setup({
+          key: PAYSTACK_PUBLIC_KEY,
+          email: currentUser.email || `${currentUser.uid}@user.com`,
+          amount: amount * 100,
+          ref: reference,
+          metadata: {
+            custom_fields: [
+              { display_name: "Coins Purchased", variable_name: "coins", value: coins.toString() },
+              { display_name: "User ID", variable_name: "user_id", value: currentUser.uid }
+            ]
+          },
+          callback: paymentCallback,
+          onClose: paymentOnClose
+        });
+        
+        handler.openIframe();
+      } catch (err) {
+        reject(err);
+      }
     });
   };
 
-  const simulateWithdrawal = async (amount, diamonds, details) => {
-    return new Promise(async (resolve) => {
-      toast.info('Processing demo withdrawal...');
-      
-      setTimeout(async () => {
-        try {
-          const userRef = doc(db, 'users', currentUser.uid);
-          await runTransaction(db, async (t) => {
-            const userDoc = await t.get(userRef);
-            const currentDiamonds = userDoc.data().diamonds || 0;
-            t.update(userRef, { diamonds: currentDiamonds - diamonds });
-          });
-          
-          await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
-            type: 'withdrawal',
-            amountNGN: amount,
-            description: `Withdrawal of ₦${amount.toLocaleString()} (${diamonds} diamonds)`,
-            status: 'completed',
-            timestamp: serverTimestamp(),
-            diamondsUsed: diamonds,
-            withdrawalDetails: details,
-            paymentMethod: 'Demo Mode'
-          });
-          
-          resolve(true);
-        } catch (err) {
-          console.error('Demo withdrawal error:', err);
-          resolve(false);
-        }
-      }, 2000);
-    });
-  };
-
-  // ==================== MAIN HANDLERS ====================
-  
-  // Buy Coins Handler
+  // ==================== BUY COINS HANDLER ====================
   const handleBuyCoins = async () => {
     if (!currentUser) {
       toast.error('Please log in first');
+      return;
+    }
+    
+    if (!paystackLoaded) {
+      toast.error('Payment system is loading. Please wait...');
       return;
     }
     
@@ -288,69 +337,58 @@ function MonetaryValue() {
     setIsBuying(true);
     const reference = generateReference();
     setPaymentReference(reference);
-    setPaymentStatus('initializing');
+    setPaymentStatus('processing');
 
     try {
-      if (USE_DEMO_MODE) {
-        // Demo Mode - Simulate payment
-        setPaymentStatus('processing');
-        const success = await simulatePayment(totalAmount, amount, reference);
-        if (success) {
-          toast.success(`Success! ${amount} coins added to your wallet`);
-          setProfile(prev => ({ ...prev, coins: (prev?.coins || 0) + amount }));
-          setCoinsToBuy('');
-          setPaymentReference('');
-          setPaymentStatus('success');
-          
-          // Refresh profile
-          const userRef = doc(db, 'users', currentUser.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            setProfile({ ...userSnap.data(), id: currentUser.uid });
-          }
-        } else {
-          toast.error('Payment failed. Please try again.');
-          setPaymentStatus('failed');
-        }
-      } else {
-        // Kora Integration - Coming Soon
-        toast.info('Kora payment integration coming soon. Using demo mode temporarily.');
-        // Fallback to demo mode temporarily
-        setPaymentStatus('processing');
-        const success = await simulatePayment(totalAmount, amount, reference);
-        if (success) {
-          toast.success(`Success! ${amount} coins added to your wallet`);
-          setProfile(prev => ({ ...prev, coins: (prev?.coins || 0) + amount }));
-          setCoinsToBuy('');
-          setPaymentReference('');
-          setPaymentStatus('success');
-          
-          const userRef = doc(db, 'users', currentUser.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            setProfile({ ...userSnap.data(), id: currentUser.uid });
-          }
-        } else {
-          toast.error('Payment failed. Please try again.');
-          setPaymentStatus('failed');
-        }
-      }
+      const result = await handlePaystackPayment(totalAmount, amount, reference);
       
+      if (result.status === 'success') {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await runTransaction(db, async (t) => {
+          const userDoc = await t.get(userRef);
+          const currentCoins = userDoc.data().coins || 0;
+          t.update(userRef, { coins: currentCoins + amount });
+        });
+        
+        await addDoc(collection(db, 'users', currentUser.uid, 'transactions'), {
+          type: 'purchase',
+          amountNGN: totalAmount,
+          description: `Bought ${amount} WE CONNECT Coins`,
+          status: 'completed',
+          timestamp: serverTimestamp(),
+          reference: reference,
+          paymentMethod: 'Paystack',
+          paystackReference: result.reference
+        });
+        
+        toast.success(`Success! ${amount} coins added!`);
+        setProfile(prev => ({ ...prev, coins: (prev?.coins || 0) + amount }));
+        setCoinsToBuy('');
+        setPaymentReference('');
+        setPaymentStatus('success');
+        
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          setProfile({ ...userSnap.data(), id: currentUser.uid });
+        }
+        
+        setTimeout(() => setPaymentStatus(null), 3000);
+      }
     } catch (err) {
       console.error('Payment error:', err);
-      toast.error(err.message || 'Failed to initialize payment. Please try again.');
+      if (err.message === 'Payment window closed') {
+        toast.info('Payment was cancelled');
+      } else {
+        toast.error(err.message || 'Payment failed. Please try again.');
+      }
       setPaymentStatus('failed');
+      setTimeout(() => setPaymentStatus(null), 3000);
     } finally {
-      setTimeout(() => {
-        setIsBuying(false);
-        if (paymentStatus === 'success') {
-          setTimeout(() => setPaymentStatus(null), 3000);
-        }
-      }, 3000);
+      setIsBuying(false);
     }
   };
 
-  // Withdraw Diamonds Handler
+  // ==================== WITHDRAW HANDLER (Enhanced) ====================
   const handleWithdraw = async () => {
     if (!currentUser) {
       toast.error('Please log in first');
@@ -368,10 +406,17 @@ function MonetaryValue() {
       return;
     }
 
+    // Check for pending withdrawals
+    const hasPending = withdrawalRequests.some(w => w.status === 'pending' || w.status === 'processing');
+    if (hasPending) {
+      toast.error('You have a pending withdrawal request. Please wait for it to be processed.');
+      return;
+    }
+
     // Validate withdrawal details
     if (withdrawMethod === 'bank') {
       if (!withdrawDetails.bankName || !withdrawDetails.accountNumber || !withdrawDetails.accountName) {
-        toast.error('Please select a bank and complete all details');
+        toast.error('Please complete all bank details');
         return;
       }
       if (withdrawDetails.accountNumber.length < 10) {
@@ -382,7 +427,7 @@ function MonetaryValue() {
 
     if (withdrawMethod === 'mobile') {
       if (!withdrawDetails.fintechName || !withdrawDetails.mobileNumber) {
-        toast.error('Please select a fintech wallet and enter your number');
+        toast.error('Please complete all mobile wallet details');
         return;
       }
       if (withdrawDetails.mobileNumber.length < 10) {
@@ -391,33 +436,67 @@ function MonetaryValue() {
       }
     }
 
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      `💰 WITHDRAWAL CONFIRMATION\n\n` +
+      `Amount: ₦${(amount * VALUE_PER_DIAMOND).toLocaleString()}\n` +
+      `Diamonds: ${amount.toLocaleString()}\n` +
+      `Method: ${withdrawMethod === 'bank' ? 'Bank Transfer' : 'Mobile Wallet'}\n` +
+      `Account: ${withdrawMethod === 'bank' ? withdrawDetails.accountNumber : withdrawDetails.mobileNumber}\n\n` +
+      `⏱️ Processing Time: 1-3 business days\n` +
+      `💰 Processing Fee: FREE\n\n` +
+      `Click OK to confirm withdrawal request.`
+    );
+
+    if (!confirmed) return;
+
     setIsWithdrawing(true);
     const totalAmount = amount * VALUE_PER_DIAMOND;
+    const reference = generateReference();
 
     try {
-      const success = await simulateWithdrawal(totalAmount, amount, withdrawDetails);
-      if (success) {
-        toast.success(`Withdrawal of ₦${totalAmount.toLocaleString()} processed!`);
-        setProfile(prev => ({ ...prev, diamonds: (prev?.diamonds || 0) - amount }));
-        setDiamondsToWithdraw('');
-        setWithdrawDetails({
-          bankName: '',
-          bankCode: '',
-          accountNumber: '',
-          accountName: '',
-          mobileNumber: '',
-          fintechName: '',
-        });
-        
-        // Refresh profile
-        const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setProfile({ ...userSnap.data(), id: currentUser.uid });
-        }
-      } else {
-        toast.error('Withdrawal failed. Please try again.');
-      }
+      const userRef = doc(db, 'users', currentUser.uid);
+      
+      // Use batch write for atomic operation
+      const batch = writeBatch(db);
+      
+      // Update user diamonds
+      const userDoc = await getDoc(userRef);
+      const currentDiamonds = userDoc.data().diamonds || 0;
+      if (currentDiamonds < amount) throw new Error('Insufficient diamonds');
+      batch.update(userRef, { diamonds: currentDiamonds - amount });
+      
+      // Create withdrawal request
+      const withdrawalRef = doc(collection(db, 'users', currentUser.uid, 'transactions'));
+      batch.set(withdrawalRef, {
+        type: 'withdrawal',
+        amountNGN: totalAmount,
+        diamonds: amount,
+        description: `Withdrawal request of ₦${totalAmount.toLocaleString()} (${amount.toLocaleString()} diamonds)`,
+        status: 'pending',
+        timestamp: serverTimestamp(),
+        reference: reference,
+        withdrawalMethod: withdrawMethod,
+        withdrawalDetails: withdrawDetails,
+        paymentMethod: withdrawMethod === 'bank' ? 'Bank Transfer' : 'Mobile Wallet'
+      });
+      
+      await batch.commit();
+      
+      toast.success(`✅ Withdrawal request submitted successfully!`);
+      toast.info(`💰 ₦${totalAmount.toLocaleString()} will be sent within 1-3 business days`, { autoClose: 5000 });
+      
+      // Reset form
+      setProfile(prev => ({ ...prev, diamonds: currentDiamonds - amount }));
+      setDiamondsToWithdraw('');
+      setWithdrawDetails({
+        bankName: '',
+        bankCode: '',
+        accountNumber: '',
+        accountName: '',
+        mobileNumber: '',
+        fintechName: '',
+      });
       
     } catch (err) {
       console.error('Withdrawal error:', err);
@@ -429,6 +508,11 @@ function MonetaryValue() {
 
   const totalBuyAmount = Number(coinsToBuy) * 100 || 0;
   const totalWithdrawAmount = Number(diamondsToWithdraw) * VALUE_PER_DIAMOND || 0;
+
+  // Filtered withdrawal requests
+  const filteredWithdrawals = withdrawalRequests.filter(w => 
+    filterStatus === 'all' ? true : w.status === filterStatus
+  );
 
   // ==================== LOADING STATES ====================
   if (loading) {
@@ -479,18 +563,87 @@ function MonetaryValue() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12">
         
-        {/* Demo Mode Badge */}
-        <div className="mb-6 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        {/* Live Mode Badge */}
+        <div className="mb-6 rounded-xl p-4 flex items-start gap-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+          <Shield className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              ⚠️ Demo Mode Active
+            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+              🔒 Live Payments Active - Powered by Paystack
             </p>
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-              This is a demo version of the wallet. All transactions are simulated for testing.
-              Kora payment integration will be added soon.
+            <p className="text-xs mt-1 text-green-700 dark:text-green-400">
+              All transactions are processed securely. Withdrawals processed within 1-3 business days.
             </p>
           </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/85 dark:bg-slate-800/85 backdrop-blur-xl rounded-xl p-4 border border-slate-200/70 dark:border-slate-700/60"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                <DollarSign className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Total Deposits</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-white">₦{stats.totalDeposits.toLocaleString()}</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white/85 dark:bg-slate-800/85 backdrop-blur-xl rounded-xl p-4 border border-slate-200/70 dark:border-slate-700/60"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                <ArrowDownToLine className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Total Withdrawn</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-white">₦{stats.totalWithdrawn.toLocaleString()}</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white/85 dark:bg-slate-800/85 backdrop-blur-xl rounded-xl p-4 border border-slate-200/70 dark:border-slate-700/60"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                <Clock className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Pending Withdrawals</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-white">₦{stats.pendingWithdrawals.toLocaleString()}</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white/85 dark:bg-slate-800/85 backdrop-blur-xl rounded-xl p-4 border border-slate-200/70 dark:border-slate-700/60"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                <Award className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Total Withdrawals</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.withdrawalCount}</p>
+              </div>
+            </div>
+          </motion.div>
         </div>
 
         {/* Header */}
@@ -510,7 +663,6 @@ function MonetaryValue() {
 
         {/* Balance Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-          {/* Coins Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -542,7 +694,6 @@ function MonetaryValue() {
             </div>
           </motion.div>
 
-          {/* Diamonds Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -568,7 +719,7 @@ function MonetaryValue() {
                 <p className="text-white/70 text-sm mt-2">Diamonds</p>
               </div>
               <div className="flex items-center gap-2 text-white/80 text-sm">
-                <DollarSign className="w-4 h-4" />
+                <Zap className="w-4 h-4" />
                 <span>1 Diamond = ₦{VALUE_PER_DIAMOND}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-white/20">
@@ -610,9 +761,8 @@ function MonetaryValue() {
           </div>
         </div>
 
-        {/* Content */}
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
           <div className="lg:col-span-2">
             {activeTab === 'buy' ? (
               <motion.div
@@ -626,9 +776,7 @@ function MonetaryValue() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Buy Coins</h2>
-                    <p className="text-sm text-slate-500">
-                      Demo Mode • ₦100 = 1 Coin
-                    </p>
+                    <p className="text-sm text-slate-500">Live • ₦100 = 1 Coin</p>
                   </div>
                 </div>
 
@@ -637,10 +785,7 @@ function MonetaryValue() {
                   {coinPresets.map((preset) => (
                     <button
                       key={preset.coins}
-                      onClick={() => {
-                        setCoinsToBuy(preset.coins.toString());
-                        setSelectedPreset(preset.coins);
-                      }}
+                      onClick={() => setCoinsToBuy(preset.coins.toString())}
                       className={`relative p-3 rounded-xl border-2 text-center transition-all ${
                         coinsToBuy === preset.coins.toString()
                           ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30 shadow-lg'
@@ -677,7 +822,6 @@ function MonetaryValue() {
                   </div>
                 </div>
 
-                {/* Summary */}
                 {coinsToBuy && Number(coinsToBuy) > 0 && (
                   <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-xl">
                     <div className="flex justify-between items-center">
@@ -691,23 +835,19 @@ function MonetaryValue() {
                   </div>
                 )}
 
-                {/* Payment Status */}
                 {paymentStatus && (
                   <div className={`mb-6 p-4 rounded-xl ${
                     paymentStatus === 'processing' ? 'bg-blue-50 dark:bg-blue-950/20' :
-                    paymentStatus === 'pending' ? 'bg-yellow-50 dark:bg-yellow-950/20' :
                     paymentStatus === 'success' ? 'bg-green-50 dark:bg-green-950/20' :
                     'bg-red-50 dark:bg-red-950/20'
                   }`}>
                     <div className="flex items-center gap-3">
                       {paymentStatus === 'processing' && <Loader2 className="w-5 h-5 animate-spin text-blue-600" />}
-                      {paymentStatus === 'pending' && <Clock className="w-5 h-5 text-yellow-600" />}
                       {paymentStatus === 'success' && <CheckCircle className="w-5 h-5 text-green-600" />}
                       {paymentStatus === 'failed' && <XCircle className="w-5 h-5 text-red-600" />}
                       <div className="flex-1">
                         <p className="text-sm font-medium">
-                          {paymentStatus === 'processing' && 'Processing payment...'}
-                          {paymentStatus === 'pending' && 'Payment pending - complete in popup window'}
+                          {paymentStatus === 'processing' && 'Initializing Paystack payment...'}
                           {paymentStatus === 'success' && 'Payment successful! Coins added to wallet'}
                           {paymentStatus === 'failed' && 'Payment failed - please try again'}
                         </p>
@@ -716,31 +856,17 @@ function MonetaryValue() {
                   </div>
                 )}
 
-                {/* Buy Button */}
                 <button
                   onClick={handleBuyCoins}
-                  disabled={isBuying || !coinsToBuy || Number(coinsToBuy) < 1}
+                  disabled={isBuying || !coinsToBuy || Number(coinsToBuy) < 1 || !paystackLoaded}
                   className="w-full py-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-semibold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {isBuying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                  {isBuying ? 'Processing...' : `Pay ₦${totalBuyAmount.toLocaleString()}`}
+                  {isBuying ? 'Processing...' : `Pay ₦${totalBuyAmount.toLocaleString()} with Paystack`}
                 </button>
 
-                {/* Payment Reference Display */}
-                {paymentReference && paymentStatus !== 'success' && (
-                  <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-between">
-                    <span className="text-xs text-slate-600 dark:text-slate-400 font-mono">Ref: {paymentReference}</span>
-                    <button
-                      onClick={() => copyToClipboard(paymentReference)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition"
-                    >
-                      {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                    </button>
-                  </div>
-                )}
-
                 <p className="text-xs text-center text-slate-500 mt-4">
-                  🔒 Demo mode - All transactions are simulated for testing
+                  🔒 Secure payments powered by Paystack. Your financial details are encrypted and secure.
                 </p>
               </motion.div>
             ) : (
@@ -755,19 +881,17 @@ function MonetaryValue() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Withdraw Diamonds</h2>
-                    <p className="text-sm text-slate-500">
-                      Demo Mode • Minimum 10 diamonds
-                    </p>
+                    <p className="text-sm text-slate-500">Live • Minimum 10 diamonds</p>
                   </div>
                 </div>
 
-                {/* Preset Packages */}
+                {/* Diamond Presets */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
                   {diamondPresets.map((preset) => (
                     <button
                       key={preset.diamonds}
                       onClick={() => setDiamondsToWithdraw(preset.diamonds.toString())}
-                      className={`p-3 rounded-xl border-2 text-center transition-all ${
+                      className={`relative p-3 rounded-xl border-2 text-center transition-all ${
                         diamondsToWithdraw === preset.diamonds.toString()
                           ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/30 shadow-lg'
                           : 'border-slate-200 dark:border-slate-600 hover:border-purple-400'
@@ -785,7 +909,7 @@ function MonetaryValue() {
                   ))}
                 </div>
 
-                {/* Custom Amount */}
+                {/* Custom Diamonds */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Or enter custom amount
@@ -803,7 +927,7 @@ function MonetaryValue() {
                   </div>
                 </div>
 
-                {/* Withdrawal Method Selection */}
+                {/* Withdrawal Method */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
                     Select Withdrawal Method
@@ -858,24 +982,20 @@ function MonetaryValue() {
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <input
-                        name="accountNumber"
-                        value={withdrawDetails.accountNumber}
-                        onChange={handleInputChange}
-                        placeholder="Account Number"
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        name="accountName"
-                        value={withdrawDetails.accountName}
-                        onChange={handleInputChange}
-                        placeholder="Account Name"
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl"
-                      />
-                    </div>
+                    <input
+                      name="accountNumber"
+                      value={withdrawDetails.accountNumber}
+                      onChange={handleInputChange}
+                      placeholder="Account Number"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl"
+                    />
+                    <input
+                      name="accountName"
+                      value={withdrawDetails.accountName}
+                      onChange={handleInputChange}
+                      placeholder="Account Name"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl"
+                    />
                   </div>
                 )}
 
@@ -903,19 +1023,16 @@ function MonetaryValue() {
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <input
-                        name="mobileNumber"
-                        value={withdrawDetails.mobileNumber}
-                        onChange={handleInputChange}
-                        placeholder="Wallet Phone Number"
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl"
-                      />
-                    </div>
+                    <input
+                      name="mobileNumber"
+                      value={withdrawDetails.mobileNumber}
+                      onChange={handleInputChange}
+                      placeholder="Wallet Phone Number"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl"
+                    />
                   </div>
                 )}
 
-                {/* Summary */}
                 {diamondsToWithdraw && Number(diamondsToWithdraw) >= 10 && (
                   <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-950/20 rounded-xl">
                     <div className="flex justify-between items-center">
@@ -926,91 +1043,128 @@ function MonetaryValue() {
                       <span className="text-slate-500">Diamonds to withdraw:</span>
                       <span className="font-semibold">{diamondsToWithdraw} Diamonds</span>
                     </div>
+                    <div className="mt-2 pt-2 border-t border-purple-200 dark:border-purple-800">
+                      <p className="text-xs text-slate-500 flex items-center gap-1">
+                        <Clock size={12} /> Processing time: 1-3 business days
+                      </p>
+                    </div>
                   </div>
                 )}
 
-                {/* Withdraw Button */}
                 <button
                   onClick={handleWithdraw}
                   disabled={isWithdrawing || !diamondsToWithdraw || Number(diamondsToWithdraw) < 10}
                   className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {isWithdrawing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowDownToLine className="w-5 h-5" />}
-                  {isWithdrawing ? 'Processing...' : `Withdraw ₦${totalWithdrawAmount.toLocaleString()}`}
+                  {isWithdrawing ? 'Processing...' : `Request Withdrawal`}
                 </button>
 
                 <p className="text-xs text-center text-slate-500 mt-4">
-                  Withdrawals are processed within 1-3 business days to your selected account
+                  💰 Withdrawals are processed within 1-3 business days to your selected account
                 </p>
               </motion.div>
             )}
           </div>
 
-          {/* Transactions History */}
+          {/* Withdrawal History Section */}
           <div className="lg:col-span-1">
             <div className="bg-white/85 dark:bg-slate-800/75 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200/70 dark:border-slate-700/60 p-6 sticky top-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl">
-                  <History className="w-6 h-6 text-indigo-600" />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl">
+                    <History className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Withdrawal History</h3>
+                    <p className="text-xs text-slate-500">Track your withdrawal requests</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Transaction History</h3>
-                  <p className="text-xs text-slate-500">Last 50 transactions</p>
-                </div>
+                
+                {/* Filter Dropdown */}
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="text-xs px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600"
+                >
+                  <option value="all">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                </select>
               </div>
 
-              {transactions.length === 0 ? (
+              {withdrawalRequests.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="w-16 h-16 mx-auto bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mb-4">
                     <History className="w-8 h-8 text-slate-400" />
                   </div>
-                  <p className="text-slate-500">No transactions yet</p>
-                  <p className="text-xs text-slate-400 mt-2">Your purchases and withdrawals will appear here</p>
+                  <p className="text-slate-500">No withdrawal requests yet</p>
+                  <p className="text-xs text-slate-400 mt-2">Your withdrawal history will appear here</p>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                  {transactions.map((tx, idx) => {
-                    const isPositive = tx.type === 'purchase' || tx.type === 'earning';
-                    return (
-                      <motion.div
-                        key={tx.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.03 }}
-                        className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-700/30 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition cursor-pointer"
-                      >
-                        <div className={`p-2 rounded-full ${isPositive ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                          {isPositive ? <ArrowUpFromLine size={14} className="text-green-600" /> : <ArrowDownToLine size={14} className="text-red-600" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{tx.description}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {formatDate(tx.timestamp)}
-                          </p>
-                          {tx.reference && (
-                            <p className="text-xs text-slate-400 mt-0.5 font-mono">Ref: {tx.reference.slice(-8)}</p>
-                          )}
-                          {tx.paymentMethod && (
-                            <p className="text-xs text-green-600 mt-0.5">via {tx.paymentMethod}</p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                            {isPositive ? '+' : '-'}₦{tx.amountNGN?.toLocaleString() || '—'}
-                          </p>
-                          <div className={`text-xs px-1.5 py-0.5 rounded-full mt-1 ${
-                            tx.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                            tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                          }`}>
-                            {tx.status}
+                  {filteredWithdrawals.map((wd, idx) => (
+                    <motion.div
+                      key={wd.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.03 }}
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-700/30 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-full ${getStatusColor(wd.status)}`}>
+                            {getStatusIcon(wd.status)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                              ₦{wd.amountNGN?.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {wd.diamonds?.toLocaleString()} diamonds
+                            </p>
                           </div>
                         </div>
-                      </motion.div>
-                    );
-                  })}
+                        <div className={`text-xs px-2 py-0.5 rounded-full ${getStatusColor(wd.status)}`}>
+                          {wd.status.charAt(0).toUpperCase() + wd.status.slice(1)}
+                        </div>
+                      </div>
+                      
+                      <div className="text-xs text-slate-500 space-y-1">
+                        <p className="flex items-center gap-1">
+                          <Building2 size={10} />
+                          {wd.withdrawalMethod === 'bank' ? wd.withdrawalDetails?.bankName : wd.withdrawalDetails?.fintechName}
+                        </p>
+                        <p className="flex items-center gap-1">
+                          <span>📅</span> Requested: {formatDate(wd.timestamp)}
+                        </p>
+                        {wd.processedAt && (
+                          <p className="flex items-center gap-1 text-green-600">
+                            <CheckCircle size={10} />
+                            Processed: {formatDate(wd.processedAt)}
+                          </p>
+                        )}
+                        {wd.rejectionReason && (
+                          <p className="flex items-center gap-1 text-red-600">
+                            <XCircle size={10} />
+                            Reason: {wd.rejectionReason}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
               )}
+
+              {/* Info Note */}
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                <p className="text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                  <Info size={12} />
+                  Withdrawals are processed manually. You'll receive email notifications when your withdrawal status changes.
+                </p>
+              </div>
             </div>
           </div>
         </div>

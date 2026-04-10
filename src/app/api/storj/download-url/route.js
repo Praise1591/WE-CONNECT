@@ -8,8 +8,8 @@ const storjClient = new S3Client({
   region: 'us-east-1',
   endpoint: process.env.STORJ_ENDPOINT || 'https://gateway.storjshare.io',
   credentials: {
-    accessKeyId: process.env.jwsaexj637gtrgje6g4andnm5rkq,
-    secretAccessKey: process.env.j372lssi5bxkmqfu4nkzhg476kohlqa7plgmvqgpkgjiaujrsvvyg,
+    accessKeyId: process.env.STORJ_ACCESS_KEY_ID,
+    secretAccessKey: process.env.STORJ_SECRET_ACCESS_KEY,
   },
   forcePathStyle: true,
 });

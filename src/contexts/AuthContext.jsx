@@ -1,8 +1,8 @@
-// contexts/AuthContext.jsx
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { auth, db } from '../firebase';  // Make sure this path is correct
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+// src/contexts/AuthContext.js
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { auth, db } from '../firebase';
+import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -11,163 +11,114 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    let isMounted = true;
-    let timeoutId;
-    
-    console.log("Setting up auth listener...");
-    
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("Auth state changed:", firebaseUser?.uid || "No user");
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", user?.email || "No user");
+      setCurrentUser(user);
+      setLoading(true);
       
-      if (!isMounted) return;
-      
-      if (firebaseUser) {
+      if (user) {
         try {
-          // Try to get profile from 'profiles' collection
-          const profileRef = doc(db, 'profiles', firebaseUser.uid);
+          // First check localStorage for cached profile
+          const cachedProfile = localStorage.getItem('userProfile');
+          if (cachedProfile) {
+            const parsedProfile = JSON.parse(cachedProfile);
+            if (parsedProfile.id === user.uid) {
+              setUserProfile(parsedProfile);
+            }
+          }
+          
+          // Then fetch from Firestore to ensure latest data
+          const profileRef = doc(db, 'profiles', user.uid);
           const profileDoc = await getDoc(profileRef);
           
           if (profileDoc.exists()) {
             const profileData = profileDoc.data();
-            console.log("Profile found:", profileData);
-            setProfile({
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              name: profileData.name || firebaseUser.displayName || 'User',
+            const userProfileData = {
+              id: user.uid,
+              email: user.email,
+              name: profileData.name || user.displayName || 'User',
               role: profileData.role || 'student',
-              photoURL: firebaseUser.photoURL || profileData.photoURL || null,
-              coins: profileData.coins || 0,
-              diamonds: profileData.diamonds || 0,
-              school: profileData.school || '',
-              department: profileData.department || '',
-              specialization: profileData.specialization || '',
-              title: profileData.title || '',
-            });
-            
-            // Update localStorage for backup
-            localStorage.setItem('userProfile', JSON.stringify({
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              name: profileData.name || firebaseUser.displayName || 'User',
-              role: profileData.role || 'student',
-              photoURL: firebaseUser.photoURL || profileData.photoURL,
+              photoURL: user.photoURL || profileData.photoURL,
               coins: profileData.coins || 0,
               diamonds: profileData.diamonds || 0,
               school: profileData.school,
               department: profileData.department,
-            }));
+              ...profileData
+            };
+            setUserProfile(userProfileData);
+            localStorage.setItem('userProfile', JSON.stringify(userProfileData));
           } else {
-            // Create default profile if it doesn't exist
-            console.log("Creating default profile for user:", firebaseUser.uid);
-            const defaultProfile = {
-              name: firebaseUser.displayName || 'User',
-              email: firebaseUser.email,
+            // Create a basic profile if it doesn't exist
+            const basicProfile = {
+              id: user.uid,
+              email: user.email,
+              name: user.displayName || user.email?.split('@')[0] || 'User',
               role: 'student',
-              photoURL: firebaseUser.photoURL || null,
-              createdAt: serverTimestamp(),
+              photoURL: user.photoURL,
               coins: 0,
               diamonds: 0,
             };
-            
-            await setDoc(profileRef, defaultProfile);
-            
-            setProfile({
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              name: defaultProfile.name,
-              role: defaultProfile.role,
-              photoURL: defaultProfile.photoURL,
-              coins: 0,
-              diamonds: 0,
-            });
-            
-            localStorage.setItem('userProfile', JSON.stringify({
-              id: firebaseUser.uid,
-              email: firebaseUser.email,
-              name: defaultProfile.name,
-              role: defaultProfile.role,
-              photoURL: defaultProfile.photoURL,
-              coins: 0,
-              diamonds: 0,
-            }));
+            setUserProfile(basicProfile);
+            localStorage.setItem('userProfile', JSON.stringify(basicProfile));
           }
-          setUser(firebaseUser);
-          setError(null);
         } catch (err) {
-          console.error("Error fetching profile:", err);
-          setError(err.message);
-          // Still set basic user info even if profile fetch fails
-          setUser(firebaseUser);
-          setProfile({
-            id: firebaseUser.uid,
-            email: firebaseUser.email,
-            name: firebaseUser.displayName || 'User',
+          console.error('Error fetching user profile:', err);
+          const fallbackProfile = {
+            id: user.uid,
+            email: user.email,
+            name: user.displayName || user.email?.split('@')[0] || 'User',
             role: 'student',
-            photoURL: firebaseUser.photoURL || null,
             coins: 0,
             diamonds: 0,
-          });
+          };
+          setUserProfile(fallbackProfile);
+          localStorage.setItem('userProfile', JSON.stringify(fallbackProfile));
         }
       } else {
-        setUser(null);
-        setProfile(null);
-        // Clear localStorage when logged out
+        setUserProfile(null);
         localStorage.removeItem('userProfile');
       }
       
-      if (isMounted) {
-        setLoading(false);
-      }
-    }, (error) => {
-      console.error("Auth state error:", error);
-      setError(error.message);
-      if (isMounted) {
-        setLoading(false);
-      }
+      setLoading(false);
+      setError(null);
+    }, (err) => {
+      console.error("Auth state error:", err);
+      setError(err.message);
+      setLoading(false);
     });
 
-    // Timeout fallback to prevent infinite loading
-    timeoutId = setTimeout(() => {
-      if (isMounted && loading) {
-        console.warn("Auth loading timeout - checking localStorage for cached user");
-        const cachedProfile = localStorage.getItem('userProfile');
-        if (cachedProfile) {
-          try {
-            const cached = JSON.parse(cachedProfile);
-            console.log("Using cached profile during timeout");
-            setProfile(cached);
-            setUser({ uid: cached.id, email: cached.email });
-            setLoading(false);
-          } catch (e) {
-            console.error("Error parsing cached profile:", e);
-            setLoading(false);
-          }
-        } else {
-          console.warn("No cached profile, setting loading to false");
-          setLoading(false);
-        }
-      }
-    }, 8000);
-
-    return () => {
-      isMounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
+  const signOut = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setCurrentUser(null);
+      setUserProfile(null);
+      localStorage.removeItem('userProfile');
+      console.log("User signed out successfully");
+      return true;
+    } catch (err) {
+      console.error("Sign out error:", err);
+      setError(err.message);
+      return false;
+    }
+  };
+
   const value = {
-    user,
-    profile,
+    currentUser,
+    userProfile,
     loading,
     error,
-    isAuthenticated: !!user,
+    isAuthenticated: !!currentUser,  // ADD THIS LINE - Important!
+    signOut,
   };
 
   return (

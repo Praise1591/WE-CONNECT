@@ -3,7 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth"; // Add onAuthStateChanged here
 
 // Added for Cloud Functions support
 import { getFunctions } from "firebase/functions";
@@ -12,11 +12,12 @@ import {
   GoogleAuthProvider, 
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail,     // Added
-  sendEmailVerification       // Added
+  sendPasswordResetEmail,
+  sendEmailVerification
 } from "firebase/auth";
 
 import { 
@@ -57,16 +58,20 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app, "us-central1");
 
+// Export onAuthStateChanged separately
+export { onAuthStateChanged };
+
 // Auth methods & providers
 export {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail,     // Added
-  sendEmailVerification       // Added
+  sendPasswordResetEmail,
+  sendEmailVerification
 };
 
 // Firestore helpers

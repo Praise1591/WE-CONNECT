@@ -1,4 +1,4 @@
-// App.jsx - Fixed Sidebar Layout for Large Screens
+// App.jsx - Complete with Admin Route Added
 import React, { useState } from 'react';
 import {
   BrowserRouter,
@@ -28,6 +28,7 @@ import UploadsData from './components/Dashboard/UploadsData';
 import AnalyticsDashboard from './components/Dashboard/AnalyticsDashboard';
 import PublicProfileViewer from './components/Profile/PublicProfileViewer';
 import Landing from './pages/Landing';
+import AdminRoute from './components/Admin/AdminRoute'; // ADD THIS IMPORT
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -177,6 +178,9 @@ function App() {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
           <Routes>
             <Route path="/" element={<Landing />} />
+
+            {/* Admin Route - Accessible at /admin */}
+            <Route path="/admin" element={<AdminRoute />} />
 
             <Route element={<ProtectedLayout />}>
               <Route path="dashboard" element={<Dashboard />} />

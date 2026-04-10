@@ -1,315 +1,268 @@
-// functions/index.js
+// functions/index.js - COMPLETE FULL FILE with Modern Secrets (No Deprecation)
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const { FieldValue } = require('firebase-admin/firestore');
 const axios = require('axios');
 
 admin.initializeApp();
-
 const db = admin.firestore();
 
-// ==================== KORA PAYMENT CONFIGURATION ====================
+// ==================== MODERN KORA SECRET CONFIG ====================
+const { defineSecret } = require("firebase-functions/params");
 
-const KORA_CONFIG = {
-  publicKey: functions.config().kora?.public_key,
-  secretKey: functions.config().kora?.secret_key,
-  encryptionKey: functions.config().kora?.encryption_key,
-  baseUrl: "https://api.kora.com/v1"
-};
+const koraSecret = defineSecret("KORA_SECRET_KEY");
 
-// Log configuration status (without exposing keys)
-console.log('[Kora] Configuration loaded:', {
-  publicKeySet: !!KORA_CONFIG.publicKey,
-  secretKeySet: !!KORA_CONFIG.secretKey,
-  encryptionKeySet: !!KORA_CONFIG.encryptionKey,
-  baseUrl: KORA_CONFIG.baseUrl
-});
+const KORA_BASE_URL = "https://api.korapay.com/merchant/api/v1";
+
+// Set to false when you want LIVE payments
+const USE_TEST_MODE = false;
 
 // ==================== KORA PAYMENT FUNCTIONS ====================
 
 // Initialize Kora Payment
-exports.initializeKoraPayment = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
-  }
+exports.initializeKoraPayment = functions
+  .runWith({ secrets: [koraSecret] })
+  .https.onCall(async (data, context) => {
+    console.log('[Kora Init] Called with data:', data);
 
-  // Check if Kora is configured
-  if (!KORA_CONFIG.publicKey || !KORA_CONFIG.secretKey) {
-    console.error('[Kora] Missing API keys - please configure with: firebase functions:config:set kora.public_key=... kora.secret_key=...');
-    throw new functions.https.HttpsError('failed-precondition', 'Payment service not configured. Please contact support.');
-  }
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
 
-  const { amount, coins, reference, redirectUrl } = data;
-  const userId = context.auth.uid;
-  const userEmail = context.auth.token.email;
-  const userName = context.auth.token.name || context.auth.token.email?.split('@')[0] || 'User';
-  
-  try {
-    console.log('[Kora] Initializing payment for user:', userId);
-    console.log('[Kora] Amount:', amount, 'Coins:', coins, 'Reference:', reference);
-    
-    const paymentData = {
-      amount: amount,
-      currency: "NGN",
-      reference: reference,
-      customer: {
-        email: userEmail,
-        name: userName,
-      },
-      metadata: {
-        userId: userId,
-        coins: coins,
-        type: 'coin_purchase'
-      },
-      redirect_url: `${redirectUrl}/payment-callback`,
-      channels: ["card", "bank_transfer", "ussd", "qr"]
-    };
+    const { amount, coins, reference, redirectUrl } = data || {};
+    const userId = context.auth.uid;
 
-    const response = await axios.post(
-      `${KORA_CONFIG.baseUrl}/payments/initialize`,
-      paymentData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${KORA_CONFIG.secretKey}`,
-          'x-api-key': KORA_CONFIG.publicKey
-        },
-        timeout: 30000
-      }
-    );
+    if (!amount || !coins || !reference) {
+      throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+    }
 
-    const result = response.data;
-    console.log('[Kora] Payment init response:', result.status);
-
-    if (result.status === 'success' && result.data.payment_url) {
-      // Save transaction to Firestore
-      const transactionRef = db
-        .collection('users')
-        .doc(userId)
-        .collection('transactions')
-        .doc(reference);
-      
-      await transactionRef.set({
-        type: 'purchase',
-        amountNGN: amount,
-        coins: coins,
-        description: `Purchase of ${coins} WE CONNECT Coins`,
-        status: 'pending',
-        reference: reference,
-        paymentMethod: 'Kora',
-        timestamp: FieldValue.serverTimestamp(),
-        koraPaymentId: result.data.payment_id
-      });
-
+    if (USE_TEST_MODE) {
+      console.log('[Kora Init] TEST MODE enabled');
       return {
         success: true,
-        paymentUrl: result.data.payment_url,
-        paymentId: result.data.payment_id
+        paymentUrl: "https://test.korapay.com/pay",
+        testMode: true
       };
-    } else {
-      throw new Error(result.message || 'Payment initialization failed');
     }
-  } catch (error) {
-    console.error('[Kora] Payment initialization error:', error.message);
-    if (error.response) {
-      console.error('[Kora] Error response:', error.response.data);
+
+    const secretKey = koraSecret.value();
+    if (!secretKey) {
+      throw new functions.https.HttpsError('failed-precondition', 
+        'Kora secret key not configured. Run: firebase functions:secrets:set KORA_SECRET_KEY');
     }
-    throw new functions.https.HttpsError('internal', error.message || 'Payment initialization failed');
-  }
-});
+
+    try {
+      const paymentData = {
+        amount: Number(amount),
+        currency: "NGN",
+        reference: reference,
+        customer: {
+          email: context.auth.token.email || 'user@example.com',
+          name: context.auth.token.name || 'User'
+        },
+        metadata: {
+          userId: userId,
+          coins: Number(coins),
+          type: 'coin_purchase'
+        },
+        redirect_url: redirectUrl || 'https://yourdomain.com/payment-callback',
+        channels: ["card", "bank_transfer", "ussd", "qr"]
+      };
+
+      const response = await axios.post(
+        `${KORA_BASE_URL}/charges/initialize`,
+        paymentData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${secretKey}`
+          },
+          timeout: 45000
+        }
+      );
+
+      const result = response.data;
+
+      if (result.status === true && result.data?.payment_url) {
+        await db.collection('users').doc(userId)
+          .collection('transactions').doc(reference).set({
+            type: 'purchase',
+            amountNGN: Number(amount),
+            coins: Number(coins),
+            description: `Purchase of ${coins} WE CONNECT Coins`,
+            status: 'pending',
+            reference: reference,
+            paymentMethod: 'Kora',
+            timestamp: FieldValue.serverTimestamp(),
+          });
+
+        return {
+          success: true,
+          paymentUrl: result.data.payment_url,
+          testMode: false
+        };
+      } else {
+        throw new Error(result.message || 'Kora returned invalid response');
+      }
+    } catch (error) {
+      console.error('[Kora Init Error]:', error.response?.data || error.message);
+      const msg = error.response?.data?.message || error.message || 'Unknown error';
+      throw new functions.https.HttpsError('internal', `Payment initialization failed: ${msg}`);
+    }
+  });
 
 // Verify Kora Payment
-exports.verifyKoraPayment = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
-  }
+exports.verifyKoraPayment = functions
+  .runWith({ secrets: [koraSecret] })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
 
-  const { reference } = data;
-  const userId = context.auth.uid;
-  
-  try {
-    console.log('[Kora] Verifying payment:', reference);
-    
-    const response = await axios.get(
-      `${KORA_CONFIG.baseUrl}/payments/verify/${reference}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${KORA_CONFIG.secretKey}`,
-          'x-api-key': KORA_CONFIG.publicKey
-        },
-        timeout: 30000
-      }
-    );
+    const { reference } = data;
+    const userId = context.auth.uid;
 
-    const result = response.data;
-    console.log('[Kora] Verification response status:', result.status);
+    if (USE_TEST_MODE) {
+      console.log('[Kora Verify] TEST MODE');
+      // Add your original test verification logic here if needed
+      return { success: true, message: 'Payment verified (Test Mode)' };
+    }
 
-    if (result.status === 'success') {
-      const paymentStatus = result.data.status;
-      
-      if (paymentStatus === 'success') {
-        // Get the transaction
-        const transactionRef = db
-          .collection('users')
-          .doc(userId)
-          .collection('transactions')
-          .doc(reference);
-        
+    const secretKey = koraSecret.value();
+    if (!secretKey) {
+      throw new functions.https.HttpsError('failed-precondition', 'Kora secret key not configured');
+    }
+
+    try {
+      const response = await axios.get(`${KORA_BASE_URL}/charges/${reference}`, {
+        headers: { 'Authorization': `Bearer ${secretKey}` }
+      });
+
+      const result = response.data;
+
+      if (result.status === true && result.data?.status === 'success') {
+        const transactionRef = db.collection('users').doc(userId).collection('transactions').doc(reference);
         const transactionDoc = await transactionRef.get();
-        
+
         if (transactionDoc.exists && transactionDoc.data().status === 'pending') {
-          const transactionData = transactionDoc.data();
-          
-          // Update user's coins in transaction
+          const txData = transactionDoc.data();
           const userRef = db.collection('users').doc(userId);
           await db.runTransaction(async (t) => {
             const userDoc = await t.get(userRef);
             const currentCoins = userDoc.data()?.coins || 0;
-            t.update(userRef, { coins: currentCoins + transactionData.coins });
+            t.update(userRef, { coins: currentCoins + txData.coins });
           });
-          
-          // Update transaction record
+
           await transactionRef.update({
             status: 'completed',
             completedAt: FieldValue.serverTimestamp(),
-            koraVerificationData: result.data
           });
-          
-          return { success: true, message: 'Payment verified and coins added' };
-        } else if (transactionDoc.exists && transactionDoc.data().status === 'completed') {
-          return { success: true, message: 'Payment already processed' };
         }
-      } else if (paymentStatus === 'pending') {
-        return { success: false, pending: true, message: 'Payment still pending' };
-      } else {
-        // Update failed transaction
-        const transactionRef = db
-          .collection('users')
-          .doc(userId)
-          .collection('transactions')
-          .doc(reference);
-        
-        await transactionRef.update({
-          status: 'failed',
-          failedAt: FieldValue.serverTimestamp(),
-          failureReason: paymentStatus
-        });
-        
-        return { success: false, status: paymentStatus, message: `Payment ${paymentStatus}` };
+        return { success: true, message: 'Payment verified and coins added' };
       }
+
+      return { success: false, message: 'Payment not successful' };
+    } catch (error) {
+      console.error('[Kora Verify Error]:', error.response?.data || error.message);
+      throw new functions.https.HttpsError('internal', 'Payment verification failed');
     }
-    
-    return { success: false, message: 'Verification failed' };
-  } catch (error) {
-    console.error('[Kora] Payment verification error:', error.message);
-    if (error.response) {
-      console.error('[Kora] Error response:', error.response.data);
-    }
-    throw new functions.https.HttpsError('internal', error.message || 'Payment verification failed');
-  }
-});
+  });
 
 // Process Kora Withdrawal
-exports.processKoraWithdrawal = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
-  }
+exports.processKoraWithdrawal = functions
+  .runWith({ secrets: [koraSecret] })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
 
-  const { amount, diamonds, withdrawalMethod, withdrawalDetails } = data;
-  const userId = context.auth.uid;
-  const reference = `WC_WD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  try {
-    console.log('[Kora] Processing withdrawal for user:', userId);
-    console.log('[Kora] Amount:', amount, 'Diamonds:', diamonds);
-    
-    const withdrawalData = {
-      amount: amount,
-      currency: "NGN",
-      reference: reference,
-      destination: {
-        type: withdrawalMethod === 'bank' ? 'bank_account' : 'mobile_money',
-        bank_code: withdrawalMethod === 'bank' ? withdrawalDetails.bankCode : null,
-        account_number: withdrawalMethod === 'bank' ? withdrawalDetails.accountNumber : withdrawalDetails.mobileNumber,
-        account_name: withdrawalDetails.accountName,
-        bank_name: withdrawalMethod === 'bank' ? withdrawalDetails.bankName : null,
-        provider: withdrawalMethod === 'mobile' ? withdrawalDetails.fintechName : null
-      },
-      metadata: {
-        userId: userId,
-        diamonds: diamonds,
-        type: 'diamond_withdrawal'
-      }
-    };
+    const { amount, diamonds, withdrawalMethod, withdrawalDetails } = data;
+    const userId = context.auth.uid;
+    const reference = `WD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    const response = await axios.post(
-      `${KORA_CONFIG.baseUrl}/transactions/transfer`,
-      withdrawalData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${KORA_CONFIG.secretKey}`,
-          'x-api-key': KORA_CONFIG.publicKey
-        },
-        timeout: 30000
-      }
-    );
+    if (USE_TEST_MODE) {
+      console.log('[Kora Withdrawal] TEST MODE');
+      // Add your original test withdrawal logic here if needed
+      return { success: true, message: 'Withdrawal initiated (Test Mode)', reference };
+    }
 
-    const result = response.data;
-    console.log('[Kora] Withdrawal response:', result.status);
+    const secretKey = koraSecret.value();
+    if (!secretKey) {
+      throw new functions.https.HttpsError('failed-precondition', 'Kora secret key not configured');
+    }
 
-    if (result.status === 'success') {
-      // Deduct diamonds from user's wallet
-      const userRef = db.collection('users').doc(userId);
-      await db.runTransaction(async (t) => {
-        const userDoc = await t.get(userRef);
-        const currentDiamonds = userDoc.data()?.diamonds || 0;
-        
-        if (currentDiamonds < diamonds) {
-          throw new Error('Insufficient diamonds');
+    try {
+      const withdrawalData = {
+        reference: reference,
+        amount: Number(amount),
+        currency: "NGN",
+        destination: {
+          type: withdrawalMethod === 'bank' ? 'bank_account' : 'mobile_money',
+          bank_code: withdrawalMethod === 'bank' ? withdrawalDetails.bankCode : undefined,
+          account_number: withdrawalMethod === 'bank' ? withdrawalDetails.accountNumber : withdrawalDetails.mobileNumber,
+          account_name: withdrawalDetails.accountName,
+          provider: withdrawalMethod === 'mobile' ? withdrawalDetails.fintechName : undefined
         }
-        
-        t.update(userRef, { diamonds: currentDiamonds - diamonds });
-      });
-      
-      // Add withdrawal transaction
-      await db
-        .collection('users')
-        .doc(userId)
-        .collection('transactions')
-        .add({
+      };
+
+      const response = await axios.post(
+        `${KORA_BASE_URL}/transactions/disburse`,
+        withdrawalData,
+        {
+          headers: { 'Authorization': `Bearer ${secretKey}` }
+        }
+      );
+
+      const result = response.data;
+
+      if (result.status === true) {
+        const userRef = db.collection('users').doc(userId);
+        await db.runTransaction(async (t) => {
+          const userDoc = await t.get(userRef);
+          const currentDiamonds = userDoc.data()?.diamonds || 0;
+          if (currentDiamonds < diamonds) throw new Error('Insufficient diamonds');
+          t.update(userRef, { diamonds: currentDiamonds - diamonds });
+        });
+
+        await db.collection('users').doc(userId).collection('transactions').add({
           type: 'withdrawal',
-          amountNGN: amount,
-          description: `Withdrawal of ₦${amount.toLocaleString()} (${diamonds} diamonds)`,
+          amountNGN: Number(amount),
+          description: `Withdrawal of ₦${Number(amount).toLocaleString()} (${diamonds} diamonds)`,
           status: 'completed',
           timestamp: FieldValue.serverTimestamp(),
           diamondsUsed: diamonds,
           reference: reference,
           withdrawalDetails: withdrawalDetails,
-          koraReference: result.data.reference,
           paymentMethod: 'Kora'
         });
-      
-      return {
-        success: true,
-        message: 'Withdrawal initiated successfully',
-        reference: result.data.reference
-      };
-    } else {
-      throw new Error(result.message || 'Withdrawal failed');
+
+        return {
+          success: true,
+          message: 'Withdrawal initiated successfully',
+          reference: reference
+        };
+      } else {
+        throw new Error(result.message || 'Withdrawal failed');
+      }
+    } catch (error) {
+      console.error('[Kora Withdrawal Error]:', error.response?.data || error.message);
+      throw new functions.https.HttpsError('internal', 'Withdrawal failed');
     }
-  } catch (error) {
-    console.error('[Kora] Withdrawal error:', error.message);
-    if (error.response) {
-      console.error('[Kora] Error response:', error.response.data);
-    }
-    throw new functions.https.HttpsError('internal', error.message || 'Withdrawal failed');
-  }
+  });
+
+// ==================== TEST FUNCTION ====================
+exports.testFunction = functions.https.onCall(async (data, context) => {
+  console.log('[Test] Test function called!');
+  return { 
+    success: true, 
+    message: 'Cloud Function is working!',
+    timestamp: new Date().toISOString(),
+    userId: context.auth?.uid || 'not authenticated'
+  };
 });
 
-// ==================== USER FOLLOW SYSTEM ====================
+// ==================== USER FOLLOW SYSTEM (Original Code) ====================
 
-// Follow a user
 exports.followUser = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'You must be logged in');
@@ -663,7 +616,7 @@ exports.getUserActivity = functions.https.onCall(async (data, context) => {
   }
 });
 
-// Get feed (materials from followed users)
+// Get feed
 exports.getFeed = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'You must be logged in');
@@ -681,7 +634,6 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
       return { materials: [] };
     }
     
-    // Split into chunks of 10 for the 'in' query
     const chunks = [];
     for (let i = 0; i < followingIds.length; i += 10) {
       chunks.push(followingIds.slice(i, i + 10));
@@ -708,10 +660,7 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
       allMaterials.push(...materials);
     }
     
-    // Sort all materials by createdAt
     allMaterials.sort((a, b) => b.createdAt - a.createdAt);
-    
-    // Limit results
     const limitedMaterials = allMaterials.slice(0, limit);
     
     return {
@@ -725,7 +674,7 @@ exports.getFeed = functions.https.onCall(async (data, context) => {
   }
 });
 
-// Create notification for new material upload
+// Notify followers on new material
 exports.notifyFollowers = functions.firestore
   .document('materials/{materialId}')
   .onCreate(async (snap, context) => {
@@ -765,3 +714,5 @@ exports.notifyFollowers = functions.firestore
       console.error('Notify followers error:', error);
     }
   });
+
+console.log('✅ All Cloud Functions loaded successfully with secret-based Kora config.');

@@ -1,8 +1,8 @@
-// components/Dashboard/AuthForm.jsx
-import React, { useState, useEffect } from 'react';
+// src/components/Dashboard/AuthForm.jsx
+import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
-  Briefcase, Award, X, Chrome, Phone, Home, KeyRound, CheckCircle, AlertCircle
+  Briefcase, Award, X, Chrome, Phone, Home 
 } from 'lucide-react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
@@ -15,8 +15,6 @@ import {
   db, 
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -41,7 +39,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     email: '', password: '', confirmPassword: '', phone: '', address: '',
   });
   const [loading, setLoading] = useState(false);
-  const [navigationInProgress, setNavigationInProgress] = useState(false);
   const navigate = useNavigate();
 
   const googleProvider = new GoogleAuthProvider();
@@ -57,238 +54,9 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Handle redirect result after Google sign-in
-  useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        console.log("[Google Redirect] Checking for redirect result...");
-        const result = await getRedirectResult(auth);
-        
-        if (result) {
-          console.log("[Google Redirect] Redirect result found, processing...");
-          const user = result.user;
-          
-          // Process the user profile
-          const profileRef = doc(db, 'profiles', user.uid);
-          const profileDoc = await getDoc(profileRef);
-          
-          let userProfile;
-          
-          if (!profileDoc.exists()) {
-            console.log("[Google Redirect] Creating new profile for:", user.uid);
-            const profileData = {
-              name: user.displayName || 'User',
-              email: user.email,
-              role: 'student',
-              photoURL: user.photoURL || null,
-              createdAt: serverTimestamp(),
-              coins: 0,
-              diamonds: 0,
-              emailVerified: user.emailVerified,
-            };
-            await setDoc(profileRef, profileData);
-            
-            userProfile = {
-              id: user.uid,
-              email: user.email,
-              name: user.displayName || 'User',
-              role: 'student',
-              photoURL: user.photoURL || null,
-              coins: 0,
-              diamonds: 0,
-              emailVerified: user.emailVerified,
-            };
-          } else {
-            console.log("[Google Redirect] Existing profile found");
-            const profileData = profileDoc.data();
-            userProfile = {
-              id: user.uid,
-              email: user.email,
-              name: profileData.name || user.displayName || 'User',
-              role: profileData.role || 'student',
-              photoURL: user.photoURL || profileData.photoURL,
-              coins: profileData.coins || 0,
-              diamonds: profileData.diamonds || 0,
-              emailVerified: user.emailVerified,
-            };
-          }
-          
-          console.log("[Google Redirect] Login successful, navigating...");
-          handleSuccessfulLogin(userProfile);
-        } else {
-          console.log("[Google Redirect] No redirect result found");
-        }
-      } catch (error) {
-        console.error("[Google Redirect Error]", error);
-        let message = 'Google sign-in failed. Please try again.';
-        
-        if (error.code === 'auth/network-request-failed') {
-          message = 'Network error. Please check your internet connection.';
-        } else if (error.code === 'auth/popup-blocked') {
-          message = 'Popup was blocked. Using redirect method instead.';
-        } else {
-          message = error.message || 'Authentication failed. Please try again.';
-        }
-        
-        toast.error(message);
-        setLoading(false);
-      }
-    };
-    
-    handleRedirectResult();
-  }, []); // Empty dependency array - run once on mount
-
-  // Improved navigation handler with state management
-  const handleSuccessfulLogin = (userProfile) => {
-    console.log("[Navigation] Starting post-login navigation process");
-    console.log("[Navigation] User profile:", userProfile);
-    
-    // Prevent multiple navigation attempts
-    if (navigationInProgress) {
-      console.log("[Navigation] Navigation already in progress, skipping");
-      return;
-    }
-    
-    setNavigationInProgress(true);
-    
-    try {
-      // Save to localStorage with timestamp for validation
-      const profileWithTimestamp = {
-        ...userProfile,
-        lastLogin: Date.now(),
-        isLoggedIn: true
-      };
-      localStorage.setItem('userProfile', JSON.stringify(profileWithTimestamp));
-      console.log("[Navigation] Profile saved to localStorage with timestamp");
-      
-      // Dispatch custom event for real-time updates
-      const loginEvent = new CustomEvent('userLoggedIn', { 
-        detail: profileWithTimestamp,
-        bubbles: true 
-      });
-      window.dispatchEvent(loginEvent);
-      console.log("[Navigation] UserLoggedIn event dispatched");
-      
-      // Show success message
-      toast.success(`Welcome back, ${userProfile.name || 'User'}!`, {
-        duration: 3000,
-        icon: '🎉',
-      });
-      
-      // Close modal if provided
-      if (onClose && typeof onClose === 'function') {
-        console.log("[Navigation] Closing modal");
-        onClose();
-      }
-      
-      // Call onLoginSuccess callback if provided
-      if (onLoginSuccess && typeof onLoginSuccess === 'function') {
-        console.log("[Navigation] Calling onLoginSuccess callback");
-        onLoginSuccess(userProfile);
-      }
-      
-      // Navigate with a slight delay to ensure modal closes and state updates
-      setTimeout(() => {
-        console.log("[Navigation] Attempting to navigate to /dashboard");
-        
-        try {
-          // Use React Router navigation
-          navigate('/dashboard', { 
-            replace: true,
-            state: { 
-              fromLogin: true, 
-              userProfile: userProfile,
-              timestamp: Date.now()
-            }
-          });
-          console.log("[Navigation] React Router navigation successful");
-          
-          // Force a final check - if still on same page after 1 second, try hard navigation
-          setTimeout(() => {
-            if (window.location.pathname !== '/dashboard') {
-              console.log("[Navigation] React Router navigation didn't update URL, using hard navigation");
-              window.location.href = '/dashboard';
-            }
-            setNavigationInProgress(false);
-          }, 1000);
-          
-        } catch (navError) {
-          console.error("[Navigation] Navigation error:", navError);
-          // Fallback to hard navigation
-          window.location.href = '/dashboard';
-          setNavigationInProgress(false);
-        }
-      }, 300);
-      
-    } catch (error) {
-      console.error("[Navigation] Error in handleSuccessfulLogin:", error);
-      setNavigationInProgress(false);
-      toast.error("Login successful but navigation failed. Please refresh the page.");
-      
-      // Last resort fallback
-      setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 1000);
-    }
-  };
-
-  // Modified Google sign-in to use redirect method (fixes popup blocker)
-  const handleGoogleSignIn = async () => {
-    if (loading || navigationInProgress) return;
-    
-    setLoading(true);
-    try {
-      console.log("[Google] Attempting Google sign in with redirect method...");
-      
-      // Add custom parameters to improve UX
-      googleProvider.setCustomParameters({
-        prompt: 'select_account'
-      });
-      
-      // Use redirect instead of popup - this bypasses popup blockers
-      await signInWithRedirect(auth, googleProvider);
-      
-      // Note: The page will redirect to Google, then back to your app
-      // The result will be handled in the useEffect above
-      console.log("[Google] Redirect initiated, page will redirect to Google...");
-      
-      // We don't set loading to false here because the page will redirect
-      // The loading state will be reset when the page returns
-      
-    } catch (error) {
-      console.error("[GOOGLE AUTH ERROR]", error);
-      let message = 'Google sign-in failed. Please try again.';
-      
-      if (error.code === 'auth/network-request-failed') {
-        message = 'Network error. Please check your internet connection.';
-      } else if (error.code === 'auth/popup-blocked') {
-        message = 'Popup was blocked. Trying redirect method...';
-        // Attempt redirect as fallback
-        try {
-          await signInWithRedirect(auth, googleProvider);
-          return;
-        } catch (redirectError) {
-          console.error("[Redirect Fallback Error]", redirectError);
-          message = 'Please allow popups for this site or try using email/password sign-in.';
-        }
-      } else {
-        message = error.message || 'Authentication failed. Please try again.';
-      }
-      
-      toast.error(message, {
-        duration: 5000,
-      });
-      setLoading(false);
-    }
-  };
-
-  // Password reset handler with detailed logging
   const handlePasswordReset = async (e) => {
     e.preventDefault();
-    
     const email = resetEmail.trim();
-    console.log("[Password Reset] Attempting to send reset email to:", email);
-    
     if (!email) {
       toast.error('Please enter your email address');
       return;
@@ -296,44 +64,96 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
 
     setLoading(true);
     try {
-      console.log("[Password Reset] Calling Firebase sendPasswordResetEmail...");
       await sendPasswordResetEmail(auth, email);
-      console.log("[Password Reset] Reset email sent successfully");
-      
       setResetSent(true);
-      toast.success('Password reset email sent! Check your inbox and spam folder.');
-      
-      toast('If you don\'t see the email, please check your spam/junk folder', {
-        duration: 5000,
-        icon: '📧',
-      });
-      
+      toast.success('Password reset email sent! Check your inbox.');
     } catch (error) {
-      console.error("[PASSWORD RESET ERROR] Full error:", error);
-      
-      let message = 'Failed to send reset email. Please try again.';
-      
-      switch (error.code) {
-        case 'auth/user-not-found':
-          message = 'No account found with this email address. Please check the email or sign up first.';
-          break;
-        case 'auth/invalid-email':
-          message = 'Please enter a valid email address.';
-          break;
-        case 'auth/too-many-requests':
-          message = 'Too many attempts. Please wait a few minutes before trying again.';
-          break;
-        case 'auth/network-request-failed':
-          message = 'Network error. Please check your internet connection.';
-          break;
-        default:
-          message = error.message || 'Failed to send reset email. Please try again later.';
+      console.error("Password reset error:", error);
+      let message = 'Failed to send reset email.';
+      if (error.code === 'auth/user-not-found') {
+        message = 'No account found with this email address.';
       }
-      
-      toast.error(message, {
-        duration: 5000,
-      });
-      
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAuthSuccess = (userProfile) => {
+    console.log("Auth success, navigating to dashboard...", userProfile);
+    
+    // Close modal if it exists
+    if (onClose) {
+      onClose();
+    }
+    
+    // Call the success callback if provided
+    if (onLoginSuccess) {
+      onLoginSuccess(userProfile);
+    }
+    
+    // Navigate to dashboard
+    navigate('/dashboard', { replace: true });
+    
+    // Dispatch event for other components
+    window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileDoc = await getDoc(profileRef);
+
+      let userProfile;
+
+      if (!profileDoc.exists()) {
+        const profileData = {
+          name: user.displayName || 'User',
+          email: user.email,
+          role: 'student',
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+        await setDoc(profileRef, profileData);
+        
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || 'User',
+          role: 'student',
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+      } else {
+        const profileData = profileDoc.data();
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: profileData.name || user.displayName || 'User',
+          role: profileData.role || 'student',
+          photoURL: user.photoURL || profileData.photoURL,
+          coins: profileData.coins || 0,
+          diamonds: profileData.diamonds || 0,
+          emailVerified: user.emailVerified,
+        };
+      }
+
+      localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      toast.success('Welcome! Signed in with Google');
+      handleAuthSuccess(userProfile);
+
+    } catch (error) {
+      console.error("Google auth error:", error);
+      toast.error('Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -341,17 +161,11 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (loading || navigationInProgress) return;
-    
     setLoading(true);
 
     try {
       const email = formData.email.trim();
       const password = formData.password.trim();
-
-      console.log("[Auth] Form submitted, isLogin:", isLogin);
-      console.log("[Auth] Email:", email);
 
       if (!email) throw new Error("Please enter your email address");
       if (!password) throw new Error("Password is required");
@@ -359,9 +173,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
       let userCredential;
 
       if (!isLogin) {
-        // SIGNUP FLOW
-        console.log("[Signup] Starting signup process");
-        
+        // SIGNUP
         if (formData.password !== formData.confirmPassword) {
           throw new Error("Passwords do not match");
         }
@@ -369,18 +181,13 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
           throw new Error("Password must be at least 6 characters long");
         }
 
-        console.log("[Signup] Creating user account...");
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        console.log("[Signup] Account created successfully:", user.uid);
-
         // Send email verification
-        console.log("[Signup] Sending verification email...");
         await sendEmailVerification(user);
-        console.log("[Signup] Verification email sent");
 
-        // Create profile in 'profiles' collection
+        // Create profile
         const profileData = {
           name: formData.name.trim() || 'User',
           email: user.email,
@@ -410,12 +217,10 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
           profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
         }
 
-        console.log("[Signup] Saving profile to Firestore...");
         const profileRef = doc(db, 'profiles', user.uid);
         await setDoc(profileRef, profileData);
-        console.log("[Signup] Profile saved");
 
-        const basicProfile = {
+        const userProfile = {
           id: user.uid,
           email: user.email,
           name: formData.name.trim() || 'User',
@@ -426,56 +231,34 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
           emailVerified: false,
         };
         
-        localStorage.setItem('userProfile', JSON.stringify(basicProfile));
-        console.log("[Signup] Profile saved to localStorage");
-
-        toast.success('Account created! Please verify your email address to continue.');
-        toast.success('Check your inbox for verification link');
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+        toast.success('Account created! Please verify your email.');
+        toast.info('Check your inbox for verification link');
         
-        if (onClose && typeof onClose === 'function') onClose();
-        
-        setTimeout(() => {
-          console.log("[Signup] Redirecting to home after signup");
-          navigate('/', { replace: true });
-        }, 3000);
+        handleAuthSuccess(userProfile);
         
       } else {
-        // LOGIN FLOW
-        console.log("[Login] Starting login process");
+        // LOGIN
         userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
-        console.log("[Login] Signed in successfully:", user.uid);
-        console.log("[Login] Email verified:", user.emailVerified);
-        
-        // Check if email is verified
+        // Check email verification
         await user.reload();
         
         if (!user.emailVerified) {
-          console.log("[Login] Email not verified - blocking login");
-          toast.error('Please verify your email address before logging in. Check your inbox for the verification link.');
-          toast('Need a new verification email? Use the "Forgot Password" option to resend.', {
-            duration: 5000,
-            icon: '📧',
-          });
+          toast.error('Please verify your email before logging in.');
+          toast.info('Check your inbox for the verification link');
           setLoading(false);
           return;
         }
         
-        console.log("[Login] Email verified, fetching profile...");
-        
-        // Fetch profile from Firestore
         const profileRef = doc(db, 'profiles', user.uid);
         const profileDoc = await getDoc(profileRef);
-        
-        console.log("[Login] Profile exists:", profileDoc.exists());
         
         let userProfile;
         
         if (profileDoc.exists()) {
           const profileData = profileDoc.data();
-          console.log("[Login] Profile data retrieved:", profileData);
-          
           userProfile = {
             id: user.uid,
             email: user.email,
@@ -488,12 +271,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
             department: profileData.department,
             emailVerified: user.emailVerified,
           };
-          
-          // Update emailVerified status in Firestore
-          await setDoc(profileRef, { emailVerified: user.emailVerified }, { merge: true });
-          console.log("[Login] Updated Firestore with emailVerified status");
         } else {
-          console.log("[Login] Profile doesn't exist, creating default profile");
           const defaultProfile = {
             name: user.displayName || 'User',
             email: user.email,
@@ -517,42 +295,31 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
           };
         }
         
-        console.log("[Login] User profile prepared:", userProfile);
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+        toast.success('Welcome back!');
         
-        // Handle successful login with navigation
-        handleSuccessfulLogin(userProfile);
+        handleAuthSuccess(userProfile);
       }
 
     } catch (error) {
-      console.error("[AUTH ERROR]", error);
+      console.error("Auth error:", error);
       let message = 'An error occurred. Please try again.';
       
-      if (error.code === 'auth/network-request-failed') {
-        message = 'Network error. Please check your internet connection and try again.';
-      } else {
-        switch (error.code) {
-          case 'permission-denied':
-            message = 'Permission denied – check Firestore security rules';
-            break;
-          case 'auth/email-already-in-use':
-            message = 'This email is already in use. Please sign in or use a different email.';
-            break;
-          case 'auth/invalid-email':
-            message = 'Please enter a valid email address.';
-            break;
-          case 'auth/weak-password':
-            message = 'Password should be at least 6 characters.';
-            break;
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
-            message = 'Incorrect email or password.';
-            break;
-          case 'auth/too-many-requests':
-            message = 'Too many attempts. Please try again later.';
-            break;
-          default:
-            message = error.message || 'Network or server issue – please check your connection.';
-        }
+      switch (error.code) {
+        case 'auth/invalid-credential':
+          message = 'Invalid email or password. Please try again.';
+          break;
+        case 'auth/email-already-in-use':
+          message = 'This email is already registered. Please sign in.';
+          break;
+        case 'auth/user-not-found':
+          message = 'No account found with this email. Please sign up.';
+          break;
+        case 'auth/wrong-password':
+          message = 'Incorrect password. Please try again.';
+          break;
+        default:
+          message = error.message || 'Authentication failed.';
       }
       toast.error(message);
     } finally {
@@ -578,7 +345,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   return (
     <div className="relative bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-w-4xl w-full border border-indigo-100/40 dark:border-indigo-900/30">
       
-      {/* Header */}
       <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-700 px-5 sm:px-8 md:px-12 py-6 sm:py-8 md:py-14 text-center text-white overflow-hidden rounded-t-2xl sm:rounded-t-3xl">
         <div className="absolute inset-0 bg-[url('/weconnect-logo.png')] bg-[length:100px] sm:bg-[length:140px] opacity-[0.07] mix-blend-multiply pointer-events-none" />
         <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tight drop-shadow-2xl mb-2 sm:mb-3">
@@ -595,16 +361,18 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         </p>
       </div>
 
-      {/* Content */}
       <div className="p-4 sm:p-6 md:p-10 lg:p-12 space-y-6 sm:space-y-10 max-h-[70vh] sm:max-h-[76vh] overflow-y-auto">
         
         {showResetPassword ? (
-          // Password Reset Form
           <form onSubmit={handlePasswordReset} className="space-y-5 sm:space-y-7">
             {resetSent ? (
               <div className="text-center space-y-4">
                 <div className="flex justify-center">
-                  <CheckCircle className="w-16 h-16 text-green-500" />
+                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
                   Check Your Email
@@ -647,7 +415,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                   disabled={loading}
                   className="w-full py-3 sm:py-4 md:py-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold text-sm sm:text-base md:text-lg rounded-xl sm:rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 group relative overflow-hidden"
                 >
-                  <KeyRound className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="relative z-10">
                     {loading ? 'Sending...' : 'Send Reset Link'}
                   </span>
@@ -930,7 +697,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
               </div>
 
               {isLogin && (
-                <div className="flex justify-end">
+                <div className="text-right">
                   <button
                     type="button"
                     onClick={() => setShowResetPassword(true)}
@@ -945,12 +712,12 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 type="submit"
-                disabled={loading || navigationInProgress}
+                disabled={loading}
                 className="w-full py-3 sm:py-4 md:py-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold text-sm sm:text-base md:text-lg rounded-xl sm:rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 group relative overflow-hidden"
               >
                 <span className="relative z-10 flex items-center gap-2">
-                  {loading ? 'Processing…' : (navigationInProgress ? 'Redirecting...' : (isLogin ? 'Sign In' : 'Create Free Account'))}
-                  {!loading && !navigationInProgress && <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />}
+                  {loading ? 'Processing…' : (isLogin ? 'Sign In' : 'Create Free Account')}
+                  {!loading && <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />}
                 </span>
                 <span className="absolute inset-0 bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500" />
               </motion.button>
@@ -970,7 +737,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
             <div className="grid grid-cols-1 gap-2 sm:gap-4">
               <button
                 onClick={handleGoogleSignIn}
-                disabled={loading || navigationInProgress}
+                disabled={loading}
                 className="flex items-center justify-center gap-1.5 sm:gap-3 py-2.5 sm:py-3 md:py-4 border border-slate-300/70 dark:border-slate-600/60 rounded-lg sm:rounded-2xl hover:bg-gradient-to-br hover:from-red-50/80 hover:to-orange-50/80 transition-all duration-300 shadow-sm hover:shadow group disabled:opacity-50"
               >
                 <Chrome className="w-4 h-4 sm:w-5 sm:h-6 text-red-600" />
