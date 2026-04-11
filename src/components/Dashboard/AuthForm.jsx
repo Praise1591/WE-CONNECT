@@ -2,11 +2,12 @@
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
-  Briefcase, Award, X, Chrome, Phone, Home 
+  Briefcase, Award, X, Chrome, Phone, Home, AlertCircle,
+  CheckCircle, Shield, Sparkles, UserCheck, Fingerprint
 } from 'lucide-react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
 // Firebase imports
@@ -25,9 +26,47 @@ import {
   serverTimestamp
 } from '../../firebase';
 
+// Custom Alert Component
+const AuthAlert = ({ type, title, message, onClose }) => {
+  const icons = {
+    error: <AlertCircle className="w-5 h-5 text-red-500" />,
+    success: <CheckCircle className="w-5 h-5 text-green-500" />,
+    warning: <AlertCircle className="w-5 h-5 text-amber-500" />,
+    info: <Shield className="w-5 h-5 text-blue-500" />
+  };
+
+  const colors = {
+    error: 'border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800',
+    success: 'border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800',
+    warning: 'border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800',
+    info: 'border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800'
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className={`rounded-xl p-4 border ${colors[type]} mb-4`}
+    >
+      <div className="flex items-start gap-3">
+        {icons[type]}
+        <div className="flex-1">
+          <h4 className="font-semibold text-slate-800 dark:text-slate-200">{title}</h4>
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">{message}</p>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
+          <X size={16} />
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
 function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
@@ -39,6 +78,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     email: '', password: '', confirmPassword: '', phone: '', address: '',
   });
   const [loading, setLoading] = useState(false);
+  const [alert, setAlert] = useState(null);
   const navigate = useNavigate();
 
   const googleProvider = new GoogleAuthProvider();
@@ -52,13 +92,21 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setAlert(null);
+  };
+
+  const clearAlert = () => setAlert(null);
+
+  const showAlert = (type, title, message) => {
+    setAlert({ type, title, message });
+    setTimeout(() => setAlert(null), 5000);
   };
 
   const handlePasswordReset = async (e) => {
     e.preventDefault();
     const email = resetEmail.trim();
     if (!email) {
-      toast.error('Please enter your email address');
+      showAlert('error', 'Email Required', 'Please enter your email address');
       return;
     }
 
@@ -66,14 +114,22 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     try {
       await sendPasswordResetEmail(auth, email);
       setResetSent(true);
-      toast.success('Password reset email sent! Check your inbox.');
+      showAlert('success', 'Reset Email Sent', `We've sent a password reset link to ${email}. Check your inbox and spam folder.`);
     } catch (error) {
       console.error("Password reset error:", error);
       let message = 'Failed to send reset email.';
+      let title = 'Reset Failed';
       if (error.code === 'auth/user-not-found') {
-        message = 'No account found with this email address.';
+        message = 'No account found with this email address. Please sign up first.';
+        title = 'Account Not Found';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+        title = 'Invalid Email';
+      } else if (error.code === 'auth/too-many-requests') {
+        message = 'Too many attempts. Please wait a few minutes before trying again.';
+        title = 'Too Many Requests';
       }
-      toast.error(message);
+      showAlert('error', title, message);
     } finally {
       setLoading(false);
     }
@@ -82,25 +138,21 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const handleAuthSuccess = (userProfile) => {
     console.log("Auth success, navigating to dashboard...", userProfile);
     
-    // Close modal if it exists
     if (onClose) {
       onClose();
     }
     
-    // Call the success callback if provided
     if (onLoginSuccess) {
       onLoginSuccess(userProfile);
     }
     
-    // Navigate to dashboard
     navigate('/dashboard', { replace: true });
-    
-    // Dispatch event for other components
     window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
   };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
+    setAlert(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
@@ -148,46 +200,103 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
       }
 
       localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      toast.success('Welcome! Signed in with Google');
-      handleAuthSuccess(userProfile);
-
+      showAlert('success', 'Welcome!', `Signed in successfully as ${userProfile.name}`);
+      setTimeout(() => handleAuthSuccess(userProfile), 500);
     } catch (error) {
       console.error("Google auth error:", error);
-      toast.error('Google sign-in failed. Please try again.');
+      let message = 'Google sign-in failed. Please try again.';
+      let title = 'Authentication Failed';
+      if (error.code === 'auth/popup-closed-by-user') {
+        message = 'Sign-in was cancelled. Please try again.';
+        title = 'Cancelled';
+      } else if (error.code === 'auth/network-request-failed') {
+        message = 'Network error. Please check your internet connection.';
+        title = 'Network Error';
+      } else if (error.code === 'auth/popup-blocked') {
+        message = 'Popup was blocked. Please allow popups for this site.';
+        title = 'Popup Blocked';
+      }
+      showAlert('error', title, message);
     } finally {
       setLoading(false);
     }
   };
 
+  const validateForm = () => {
+    const email = formData.email.trim();
+    const password = formData.password.trim();
+
+    if (!email) {
+      showAlert('error', 'Email Required', 'Please enter your email address');
+      return false;
+    }
+
+    if (!password) {
+      showAlert('error', 'Password Required', 'Please enter your password');
+      return false;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      showAlert('error', 'Invalid Email', 'Please enter a valid email address (e.g., name@example.com)');
+      return false;
+    }
+
+    if (!isLogin) {
+      if (formData.name && formData.name.length < 2) {
+        showAlert('error', 'Invalid Name', 'Please enter your full name (minimum 2 characters)');
+        return false;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        showAlert('error', 'Password Mismatch', 'Passwords do not match. Please re-enter your password.');
+        return false;
+      }
+
+      if (password.length < 6) {
+        showAlert('error', 'Weak Password', 'Password must be at least 6 characters long');
+        return false;
+      }
+
+      if (role === 'student') {
+        if (!formData.matricNumber) {
+          showAlert('error', 'Matric Number Required', 'Please enter your matriculation number');
+          return false;
+        }
+        if (!formData.school) {
+          showAlert('error', 'School Required', 'Please select your school');
+          return false;
+        }
+        if (!formData.department) {
+          showAlert('error', 'Department Required', 'Please select your department');
+          return false;
+        }
+      }
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validateForm()) return;
+    
     setLoading(true);
+    setAlert(null);
 
     try {
       const email = formData.email.trim();
       const password = formData.password.trim();
 
-      if (!email) throw new Error("Please enter your email address");
-      if (!password) throw new Error("Password is required");
-
       let userCredential;
 
       if (!isLogin) {
         // SIGNUP
-        if (formData.password !== formData.confirmPassword) {
-          throw new Error("Passwords do not match");
-        }
-        if (password.length < 6) {
-          throw new Error("Password must be at least 6 characters long");
-        }
-
         userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // Send email verification
         await sendEmailVerification(user);
 
-        // Create profile
         const profileData = {
           name: formData.name.trim() || 'User',
           email: user.email,
@@ -232,22 +341,18 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         };
         
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        toast.success('Account created! Please verify your email.');
-        toast.info('Check your inbox for verification link');
+        showAlert('success', 'Account Created!', `Welcome to WE CONNECT, ${userProfile.name}! Please check your email to verify your account.`);
         
-        handleAuthSuccess(userProfile);
-        
+        setTimeout(() => handleAuthSuccess(userProfile), 2000);
       } else {
         // LOGIN
         userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
-        // Check email verification
         await user.reload();
         
         if (!user.emailVerified) {
-          toast.error('Please verify your email before logging in.');
-          toast.info('Check your inbox for the verification link');
+          showAlert('warning', 'Email Not Verified', 'Please verify your email before logging in. Check your inbox for the verification link.');
           setLoading(false);
           return;
         }
@@ -296,32 +401,53 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         }
         
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        toast.success('Welcome back!');
+        showAlert('success', 'Welcome Back!', `Hello ${userProfile.name}, you have successfully signed in.`);
         
-        handleAuthSuccess(userProfile);
+        setTimeout(() => handleAuthSuccess(userProfile), 500);
       }
-
     } catch (error) {
       console.error("Auth error:", error);
       let message = 'An error occurred. Please try again.';
+      let title = 'Authentication Failed';
       
       switch (error.code) {
         case 'auth/invalid-credential':
-          message = 'Invalid email or password. Please try again.';
+          message = 'The email or password you entered is incorrect. Please check and try again.';
+          title = 'Invalid Credentials';
           break;
         case 'auth/email-already-in-use':
-          message = 'This email is already registered. Please sign in.';
+          message = 'This email is already registered. Please sign in instead.';
+          title = 'Email Already Exists';
           break;
         case 'auth/user-not-found':
-          message = 'No account found with this email. Please sign up.';
+          message = 'No account found with this email. Please sign up first.';
+          title = 'Account Not Found';
           break;
         case 'auth/wrong-password':
-          message = 'Incorrect password. Please try again.';
+          message = 'Incorrect password. Please try again or click "Forgot Password".';
+          title = 'Wrong Password';
+          break;
+        case 'auth/too-many-requests':
+          message = 'Too many failed attempts. Please wait a few minutes before trying again.';
+          title = 'Too Many Attempts';
+          break;
+        case 'auth/network-request-failed':
+          message = 'Network error. Please check your internet connection.';
+          title = 'Network Error';
+          break;
+        case 'auth/invalid-email':
+          message = 'Please enter a valid email address.';
+          title = 'Invalid Email';
+          break;
+        case 'auth/weak-password':
+          message = 'Password should be at least 6 characters long.';
+          title = 'Weak Password';
           break;
         default:
-          message = error.message || 'Authentication failed.';
+          message = error.message || 'Authentication failed. Please try again.';
+          title = 'Error';
       }
-      toast.error(message);
+      showAlert('error', title, message);
     } finally {
       setLoading(false);
     }
@@ -332,6 +458,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     setShowResetPassword(false);
     setResetSent(false);
     setResetEmail('');
+    setAlert(null);
     setFormData({
       ...formData,
       name: '',
@@ -363,15 +490,25 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
 
       <div className="p-4 sm:p-6 md:p-10 lg:p-12 space-y-6 sm:space-y-10 max-h-[70vh] sm:max-h-[76vh] overflow-y-auto">
         
+        {/* Alert Container */}
+        <AnimatePresence>
+          {alert && (
+            <AuthAlert 
+              type={alert.type}
+              title={alert.title}
+              message={alert.message}
+              onClose={clearAlert}
+            />
+          )}
+        </AnimatePresence>
+
         {showResetPassword ? (
           <form onSubmit={handlePasswordReset} className="space-y-5 sm:space-y-7">
             {resetSent ? (
               <div className="text-center space-y-4">
                 <div className="flex justify-center">
-                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center animate-pulse">
+                    <CheckCircle className="w-8 h-8 text-white" />
                   </div>
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">
@@ -415,9 +552,14 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                   disabled={loading}
                   className="w-full py-3 sm:py-4 md:py-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold text-sm sm:text-base md:text-lg rounded-xl sm:rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 group relative overflow-hidden"
                 >
-                  <span className="relative z-10">
-                    {loading ? 'Sending...' : 'Send Reset Link'}
-                  </span>
+                  {loading ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Sending...</span>
+                    </div>
+                  ) : (
+                    <span className="relative z-10">Send Reset Link</span>
+                  )}
                 </motion.button>
 
                 <button
@@ -677,7 +819,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                   <div className="relative">
                     <Lock className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-indigo-400/70 w-4 h-4 sm:w-5 sm:h-5" />
                     <input
-                      type={showPassword ? 'text' : 'password'}
+                      type={showConfirmPassword ? 'text' : 'password'}
                       name="confirmPassword"
                       value={formData.confirmPassword}
                       onChange={handleInputChange}
@@ -687,10 +829,10 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-indigo-400/80 hover:text-purple-500 transition-colors p-1"
                     >
-                      {showPassword ? <EyeOff size={16} className="sm:w-5 sm:h-5" /> : <Eye size={16} className="sm:w-5 sm:h-5" />}
+                      {showConfirmPassword ? <EyeOff size={16} className="sm:w-5 sm:h-5" /> : <Eye size={16} className="sm:w-5 sm:h-5" />}
                     </button>
                   </div>
                 )}
@@ -716,8 +858,17 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 className="w-full py-3 sm:py-4 md:py-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white font-bold text-sm sm:text-base md:text-lg rounded-xl sm:rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 sm:gap-3 group relative overflow-hidden"
               >
                 <span className="relative z-10 flex items-center gap-2">
-                  {loading ? 'Processing…' : (isLogin ? 'Sign In' : 'Create Free Account')}
-                  {!loading && <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />}
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>{isLogin ? 'Signing In...' : 'Creating Account...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      {isLogin ? 'Sign In' : 'Create Free Account'}
+                      <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
                 </span>
                 <span className="absolute inset-0 bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500" />
               </motion.button>

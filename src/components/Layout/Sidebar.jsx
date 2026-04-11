@@ -21,7 +21,10 @@ import {
   MessageCircle,
   Star,
   Shield,
-  Gem
+  Gem,
+  UserCircle,
+  Globe,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -64,6 +67,7 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
     { path: '/notifications', icon: <Bell size={20} />, label: 'Notifications' },
     { path: '/downloads', icon: <Download size={20} />, label: 'Downloads' },
     { path: '/monetary', icon: <Coins size={20} />, label: 'Wallet' },
+    { path: `/profile/${userProfile?.id}`, icon: <UserCircle size={20} />, label: 'My Profile' },
     { path: '/settings', icon: <Settings size={20} />, label: 'Settings' },
     { path: '/about', icon: <Info size={20} />, label: 'About' },
   ];
@@ -124,9 +128,8 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
           )}
         </div>
         
-        {/* Coin and Diamond Balances - Always visible */}
+        {/* Coin and Diamond Balances */}
         <div className={`mt-3 ${collapsed ? 'flex flex-col items-center gap-2' : 'grid grid-cols-2 gap-2'}`}>
-          {/* Coins Balance */}
           <div className={`flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 ${collapsed ? 'justify-center' : ''}`}>
             <Coins className="w-4 h-4 text-amber-500" />
             {!collapsed ? (
@@ -143,7 +146,6 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
             )}
           </div>
           
-          {/* Diamonds Balance */}
           <div className={`flex items-center gap-2 p-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 ${collapsed ? 'justify-center' : ''}`}>
             <Gem className="w-4 h-4 text-purple-500" />
             {!collapsed ? (
@@ -161,7 +163,7 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
           </div>
         </div>
         
-        {/* Withdrawable amount hint - only when expanded */}
+        {/* Withdrawable amount hint */}
         {!collapsed && (
           <div className="mt-2 text-center">
             <p className="text-xs text-slate-400">

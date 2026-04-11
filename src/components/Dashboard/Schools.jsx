@@ -1,21 +1,23 @@
-// Schools.jsx — Redesigned with modern UI/UX while maintaining all functionality
-import React from 'react';
-import { Search, Filter, ChevronDown, ChevronUp, X } from 'lucide-react';
+// Schools.jsx - Enhanced Version with Better UI/UX
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Filter, ChevronDown, ChevronUp, X, Check, Layers, BookOpen, Building2, GraduationCap, School } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const MultiSelectDropdown = ({
   options = [],
   placeholder = "Select options...",
   searchPlaceholder = "Search...",
+  icon: IconComponent,
   onChange = () => {},
   initialSelected = [],
 }) => {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [searchTerm, setSearchTerm] = React.useState('');
-  const [selectedOptions, setSelectedOptions] = React.useState(initialSelected);
-  const dropdownRef = React.useRef(null);
-  const searchInputRef = React.useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedOptions, setSelectedOptions] = useState(initialSelected);
+  const dropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
@@ -26,7 +28,7 @@ const MultiSelectDropdown = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen && searchInputRef.current) searchInputRef.current.focus();
   }, [isOpen]);
 
@@ -60,28 +62,31 @@ const MultiSelectDropdown = ({
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-between min-h-12 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800/50 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-all duration-200 shadow-sm hover:shadow-md"
       >
-        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
-          {selectedOptions.length === 0 ? (
-            <span className="text-slate-500 dark:text-slate-400 text-sm">{placeholder}</span>
-          ) : (
-            selectedOptions.map((option) => (
-              <span
-                key={option.value}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded-lg"
-              >
-                {option.label}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeTag(option);
-                  }}
-                  className="hover:text-indigo-900 font-bold text-sm leading-none ml-1"
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {IconComponent && <IconComponent size={16} className="text-slate-400 flex-shrink-0" />}
+          <div className="flex flex-wrap gap-1.5 flex-1">
+            {selectedOptions.length === 0 ? (
+              <span className="text-slate-500 dark:text-slate-400 text-sm">{placeholder}</span>
+            ) : (
+              selectedOptions.map((option) => (
+                <span
+                  key={option.value}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 rounded-full"
                 >
-                  ×
-                </button>
-              </span>
-            ))
-          )}
+                  {option.label}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeTag(option);
+                    }}
+                    className="hover:text-indigo-900 font-bold text-sm leading-none ml-1"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 ml-2">
@@ -105,52 +110,61 @@ const MultiSelectDropdown = ({
         </div>
       </div>
 
-      {isOpen && (
-        <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          <div className="relative border-b border-slate-100 dark:border-slate-700">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full pl-10 pr-4 py-3 text-sm bg-white dark:bg-slate-800 outline-none focus:ring-0"
-            />
-          </div>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden"
+          >
+            <div className="relative border-b border-slate-100 dark:border-slate-700">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full pl-10 pr-4 py-3 text-sm bg-white dark:bg-slate-800 outline-none focus:ring-0"
+              />
+            </div>
 
-          <ul className="max-h-60 overflow-y-auto py-2">
-            {filteredOptions.length === 0 ? (
-              <li className="px-4 py-3 text-slate-500 text-center text-sm">No options found</li>
-            ) : (
-              filteredOptions.map((option) => {
-                const isSelected = selectedOptions.some((item) => item.value === option.value);
-                return (
-                  <li
-                    key={option.value}
-                    onClick={() => toggleOption(option)}
-                    className="px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer flex items-center gap-3 text-sm transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                    />
-                    <span className="text-slate-700 dark:text-slate-200">{option.label}</span>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </div>
-      )}
+            <ul className="max-h-60 overflow-y-auto py-2">
+              {filteredOptions.length === 0 ? (
+                <li className="px-4 py-3 text-slate-500 text-center text-sm">No options found</li>
+              ) : (
+                filteredOptions.map((option, idx) => {
+                  const isSelected = selectedOptions.some((item) => item.value === option.value);
+                  return (
+                    <motion.li
+                      key={option.value}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.01 }}
+                      onClick={() => toggleOption(option)}
+                      className="px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer flex items-center gap-3 text-sm transition-colors"
+                    >
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 dark:border-slate-600'}`}>
+                        {isSelected && <Check size={10} className="text-white" />}
+                      </div>
+                      <span className="text-slate-700 dark:text-slate-200">{option.label}</span>
+                    </motion.li>
+                  );
+                })
+              )}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
 function Schools({ onFiltersChange }) {
+  const [activeFilterCount, setActiveFilterCount] = useState(0);
+
   const getSavedSelections = (field) => {
     const savedFilters = localStorage.getItem('materialFilters');
     if (savedFilters) {
@@ -279,20 +293,61 @@ function Schools({ onFiltersChange }) {
   const handleFilterChange = (field) => (selected) => {
     const values = selected.map(item => item.label);
     onFiltersChange({ field, values });
-    // Save to localStorage
     const savedFilters = localStorage.getItem('materialFilters');
     const filters = savedFilters ? JSON.parse(savedFilters) : {};
     filters[field] = values;
     localStorage.setItem('materialFilters', JSON.stringify(filters));
+    
+    // Update active filter count
+    const totalActive = Object.values(filters).reduce((sum, arr) => sum + arr.length, 0);
+    setActiveFilterCount(totalActive);
+  };
+
+  useEffect(() => {
+    const savedFilters = localStorage.getItem('materialFilters');
+    if (savedFilters) {
+      try {
+        const filters = JSON.parse(savedFilters);
+        const totalActive = Object.values(filters).reduce((sum, arr) => sum + arr.length, 0);
+        setActiveFilterCount(totalActive);
+      } catch (e) {}
+    }
+  }, []);
+
+  const clearAllFilters = () => {
+    onFiltersChange({ field: 'category', values: [] });
+    onFiltersChange({ field: 'school', values: [] });
+    onFiltersChange({ field: 'department', values: [] });
+    localStorage.removeItem('materialFilters');
+    setActiveFilterCount(0);
+    toast?.success('All filters cleared');
   };
 
   return (
     <div className="w-full">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Filter size={14} className="text-indigo-500" />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Filter Materials</span>
+          {activeFilterCount > 0 && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+              {activeFilterCount} active
+            </span>
+          )}
+        </div>
+        {activeFilterCount > 0 && (
+          <button onClick={clearAllFilters} className="text-xs text-red-500 hover:text-red-600 transition flex items-center gap-1">
+            <X size={12} />
+            Clear all
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <MultiSelectDropdown
           options={materialTypes}
           placeholder="Material Type"
           searchPlaceholder="Search types..."
+          icon={Layers}
           onChange={handleFilterChange('category')}
           initialSelected={getInitialSelected(materialTypes, getSavedSelections('category'))}
         />
@@ -301,6 +356,7 @@ function Schools({ onFiltersChange }) {
           options={universities}
           placeholder="University"
           searchPlaceholder="Search universities..."
+          icon={GraduationCap}
           onChange={handleFilterChange('school')}
           initialSelected={getInitialSelected(universities, getSavedSelections('school'))}
         />
@@ -309,6 +365,7 @@ function Schools({ onFiltersChange }) {
           options={departments}
           placeholder="Department / Course"
           searchPlaceholder="Search departments..."
+          icon={BookOpen}
           onChange={handleFilterChange('department')}
           initialSelected={getInitialSelected(departments, getSavedSelections('department'))}
         />
