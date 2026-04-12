@@ -1,12 +1,12 @@
-// UploadsData.jsx
-// Modern redesign with enhanced UI/UX - all original functionality preserved
-
-import React, { useState, useRef, useEffect } from 'react';
+// UploadsData.jsx - Updated with conditional fields for Past Questions
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Upload, X, FileText, Video, BookOpen, ScrollText,
   ArrowRight, Check, ArrowLeft, CloudUpload, FileCheck,
   Image, PlayCircle, File, AlertCircle, ChevronRight,
-  ChevronLeft, Download, Eye, Layers, Sparkles, Trash2
+  ChevronLeft, Download, Eye, Layers, Sparkles, Trash2,
+  Calendar, Bookmark, GraduationCap, Clock, Monitor, Award,
+  UserCheck, Users, Target, Hash, CalendarDays, ChevronDown
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,6 +17,451 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 
+// Category configuration with specific fields
+const CATEGORIES = [
+  { 
+    value: 'Past Questions', 
+    icon: ScrollText, 
+    label: 'Past Questions', 
+    color: 'from-amber-500 to-orange-600',
+    bgGradient: 'from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20',
+    borderColor: 'border-amber-200 dark:border-amber-800',
+    iconColor: 'text-amber-600',
+    accept: '.pdf,.doc,.docx',
+    description: 'Share past exam papers and practice questions',
+    // Past Questions don't need course field - they already have subject in title
+    showCourseField: false,
+    specificFields: [
+      { name: 'semester', label: 'Semester', type: 'select', required: true, options: ['First Semester', 'Second Semester', 'Both Semesters'], icon: Calendar },
+      { name: 'level', label: 'Level/Year', type: 'select', required: true, options: ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Postgraduate'], icon: GraduationCap },
+      { name: 'examType', label: 'Exam Type', type: 'select', required: true, options: ['Mid-Semester', 'End of Semester', 'Supplementary', 'Mock Exam'], icon: Target },
+      //{ name: 'academicYear', label: 'Academic Year', type: 'text', required: true, placeholder: 'e.g., 2023/2024', icon: CalendarDays }//
+    ]
+  },
+  { 
+    value: 'PDF Notes', 
+    icon: FileText, 
+    label: 'PDF Notes', 
+    color: 'from-blue-500 to-cyan-600',
+    bgGradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20',
+    borderColor: 'border-blue-200 dark:border-blue-800',
+    iconColor: 'text-blue-600',
+    accept: '.pdf,.doc,.docx',
+    description: 'Share lecture notes, summaries, and study guides',
+    showCourseField: true,
+    specificFields: [
+      { name: 'semester', label: 'Semester', type: 'select', required: true, options: ['First Semester', 'Second Semester'], icon: Calendar },
+      { name: 'lectureType', label: 'Lecture Type', type: 'select', required: true, options: ['Lecture Notes', 'Summary', 'Revision Guide', 'Practical Guide', 'Lab Manual'], icon: BookOpen },
+      { name: 'topic', label: 'Topic/Chapter', type: 'text', required: false, placeholder: 'e.g., Chapter 1 - Introduction to Organic Chemistry', icon: Bookmark }
+    ]
+  },
+  { 
+    value: 'Video Tutorials', 
+    icon: Video, 
+    label: 'Video Tutorials', 
+    color: 'from-purple-500 to-pink-600',
+    bgGradient: 'from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20',
+    borderColor: 'border-purple-200 dark:border-purple-800',
+    iconColor: 'text-purple-600',
+    accept: '.mp4,.avi,.mov,.webm',
+    description: 'Upload educational video content and tutorials',
+    showCourseField: true,
+    specificFields: [
+      { name: 'duration', label: 'Duration', type: 'text', required: true, placeholder: 'e.g., 45 minutes, 1 hour 30 mins', icon: Clock },
+      { name: 'resolution', label: 'Resolution', type: 'select', required: true, options: ['720p (HD)', '1080p (Full HD)', '4K', 'Auto'], icon: Monitor },
+      { name: 'instructor', label: 'Instructor/Tutor', type: 'text', required: false, placeholder: 'e.g., Dr. John Smith', icon: UserCheck },
+      { name: 'topics', label: 'Topics Covered', type: 'textarea', required: false, placeholder: 'List the main topics covered in this video...', icon: Target }
+    ]
+  },
+  { 
+    value: 'Technical Reviews', 
+    icon: BookOpen, 
+    label: 'Technical Reviews', 
+    color: 'from-emerald-500 to-teal-600',
+    bgGradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20',
+    borderColor: 'border-emerald-200 dark:border-emerald-800',
+    iconColor: 'text-emerald-600',
+    accept: '.pdf,.doc,.docx',
+    description: 'Share research papers, reviews, and technical articles',
+    showCourseField: true,
+    specificFields: [
+      { name: 'publicationDate', label: 'Publication Date', type: 'date', required: true, icon: Calendar },
+      { name: 'reviewer', label: 'Reviewer/Analyst', type: 'text', required: true, placeholder: 'e.g., Dr. Jane Doe', icon: Award },
+      { name: 'journal', label: 'Journal/Publisher', type: 'text', required: false, placeholder: 'e.g., Nigerian Journal of Science', icon: BookOpen },
+      { name: 'doi', label: 'DOI/Reference ID', type: 'text', required: false, placeholder: 'e.g., 10.1234/example', icon: Hash }
+    ]
+  },
+];
+
+// Step Indicator Component
+const StepIndicator = React.memo(({ step }) => (
+  <div className="mb-12">
+    <div className="flex items-center justify-between max-w-2xl mx-auto">
+      {[1, 2, 3, 4].map((s, idx) => (
+        <React.Fragment key={s}>
+          <div className="flex flex-col items-center">
+            <motion.div
+              animate={{
+                scale: step === s ? 1.1 : 1,
+                backgroundColor: step >= s ? '#4F46E5' : '#E2E8F0'
+              }}
+              className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all ${
+                step >= s ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+              }`}
+            >
+              {step > s ? <Check size={20} /> : s}
+            </motion.div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 hidden sm:block">
+              {s === 1 ? 'Category' : s === 2 ? 'Details' : s === 3 ? 'Upload' : 'Complete'}
+            </p>
+          </div>
+          {s < 4 && (
+            <div className={`flex-1 h-1 mx-4 rounded-full transition-all ${
+              step > s ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
+            }`} />
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  </div>
+));
+
+// Category Selection Step
+const CategoryStep = React.memo(({ onSelectCategory }) => (
+  <motion.div
+    initial={{ opacity: 0, x: 100 }}
+    animate={{ opacity: 1, x: 0 }}
+    exit={{ opacity: 0, x: -100 }}
+    transition={{ duration: 0.3 }}
+  >
+    <div className="text-center mb-10">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-4">
+          Share Knowledge
+        </h1>
+        <p className="text-slate-600 dark:text-slate-400 text-lg max-w-2xl mx-auto">
+          Choose what type of educational material you want to share with the community
+        </p>
+      </motion.div>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {CATEGORIES.map((cat, idx) => {
+        const Icon = cat.icon;
+        return (
+          <motion.button
+            key={cat.value}
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.1 }}
+            onClick={() => onSelectCategory(cat)}
+            whileHover={{ scale: 1.02, y: -4 }}
+            whileTap={{ scale: 0.98 }}
+            className={`group relative overflow-hidden rounded-2xl p-8 text-left transition-all bg-gradient-to-br ${cat.bgGradient} border-2 ${cat.borderColor} hover:shadow-2xl`}
+          >
+            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ChevronRight className="w-6 h-6 text-slate-400" />
+            </div>
+            <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cat.color} text-white mb-4 shadow-lg`}>
+              <Icon size={28} />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">{cat.label}</h3>
+            <p className="text-slate-600 dark:text-slate-400 text-sm">{cat.description}</p>
+            <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+              <File size={12} />
+              <span>Supports: {cat.accept.toUpperCase()}</span>
+            </div>
+          </motion.button>
+        );
+      })}
+    </div>
+  </motion.div>
+));
+
+// Dynamic Field Renderer
+const DynamicField = ({ field, value, onChange }) => {
+  const Icon = field.icon;
+  
+  if (field.type === 'select') {
+    return (
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          {field.label} {field.required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="relative">
+          <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+          <select
+            name={field.name}
+            value={value || ''}
+            onChange={onChange}
+            required={field.required}
+            className="w-full pl-12 pr-10 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all appearance-none"
+          >
+            <option value="">Select {field.label}</option>
+            {field.options.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+      </div>
+    );
+  }
+  
+  if (field.type === 'textarea') {
+    return (
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          {field.label} {field.required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="relative">
+          <Icon className="absolute left-4 top-4 text-slate-400 w-5 h-5" />
+          <textarea
+            name={field.name}
+            value={value || ''}
+            onChange={onChange}
+            placeholder={field.placeholder}
+            rows={3}
+            required={field.required}
+            className="w-full pl-12 pr-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-y"
+          />
+        </div>
+      </div>
+    );
+  }
+  
+  if (field.type === 'date') {
+    return (
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          {field.label} {field.required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="relative">
+          <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+          <input
+            type="date"
+            name={field.name}
+            value={value || ''}
+            onChange={onChange}
+            required={field.required}
+            className="w-full pl-12 pr-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+          />
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+        {field.label} {field.required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+        <input
+          type="text"
+          name={field.name}
+          value={value || ''}
+          onChange={onChange}
+          placeholder={field.placeholder}
+          required={field.required}
+          className="w-full pl-12 pr-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+        />
+      </div>
+    </div>
+  );
+};
+
+// Details Form Step Component
+const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange, onNext, onBack, selectedCategory }) => {
+  const handleChange = useCallback((e) => {
+    onInputChange(e.target.name, e.target.value);
+  }, [onInputChange]);
+
+  const handleSpecificFieldChange = useCallback((e) => {
+    onSpecificFieldChange(e.target.name, e.target.value);
+  }, [onSpecificFieldChange]);
+
+  const handleNext = useCallback(() => {
+    if (!formData.title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+    
+    // For non-Past Questions, validate course field
+    if (selectedCategory?.showCourseField && !formData.course.trim()) {
+      toast.error("Please enter the course code/name");
+      return;
+    }
+    
+    if (!formData.school.trim()) {
+      toast.error("Please enter your school/university");
+      return;
+    }
+    
+    // Validate category-specific required fields
+    if (selectedCategory?.specificFields) {
+      const missingFields = selectedCategory.specificFields
+        .filter(field => field.required && !formData.specificData?.[field.name])
+        .map(field => field.label);
+      
+      if (missingFields.length > 0) {
+        toast.error(`Please fill in: ${missingFields.join(', ')}`);
+        return;
+      }
+    }
+    
+    onNext();
+  }, [formData, selectedCategory, onNext]);
+
+  const showCourseField = selectedCategory?.showCourseField !== false;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -100 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory?.color} text-white`}>
+            {selectedCategory && <selectedCategory.icon size={20} />}
+          </div>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
+            Material Details
+          </h2>
+        </div>
+        <p className="text-slate-600 dark:text-slate-400">
+          Provide comprehensive information about your {selectedCategory?.label.toLowerCase()}
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        {/* Title Field - Always required */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            Title <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleChange}
+            placeholder={`e.g., ${selectedCategory?.value === 'Past Questions' ? 'CHE 101 Organic Chemistry 2023/2024 Past Questions' : selectedCategory?.value === 'Video Tutorials' ? 'Complete Guide to Organic Chemistry Reactions' : 'Introduction to Organic Chemistry Notes'}`}
+            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+          />
+        </div>
+
+        {/* Course Field - Only show for non-Past Questions */}
+        {showCourseField && (
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Course Code / Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="course"
+              value={formData.course}
+              onChange={handleChange}
+              placeholder="e.g., CHE 101, Introduction to Organic Chemistry"
+              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+            />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              School / University <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="school"
+              value={formData.school}
+              onChange={handleChange}
+              placeholder="e.g., University of Port Harcourt"
+              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Department
+            </label>
+            <input
+              type="text"
+              name="department"
+              value={formData.department}
+              onChange={handleChange}
+              placeholder="e.g., Pure and Industrial Chemistry"
+              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Category-Specific Fields */}
+        {selectedCategory?.specificFields && (
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-6 mt-2">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+              <Layers size={18} className="text-indigo-500" />
+              {selectedCategory.label} Specific Information
+            </h3>
+            <div className="space-y-4">
+              {selectedCategory.specificFields.map((field) => (
+                <DynamicField
+                  key={field.name}
+                  field={field}
+                  value={formData.specificData?.[field.name]}
+                  onChange={handleSpecificFieldChange}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            Description
+          </label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            rows={4}
+            placeholder="Add any additional notes, requirements, or special instructions..."
+            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-y"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-between gap-4 mt-10">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onBack}
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2"
+        >
+          <ArrowLeft size={18} /> Back
+        </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={handleNext}
+          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2"
+        >
+          Continue to Upload <ArrowRight size={18} />
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+});
+
 function UploadsData() {
   const [step, setStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -26,6 +471,7 @@ function UploadsData() {
     school: '',
     department: '',
     description: '',
+    specificData: {},
     file: null,
     preview: null,
   });
@@ -40,74 +486,39 @@ function UploadsData() {
   const fileInputRef = useRef(null);
   const previewInputRef = useRef(null);
 
-  const categories = [
-    { 
-      value: 'Past Questions', 
-      icon: ScrollText, 
-      label: 'Past Questions', 
-      color: 'from-amber-500 to-orange-600',
-      bgGradient: 'from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20',
-      borderColor: 'border-amber-200 dark:border-amber-800',
-      iconColor: 'text-amber-600',
-      accept: '.pdf,.doc,.docx',
-      description: 'Share past exam papers and practice questions'
-    },
-    { 
-      value: 'PDF Notes', 
-      icon: FileText, 
-      label: 'PDF Notes', 
-      color: 'from-blue-500 to-cyan-600',
-      bgGradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20',
-      borderColor: 'border-blue-200 dark:border-blue-800',
-      iconColor: 'text-blue-600',
-      accept: '.pdf,.doc,.docx',
-      description: 'Share lecture notes, summaries, and study guides'
-    },
-    { 
-      value: 'Video Tutorials', 
-      icon: Video, 
-      label: 'Video Tutorials', 
-      color: 'from-purple-500 to-pink-600',
-      bgGradient: 'from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20',
-      borderColor: 'border-purple-200 dark:border-purple-800',
-      iconColor: 'text-purple-600',
-      accept: '.mp4,.avi,.mov,.webm',
-      description: 'Upload educational video content and tutorials'
-    },
-    { 
-      value: 'Technical Reviews', 
-      icon: BookOpen, 
-      label: 'Technical Reviews', 
-      color: 'from-emerald-500 to-teal-600',
-      bgGradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20',
-      borderColor: 'border-emerald-200 dark:border-emerald-800',
-      iconColor: 'text-emerald-600',
-      accept: '.pdf,.doc,.docx',
-      description: 'Share research papers, reviews, and technical articles'
-    },
-  ];
+  const handleInputChange = useCallback((field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  }, []);
 
-  // Animation variants
-  const pageVariants = {
-    initial: { opacity: 0, x: 100 },
-    animate: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -100 }
-  };
+  const handleSpecificFieldChange = useCallback((field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      specificData: { ...prev.specificData, [field]: value }
+    }));
+  }, []);
 
-  const fadeInUp = {
-    initial: { opacity: 0, y: 20 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.5 }
-  };
-
-  const handleCategorySelect = (cat) => {
+  const handleCategorySelect = useCallback((cat) => {
     setSelectedCategory(cat);
+    setFormData(prev => ({
+      ...prev,
+      specificData: {},
+      // Reset course field when switching to Past Questions (since they don't need it)
+      course: cat.showCourseField ? prev.course : ''
+    }));
     setStep(2);
-  };
+  }, []);
 
-  const handleInputChange = (e) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
+  const handleNextStep = useCallback(() => {
+    setStep(3);
+  }, []);
+
+  const handleBackStep = useCallback(() => {
+    setStep(2);
+  }, []);
+
+  const handleBackToCategory = useCallback(() => {
+    setStep(1);
+  }, []);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -261,8 +672,6 @@ function UploadsData() {
             );
           }
 
-          console.log("Saving to Firestore — current user:", auth.currentUser?.uid || "(no user!)");
-
           if (!auth.currentUser) {
             throw new Error("User no longer authenticated at save time");
           }
@@ -270,11 +679,13 @@ function UploadsData() {
           await addDoc(collection(db, 'materials'), {
             name: formData.title.trim(),
             title: formData.title.trim(),
-            course: formData.course.trim(),
+            // For Past Questions, course is not required - use title as fallback
+            course: formData.course.trim() || formData.title.trim(),
             school: formData.school.trim(),
             department: formData.department?.trim() || null,
             description: formData.description?.trim() || null,
             category: selectedCategory.value,
+            specificData: formData.specificData,
             file_name: fileName,
             file_path: storagePath,
             file_size: file.size,
@@ -322,238 +733,70 @@ function UploadsData() {
     setSelectedCategory(null);
     setFormData({
       title: '', course: '', school: '', department: '', description: '',
+      specificData: {},
       file: null, preview: null,
     });
     setPreviewImages([]);
     setPreviewImagePreviews([]);
   };
 
-  // Step Progress Indicator
-  const StepIndicator = () => (
-    <div className="mb-12">
-      <div className="flex items-center justify-between max-w-2xl mx-auto">
-        {[1, 2, 3, 4].map((s, idx) => (
-          <React.Fragment key={s}>
-            <div className="flex flex-col items-center">
-              <motion.div
-                animate={{
-                  scale: step === s ? 1.1 : 1,
-                  backgroundColor: step >= s ? '#4F46E5' : '#E2E8F0'
-                }}
-                className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all ${
-                  step >= s ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
-                }`}
-              >
-                {step > s ? <Check size={20} /> : s}
-              </motion.div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 hidden sm:block">
-                {s === 1 ? 'Category' : s === 2 ? 'Details' : s === 3 ? 'Upload' : 'Complete'}
-              </p>
-            </div>
-            {s < 4 && (
-              <div className={`flex-1 h-1 mx-4 rounded-full transition-all ${
-                step > s ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
-              }`} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
-    </div>
-  );
-
-  // Category Selection Step
-  const CategoryStep = () => (
+  // Success Step Component
+  const SuccessStep = () => (
     <motion.div
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="text-center"
     >
-      <div className="text-center mb-10">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-4">
-            Share Knowledge
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 text-lg max-w-2xl mx-auto">
-            Choose what type of educational material you want to share with the community
-          </p>
-        </motion.div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {categories.map((cat, idx) => {
-          const Icon = cat.icon;
-          return (
-            <motion.button
-              key={cat.value}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              onClick={() => handleCategorySelect(cat)}
-              whileHover={{ scale: 1.02, y: -4 }}
-              whileTap={{ scale: 0.98 }}
-              className={`group relative overflow-hidden rounded-2xl p-8 text-left transition-all bg-gradient-to-br ${cat.bgGradient} border-2 ${cat.borderColor} hover:shadow-2xl`}
-            >
-              <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ChevronRight className="w-6 h-6 text-slate-400" />
-              </div>
-              <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cat.color} text-white mb-4 shadow-lg`}>
-                <Icon size={28} />
-              </div>
-              <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">{cat.label}</h3>
-              <p className="text-slate-600 dark:text-slate-400 text-sm">{cat.description}</p>
-              <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
-                <File size={12} />
-                <span>Supports: {cat.accept.toUpperCase()}</span>
-              </div>
-            </motion.button>
-          );
-        })}
-      </div>
-    </motion.div>
-  );
-
-  // Details Form Step
-  const DetailsStep = () => (
-    <motion.div
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-      transition={{ duration: 0.3 }}
-    >
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory.color} text-white`}>
-            {selectedCategory && <selectedCategory.icon size={20} />}
-          </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
-            Material Details
-          </h2>
-        </div>
-        <p className="text-slate-600 dark:text-slate-400">
-          Provide comprehensive information about your {selectedCategory?.label.toLowerCase()}
-        </p>
-      </div>
-
-      <form className="space-y-6">
-        <motion.div variants={fadeInUp}>
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-            Title <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="title"
-            value={formData.title}
-            onChange={handleInputChange}
-            placeholder="e.g., CHE 101 Organic Chemistry 2023/2024 Past Questions"
-            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-          />
-        </motion.div>
-
-        <motion.div variants={fadeInUp}>
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-            Course Code / Name <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="course"
-            value={formData.course}
-            onChange={handleInputChange}
-            placeholder="e.g., CHE 101, Introduction to Organic Chemistry"
-            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-          />
-        </motion.div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <motion.div variants={fadeInUp}>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              School / University <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="school"
-              value={formData.school}
-              onChange={handleInputChange}
-              placeholder="e.g., University of Port Harcourt"
-              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-            />
-          </motion.div>
-
-          <motion.div variants={fadeInUp}>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Department
-            </label>
-            <input
-              type="text"
-              name="department"
-              value={formData.department}
-              onChange={handleInputChange}
-              placeholder="e.g., Pure and Industrial Chemistry"
-              className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-            />
-          </motion.div>
-        </div>
-
-        <motion.div variants={fadeInUp}>
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-            Description
-          </label>
-          <textarea
-            name="description"
-            value={formData.description}
-            onChange={handleInputChange}
-            rows={4}
-            placeholder="Add any additional notes, semester/year, or special instructions..."
-            className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-y"
-          />
-        </motion.div>
-      </form>
-
-      <div className="flex justify-between gap-4 mt-10">
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+        className="w-28 h-28 mx-auto mb-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl"
+      >
+        <Check size={48} className="text-white" />
+      </motion.div>
+      
+      <h2 className="text-3xl md:text-4xl font-bold text-slate-800 dark:text-white mb-4">
+        Upload Complete! 🎉
+      </h2>
+      <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-md mx-auto">
+        Your {selectedCategory?.label.toLowerCase()} has been successfully uploaded and shared with the community.
+      </p>
+      
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setStep(1)}
-          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={resetForm}
+          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all inline-flex items-center gap-2"
         >
-          <ArrowLeft size={18} /> Back
+          <Upload size={18} />
+          Upload Another File
         </motion.button>
-
+        
         <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => {
-            if (!formData.title.trim() || !formData.course.trim() || !formData.school.trim()) {
-              toast.error("Please fill in all required fields: Title, Course, School");
-              return;
-            }
-            setStep(3);
-          }}
-          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => window.location.href = '/dashboard'}
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all inline-flex items-center gap-2"
         >
-          Continue to Upload <ArrowRight size={18} />
+          Go to Dashboard
         </motion.button>
       </div>
     </motion.div>
   );
 
-  // File Upload Step
+  // Upload Step Component
   const UploadStep = () => {
     const isVideo = selectedCategory?.value === 'Video Tutorials';
     const previewRequired = !isVideo && previewImages.length < 3;
 
     return (
       <motion.div
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        variants={pageVariants}
+        initial={{ opacity: 0, x: 100 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -100 }}
         transition={{ duration: 0.3 }}
       >
         <div className="mb-8">
@@ -740,7 +983,7 @@ function UploadsData() {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => setStep(2)}
+            onClick={handleBackStep}
             disabled={uploading && !isPaused}
             className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2 disabled:opacity-50"
           >
@@ -777,61 +1020,24 @@ function UploadsData() {
     );
   };
 
-  // Success Step
-  const SuccessStep = () => (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      className="text-center"
-    >
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", stiffness: 200, damping: 20 }}
-        className="w-28 h-28 mx-auto mb-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl"
-      >
-        <Check size={48} className="text-white" />
-      </motion.div>
-      
-      <h2 className="text-3xl md:text-4xl font-bold text-slate-800 dark:text-white mb-4">
-        Upload Complete! 🎉
-      </h2>
-      <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-md mx-auto">
-        Your {selectedCategory?.label.toLowerCase()} has been successfully uploaded and shared with the community.
-      </p>
-      
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={resetForm}
-          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all inline-flex items-center gap-2"
-        >
-          <Upload size={18} />
-          Upload Another File
-        </motion.button>
-        
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => window.location.href = '/dashboard'}
-          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all inline-flex items-center gap-2"
-        >
-          Go to Dashboard
-        </motion.button>
-      </div>
-    </motion.div>
-  );
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
       <div className="max-w-5xl mx-auto px-4 py-8 md:py-12 lg:py-16">
-        <StepIndicator />
+        <StepIndicator step={step} />
         
         <AnimatePresence mode="wait">
-          {step === 1 && <CategoryStep key="category" />}
-          {step === 2 && <DetailsStep key="details" />}
+          {step === 1 && <CategoryStep key="category" onSelectCategory={handleCategorySelect} />}
+          {step === 2 && (
+            <DetailsStep 
+              key="details" 
+              formData={formData}
+              onInputChange={handleInputChange}
+              onSpecificFieldChange={handleSpecificFieldChange}
+              onNext={handleNextStep}
+              onBack={handleBackToCategory}
+              selectedCategory={selectedCategory}
+            />
+          )}
           {step === 3 && <UploadStep key="upload" />}
           {step === 4 && <SuccessStep key="success" />}
         </AnimatePresence>

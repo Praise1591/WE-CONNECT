@@ -8,7 +8,9 @@ import {
   Star, Clock, FileText, Video, ScrollText, Zap,
   AlertCircle, Loader2, ExternalLink, Copy, Phone,
   UserPlus, UserCheck, Search, X, ChevronRight,
-  Activity, TrendingUp, ChevronDown, ChevronUp, UserMinus
+  Activity, TrendingUp, ChevronDown, ChevronUp, UserMinus,
+  Instagram, Facebook, Youtube, Building2, FileCheck,
+  BadgeCheck, Shield, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -62,15 +64,24 @@ function PublicProfileViewer() {
   const [activeTab, setActiveTab] = useState('materials');
   const [unfollowingId, setUnfollowingId] = useState(null);
   
+  // Privacy settings from profile
+  const [privacySettings, setPrivacySettings] = useState({
+    showProfessionalInfo: true,
+    showSocialLinks: true,
+    showAchievements: true,
+    showContactInfo: true
+  });
+
+  // Load all schools for filter
+  const [allSchools, setAllSchools] = useState([]);
+  
   // Search States
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchFilters, setSearchFilters] = useState({ role: 'all', school: '' });
-  const [allSchools, setAllSchools] = useState([]);
 
-  // Load all schools for filter
   useEffect(() => {
     const loadSchools = async () => {
       try {
@@ -110,6 +121,14 @@ function PublicProfileViewer() {
           lastActive: profileData.lastActive?.toDate?.() || new Date()
         });
         
+        // Load privacy settings
+        setPrivacySettings({
+          showProfessionalInfo: profileData.showProfessionalInfo !== false,
+          showSocialLinks: profileData.showSocialLinks !== false,
+          showAchievements: profileData.showAchievements !== false,
+          showContactInfo: profileData.showContactInfo !== false
+        });
+        
         // 2. Load materials stats
         const materialsRef = collection(db, 'materials');
         const materialsQuery = query(materialsRef, where('uid', '==', userId));
@@ -119,7 +138,7 @@ function PublicProfileViewer() {
         const totalDownloads = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().downloads || 0), 0);
         const avgRating = uploadedMaterials.reduce((sum, doc) => sum + (doc.data().averageRating || 0), 0) / (totalUploads || 1);
         
-        // 3. Get followers count - from 'users' collection's followers subcollection
+        // 3. Get followers count
         const followersRef = collection(db, 'users', userId, 'followers');
         let followersCount = 0;
         let followersListData = [];
@@ -138,7 +157,7 @@ function PublicProfileViewer() {
           console.error("Error loading followers:", err);
         }
         
-        // 4. Get following count - from 'users' collection's following subcollection
+        // 4. Get following count
         const followingRef = collection(db, 'users', userId, 'following');
         let followingCount = 0;
         let followingListData = [];
@@ -200,7 +219,7 @@ function PublicProfileViewer() {
         setAllMaterials(recentMaterials);
         setIsFollowing(isFollowingStatus);
         
-        // 7. Increment profile views (only if not the owner - SILENT FAIL)
+        // 7. Increment profile views (only if not the owner)
         if (currentUser?.uid !== userId) {
           try {
             await updateDoc(profileRef, {
@@ -208,7 +227,6 @@ function PublicProfileViewer() {
               lastActive: serverTimestamp()
             });
           } catch (err) {
-            // Silent fail - don't show error to user, just log it
             console.warn("Could not increment profile views:", err.message);
           }
         }
@@ -323,7 +341,6 @@ function PublicProfileViewer() {
     try {
       const batch = writeBatch(db);
       
-      // Add to current user's following
       const followingRef = doc(db, 'users', currentUser.uid, 'following', userId);
       batch.set(followingRef, {
         followedAt: serverTimestamp(),
@@ -331,7 +348,6 @@ function PublicProfileViewer() {
         userPhoto: profile?.photoURL
       });
       
-      // Add to target user's followers
       const followerRef = doc(db, 'users', userId, 'followers', currentUser.uid);
       batch.set(followerRef, {
         followedAt: serverTimestamp(),
@@ -339,7 +355,6 @@ function PublicProfileViewer() {
         userPhoto: currentUser.photoURL
       });
       
-      // Create notification for the user being followed
       const notificationRef = doc(collection(db, `users/${userId}/notifications`));
       batch.set(notificationRef, {
         type: 'new_follower',
@@ -387,7 +402,6 @@ function PublicProfileViewer() {
     }
   };
 
-  // Handle unfollow from the following list
   const handleUnfollowFromList = async (targetUserId, targetName) => {
     if (!currentUser) return;
     
@@ -530,6 +544,11 @@ function PublicProfileViewer() {
     return formatDate(date);
   };
 
+  const getInitials = (name) => {
+    const userName = name || 'User';
+    return userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
@@ -582,7 +601,7 @@ function PublicProfileViewer() {
                       <img src={profile.photoURL} alt={profile.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-white text-2xl md:text-3xl font-bold">
-                        {profile.name?.charAt(0).toUpperCase()}
+                        {getInitials(profile.name)}
                       </div>
                     )}
                   </div>
@@ -698,6 +717,16 @@ function PublicProfileViewer() {
             Materials
           </button>
           <button
+            onClick={() => setActiveTab('about')}
+            className={`px-4 py-2 text-sm font-medium transition-all relative whitespace-nowrap ${
+              activeTab === 'about'
+                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            About
+          </button>
+          <button
             onClick={() => setActiveTab('followers')}
             className={`px-4 py-2 text-sm font-medium transition-all relative whitespace-nowrap ${
               activeTab === 'followers'
@@ -741,75 +770,158 @@ function PublicProfileViewer() {
 
         {/* Tab Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - About */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* About Card */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                <User size={16} className="text-indigo-600" />
-                About
-              </h3>
-              <div className="space-y-2">
-                {profile.bio && (
+          {/* Left Column - About (only visible on materials/activity tabs) */}
+          {(activeTab === 'materials' || activeTab === 'activity') && (
+            <div className="lg:col-span-1 space-y-4">
+              {/* Bio Card */}
+              {profile.bio && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <User size={16} className="text-indigo-600" />
+                    Bio
+                  </h3>
                   <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{profile.bio}</p>
-                )}
-                <div className="pt-2 space-y-1.5">
-                  {profile.email && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                      <Mail size={12} />
-                      <span className="truncate">{profile.email}</span>
-                    </div>
-                  )}
-                  {profile.phone && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                      <Phone size={12} />
-                      <span>{profile.phone}</span>
-                    </div>
-                  )}
-                  {profile.address && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                      <MapPin size={12} />
-                      <span className="truncate">{profile.address}</span>
-                    </div>
-                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Contact Info - Only if user allows */}
+              {privacySettings.showContactInfo && (profile.phone || profile.address) && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Mail size={16} className="text-indigo-600" />
+                    Contact
+                  </h3>
+                  <div className="space-y-2">
+                    {profile.phone && (
+                      <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                        <Phone size={14} />
+                        <span>{profile.phone}</span>
+                      </div>
+                    )}
+                    {profile.address && (
+                      <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                        <MapPin size={14} />
+                        <span className="truncate">{profile.address}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Professional Info - Only if user allows */}
+              {privacySettings.showProfessionalInfo && (
+                <>
+                  {profile.role === 'student' && (profile.school || profile.department) && (
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                        <GraduationCap size={16} className="text-indigo-600" />
+                        Education
+                      </h3>
+                      <div className="space-y-2">
+                        {profile.school && <div><p className="text-xs text-slate-500">School</p><p className="text-sm font-medium">{profile.school}</p></div>}
+                        {profile.faculty && <div><p className="text-xs text-slate-500">Faculty</p><p className="text-sm font-medium">{profile.faculty}</p></div>}
+                        {profile.department && <div><p className="text-xs text-slate-500">Department</p><p className="text-sm font-medium">{profile.department}</p></div>}
+                        {profile.matricNumber && <div><p className="text-xs text-slate-500">Matric No.</p><p className="text-sm font-medium">{profile.matricNumber}</p></div>}
+                        {profile.graduationYear && <div><p className="text-xs text-slate-500">Grad Year</p><p className="text-sm font-medium">{profile.graduationYear}</p></div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {profile.role === 'tutor' && (profile.specialization || profile.yearsExperience) && (
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                        <Briefcase size={16} className="text-indigo-600" />
+                        Tutoring
+                      </h3>
+                      <div className="space-y-2">
+                        {profile.specialization && <div><p className="text-xs text-slate-500">Specialization</p><p className="text-sm font-medium">{profile.specialization}</p></div>}
+                        {profile.yearsExperience > 0 && <div><p className="text-xs text-slate-500">Experience</p><p className="text-sm font-medium">{profile.yearsExperience} years</p></div>}
+                        {profile.certifications && <div><p className="text-xs text-slate-500">Certifications</p><p className="text-sm font-medium">{profile.certifications}</p></div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {profile.role === 'lecturer' && (profile.title || profile.school || profile.department) && (
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                        <Award size={16} className="text-indigo-600" />
+                        Academic Position
+                      </h3>
+                      <div className="space-y-2">
+                        {profile.title && <div><p className="text-xs text-slate-500">Title</p><p className="text-sm font-medium">{profile.title}</p></div>}
+                        {profile.school && <div><p className="text-xs text-slate-500">Institution</p><p className="text-sm font-medium">{profile.school}</p></div>}
+                        {profile.department && <div><p className="text-xs text-slate-500">Department</p><p className="text-sm font-medium">{profile.department}</p></div>}
+                        {profile.yearsTeaching > 0 && <div><p className="text-xs text-slate-500">Teaching Experience</p><p className="text-sm font-medium">{profile.yearsTeaching} years</p></div>}
+                        {profile.researchInterests && <div><p className="text-xs text-slate-500">Research Interests</p><p className="text-sm font-medium">{profile.researchInterests}</p></div>}
+                        {profile.publications && <div><p className="text-xs text-slate-500">Publications</p><p className="text-sm font-medium">{profile.publications}</p></div>}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Achievements - Only if user allows */}
+              {privacySettings.showAchievements && profile.achievements && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Award size={16} className="text-indigo-600" />
+                    Achievements
+                  </h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm whitespace-pre-wrap">{profile.achievements}</p>
+                </div>
+              )}
+
+              {/* Social Links - Only if user allows */}
+              {privacySettings.showSocialLinks && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Globe size={16} className="text-indigo-600" />
+                    Connect
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.website && (
+                      <a href={profile.website} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Globe size={16} className="text-slate-600 group-hover:text-indigo-600" />
+                      </a>
+                    )}
+                    {profile.linkedin && (
+                      <a href={profile.linkedin} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Linkedin size={16} className="text-blue-600" />
+                      </a>
+                    )}
+                    {profile.twitter && (
+                      <a href={profile.twitter} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Twitter size={16} className="text-sky-500" />
+                      </a>
+                    )}
+                    {profile.instagram && (
+                      <a href={profile.instagram} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Instagram size={16} className="text-pink-600" />
+                      </a>
+                    )}
+                    {profile.facebook && (
+                      <a href={profile.facebook} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Facebook size={16} className="text-blue-700" />
+                      </a>
+                    )}
+                    {profile.youtube && (
+                      <a href={profile.youtube} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Youtube size={16} className="text-red-600" />
+                      </a>
+                    )}
+                    {profile.github && (
+                      <a href={profile.github} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition group">
+                        <Github size={16} className="text-slate-700 dark:text-slate-400" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Role-specific Info */}
-            {profile.role === 'student' && profile.school && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                  <GraduationCap size={16} className="text-indigo-600" />
-                  Education
-                </h3>
-                <div className="space-y-2">
-                  {profile.school && <div><p className="text-xs text-slate-500">School</p><p className="text-sm font-medium">{profile.school}</p></div>}
-                  {profile.faculty && <div><p className="text-xs text-slate-500">Faculty</p><p className="text-sm font-medium">{profile.faculty}</p></div>}
-                  {profile.department && <div><p className="text-xs text-slate-500">Department</p><p className="text-sm font-medium">{profile.department}</p></div>}
-                </div>
-              </div>
-            )}
-
-            {/* Social Links */}
-            {(profile.website || profile.linkedin || profile.twitter || profile.github) && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-4 border border-slate-200/70 dark:border-slate-700/60">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
-                  <Globe size={16} className="text-indigo-600" />
-                  Connect
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {profile.website && <a href={profile.website} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Globe size={14} /></a>}
-                  {profile.linkedin && <a href={profile.linkedin} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Linkedin size={14} className="text-blue-600" /></a>}
-                  {profile.twitter && <a href={profile.twitter} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Twitter size={14} className="text-sky-500" /></a>}
-                  {profile.github && <a href={profile.github} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition"><Github size={14} /></a>}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Right Column - Tab Content */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className={`${activeTab === 'about' ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-4`}>
             {/* Materials Tab */}
             {activeTab === 'materials' && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
@@ -863,6 +975,197 @@ function PublicProfileViewer() {
               </div>
             )}
 
+            {/* About Tab - Full Profile Info */}
+            {activeTab === 'about' && (
+              <div className="space-y-4">
+                {/* Bio Card */}
+                {profile.bio && (
+                  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                      <User size={18} className="text-indigo-600" />
+                      About Me
+                    </h3>
+                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{profile.bio}</p>
+                  </div>
+                )}
+
+                {/* Contact Info - Only if user allows */}
+                {privacySettings.showContactInfo && (profile.phone || profile.address || profile.email) && (
+                  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                      <Mail size={18} className="text-indigo-600" />
+                      Contact Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {profile.email && (
+                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                          <Mail size={14} />
+                          <span>{profile.email}</span>
+                        </div>
+                      )}
+                      {profile.phone && (
+                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                          <Phone size={14} />
+                          <span>{profile.phone}</span>
+                        </div>
+                      )}
+                      {profile.address && (
+                        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 md:col-span-2">
+                          <MapPin size={14} />
+                          <span>{profile.address}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Professional Info - Only if user allows */}
+                {privacySettings.showProfessionalInfo && (
+                  <>
+                    {profile.role === 'student' && (profile.school || profile.department || profile.matricNumber) && (
+                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                          <GraduationCap size={18} className="text-indigo-600" />
+                          Education
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {profile.school && (
+                            <div><p className="text-xs text-slate-500">School/University</p><p className="text-sm font-medium">{profile.school}</p></div>
+                          )}
+                          {profile.faculty && (
+                            <div><p className="text-xs text-slate-500">Faculty</p><p className="text-sm font-medium">{profile.faculty}</p></div>
+                          )}
+                          {profile.department && (
+                            <div><p className="text-xs text-slate-500">Department</p><p className="text-sm font-medium">{profile.department}</p></div>
+                          )}
+                          {profile.matricNumber && (
+                            <div><p className="text-xs text-slate-500">Matric Number</p><p className="text-sm font-medium">{profile.matricNumber}</p></div>
+                          )}
+                          {profile.graduationYear && (
+                            <div><p className="text-xs text-slate-500">Graduation Year</p><p className="text-sm font-medium">{profile.graduationYear}</p></div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {profile.role === 'tutor' && (profile.specialization || profile.yearsExperience || profile.certifications) && (
+                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                          <Briefcase size={18} className="text-indigo-600" />
+                          Tutoring Expertise
+                        </h3>
+                        <div className="space-y-3">
+                          {profile.specialization && (
+                            <div><p className="text-xs text-slate-500">Specialization</p><p className="text-sm font-medium">{profile.specialization}</p></div>
+                          )}
+                          {profile.yearsExperience > 0 && (
+                            <div><p className="text-xs text-slate-500">Years of Experience</p><p className="text-sm font-medium">{profile.yearsExperience} years</p></div>
+                          )}
+                          {profile.certifications && (
+                            <div><p className="text-xs text-slate-500">Certifications</p><p className="text-sm whitespace-pre-wrap">{profile.certifications}</p></div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {profile.role === 'lecturer' && (profile.title || profile.school || profile.department || profile.researchInterests) && (
+                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                          <Award size={18} className="text-indigo-600" />
+                          Academic Position
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {profile.title && (
+                            <div><p className="text-xs text-slate-500">Title</p><p className="text-sm font-medium">{profile.title}</p></div>
+                          )}
+                          {profile.school && (
+                            <div><p className="text-xs text-slate-500">Institution</p><p className="text-sm font-medium">{profile.school}</p></div>
+                          )}
+                          {profile.department && (
+                            <div><p className="text-xs text-slate-500">Department</p><p className="text-sm font-medium">{profile.department}</p></div>
+                          )}
+                          {profile.yearsTeaching > 0 && (
+                            <div><p className="text-xs text-slate-500">Teaching Experience</p><p className="text-sm font-medium">{profile.yearsTeaching} years</p></div>
+                          )}
+                          {profile.researchInterests && (
+                            <div className="md:col-span-2"><p className="text-xs text-slate-500">Research Interests</p><p className="text-sm">{profile.researchInterests}</p></div>
+                          )}
+                          {profile.publications && (
+                            <div className="md:col-span-2"><p className="text-xs text-slate-500">Publications</p><p className="text-sm whitespace-pre-wrap">{profile.publications}</p></div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Achievements - Only if user allows */}
+                {privacySettings.showAchievements && profile.achievements && (
+                  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                      <Award size={18} className="text-indigo-600" />
+                      Achievements & Awards
+                    </h3>
+                    <p className="text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{profile.achievements}</p>
+                  </div>
+                )}
+
+                {/* Social Links - Only if user allows */}
+                {privacySettings.showSocialLinks && (profile.website || profile.linkedin || profile.twitter || profile.instagram || profile.facebook || profile.youtube || profile.github) && (
+                  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-5 border border-slate-200/70 dark:border-slate-700/60">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                      <Globe size={18} className="text-indigo-600" />
+                      Social Links
+                    </h3>
+                    <div className="flex flex-wrap gap-3">
+                      {profile.website && (
+                        <a href={profile.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Globe size={16} className="text-slate-600" />
+                          <span className="text-sm">Website</span>
+                        </a>
+                      )}
+                      {profile.linkedin && (
+                        <a href={profile.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Linkedin size={16} className="text-blue-600" />
+                          <span className="text-sm">LinkedIn</span>
+                        </a>
+                      )}
+                      {profile.twitter && (
+                        <a href={profile.twitter} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Twitter size={16} className="text-sky-500" />
+                          <span className="text-sm">Twitter</span>
+                        </a>
+                      )}
+                      {profile.instagram && (
+                        <a href={profile.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Instagram size={16} className="text-pink-600" />
+                          <span className="text-sm">Instagram</span>
+                        </a>
+                      )}
+                      {profile.facebook && (
+                        <a href={profile.facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Facebook size={16} className="text-blue-700" />
+                          <span className="text-sm">Facebook</span>
+                        </a>
+                      )}
+                      {profile.youtube && (
+                        <a href={profile.youtube} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Youtube size={16} className="text-red-600" />
+                          <span className="text-sm">YouTube</span>
+                        </a>
+                      )}
+                      {profile.github && (
+                        <a href={profile.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 transition">
+                          <Github size={16} className="text-slate-700 dark:text-slate-400" />
+                          <span className="text-sm">GitHub</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Followers Tab */}
             {activeTab === 'followers' && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
@@ -887,7 +1190,7 @@ function PublicProfileViewer() {
                         >
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
-                              {follower.name?.charAt(0).toUpperCase()}
+                              {getInitials(follower.name)}
                             </div>
                             <div>
                               <p className="font-medium text-sm text-slate-900 dark:text-white">{follower.name}</p>
@@ -907,7 +1210,7 @@ function PublicProfileViewer() {
               </div>
             )}
 
-            {/* Following Tab - Shows people this user is following */}
+            {/* Following Tab */}
             {activeTab === 'following' && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200/70 dark:border-slate-700/60 overflow-hidden">
                 <div className="p-4">
@@ -921,7 +1224,6 @@ function PublicProfileViewer() {
                       <div className="text-center py-8">
                         <UserPlus className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <p className="text-sm text-slate-500">Not following anyone yet</p>
-                        <p className="text-xs text-slate-400 mt-1">Follow users to see their updates here</p>
                       </div>
                     ) : (
                       followingList.map((followed) => (
@@ -934,7 +1236,7 @@ function PublicProfileViewer() {
                             onClick={() => navigate(`/profile/${followed.id}`)}
                           >
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
-                              {followed.name?.charAt(0).toUpperCase()}
+                              {getInitials(followed.name)}
                             </div>
                             <div className="flex-1">
                               <p className="font-medium text-sm text-slate-900 dark:text-white">{followed.name}</p>
@@ -948,7 +1250,6 @@ function PublicProfileViewer() {
                               </p>
                             </div>
                           </div>
-                          {/* Unfollow button - only show if viewing your own profile */}
                           {currentUser?.uid === userId && (
                             <button
                               onClick={() => handleUnfollowFromList(followed.id, followed.name)}
@@ -1047,7 +1348,7 @@ function PublicProfileViewer() {
                   : searchResults.length > 0 ? searchResults.map((user) => (
                     <div key={user.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition cursor-pointer" onClick={() => { setShowSearchModal(false); navigate(`/profile/${user.id}`); }}>
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{user.name?.charAt(0).toUpperCase()}</div>
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{getInitials(user.name)}</div>
                         <div><p className="font-medium text-sm">{user.name}</p><p className="text-xs text-slate-500">{user.role === 'student' ? 'Student' : user.role === 'tutor' ? 'Tutor' : 'Lecturer'}{user.school && ` • ${user.school}`}</p></div>
                       </div>
                       <ChevronRight size={14} className="text-slate-400" />
@@ -1075,7 +1376,7 @@ function PublicProfileViewer() {
                 : followersList.map((follower) => (
                   <div key={follower.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition cursor-pointer" onClick={() => { setShowFollowersModal(false); navigate(`/profile/${follower.id}`); }}>
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{follower.name?.charAt(0).toUpperCase()}</div>
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{getInitials(follower.name)}</div>
                       <div><p className="font-medium text-sm">{follower.name}</p><p className="text-xs text-slate-500">{follower.role === 'student' ? 'Student' : follower.role === 'tutor' ? 'Tutor' : 'Lecturer'}</p></div>
                     </div>
                     <ChevronRight size={14} className="text-slate-400" />
@@ -1101,29 +1402,13 @@ function PublicProfileViewer() {
                 : followingList.map((followed) => (
                   <div key={followed.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition cursor-pointer" onClick={() => { setShowFollowingModal(false); navigate(`/profile/${followed.id}`); }}>
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{followed.name?.charAt(0).toUpperCase()}</div>
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">{getInitials(followed.name)}</div>
                       <div><p className="font-medium text-sm">{followed.name}</p><p className="text-xs text-slate-500">{followed.role === 'student' ? 'Student' : followed.role === 'tutor' ? 'Tutor' : 'Lecturer'}</p></div>
                     </div>
                     <ChevronRight size={14} className="text-slate-400" />
                   </div>
                 ))}
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Share Menu */}
-      <AnimatePresence>
-        {showShareMenu && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div className="bg-white dark:bg-slate-800 rounded-xl p-4 max-w-sm w-full shadow-2xl">
-              <h3 className="text-lg font-semibold mb-3">Share Profile</h3>
-              <div className="flex gap-2 mb-3">
-                <input type="text" value={`${window.location.origin}/profile/${userId}`} readOnly className="flex-1 px-3 py-2 text-sm bg-slate-100 rounded-lg" />
-                <button onClick={handleCopyProfileLink} className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><Copy size={16} /></button>
-              </div>
-              <button onClick={() => setShowShareMenu(false)} className="w-full py-2 text-sm bg-slate-200 rounded-lg hover:bg-slate-300">Close</button>
             </motion.div>
           </div>
         )}

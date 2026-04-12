@@ -8,7 +8,8 @@ import {
   CheckCircle, Play, Github, Twitter, Linkedin, 
   Mail, Phone, MapPin, ChevronRight, Menu, X,
   Sparkles, Globe, Lock, Heart, Camera, Code,
-  MessageCircle, Bell, Download, Upload, Coins, Gem
+  MessageCircle, Bell, Download, Upload, Coins, Gem,
+  Building2, FileCheck, BadgeCheck, Headphones
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AuthForm from '../components/Dashboard/AuthForm';
@@ -38,7 +39,7 @@ function Landing() {
     {
       icon: <GraduationCap className="w-8 h-8" />,
       title: "Academic Resources",
-      description: "Access thousands of study materials, past questions, and research papers from students across Nigeria.",
+      description: "Access quality study materials, past questions, and research papers shared by students across Nigeria.",
       color: "from-blue-500 to-cyan-500"
     },
     {
@@ -68,40 +69,17 @@ function Landing() {
     {
       icon: <Zap className="w-8 h-8" />,
       title: "Fast & Reliable",
-      description: "Lightning-fast access to resources with 99.9% uptime guaranteed.",
+      description: "Lightning-fast access to resources with reliable uptime.",
       color: "from-red-500 to-orange-500"
     }
   ];
 
+  // Realistic stats - updated for launched platform
   const stats = [
-    { value: "10,000+", label: "Active Users", icon: <Users className="w-5 h-5" /> },
-    { value: "50,000+", label: "Study Materials", icon: <BookOpen className="w-5 h-5" /> },
-    { value: "500+", label: "Expert Tutors", icon: <Briefcase className="w-5 h-5" /> },
-    { value: "₦5M+", label: "Rewards Paid", icon: <Coins className="w-5 h-5" /> }
-  ];
-
-  const testimonials = [
-    {
-      name: "Oluwaseun Adebayo",
-      role: "Computer Science Student, UNILAG",
-      content: "WE CONNECT has transformed how I study. The resources are top-notch and the community is incredibly supportive!",
-      avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-      rating: 5
-    },
-    {
-      name: "Amina Bello",
-      role: "Medical Student, ABU Zaria",
-      content: "The tutoring feature is amazing. I found a tutor who helped me ace my exams. Highly recommended!",
-      avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-      rating: 5
-    },
-    {
-      name: "Chidi Okonkwo",
-      role: "Engineering Student, UNN",
-      content: "I've earned over ₦50,000 just by sharing my notes. This platform is a game-changer!",
-      avatar: "https://randomuser.me/api/portraits/men/3.jpg",
-      rating: 5
-    }
+    { value: "500+", label: "Active Users", icon: <Users className="w-5 h-5" />, note: "And growing daily" },
+    { value: "1,000+", label: "Study Materials", icon: <BookOpen className="w-5 h-5" />, note: "Shared by students" },
+    { value: "50+", label: "Expert Tutors", icon: <Briefcase className="w-5 h-5" />, note: "Ready to help" },
+    { value: "₦50K+", label: "Rewards Paid", icon: <Coins className="w-5 h-5" />, note: "To our community" }
   ];
 
   const faqs = [
@@ -120,6 +98,10 @@ function Landing() {
     {
       question: "How do I become a tutor?",
       answer: "Sign up as a tutor, complete your profile, and get verified. Once approved, you can start offering tutoring sessions."
+    },
+    {
+      question: "Is WE CONNECT registered?",
+      answer: "Yes! WE CONNECT is officially registered with the Corporate Affairs Commission (CAC) of Nigeria."
     }
   ];
 
@@ -138,12 +120,16 @@ function Landing() {
               <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
                 WE CONNECT
               </span>
+              {/* CAC Badge */}
+              <div className="hidden lg:flex items-center gap-1 ml-2 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 rounded-full">
+                <BadgeCheck size={12} className="text-green-600" />
+                <span className="text-[10px] font-medium text-green-700 dark:text-green-400">CAC Reg.</span>
+              </div>
             </div>
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition">Features</a>
-              <a href="#testimonials" className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition">Testimonials</a>
               <a href="#faq" className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition">FAQ</a>
               <button
                 onClick={() => openAuthModal('login')}
@@ -174,7 +160,6 @@ function Landing() {
           <div className="md:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 py-4">
             <div className="flex flex-col gap-3 px-4">
               <a href="#features" className="py-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition" onClick={() => setMobileMenuOpen(false)}>Features</a>
-              <a href="#testimonials" className="py-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition" onClick={() => setMobileMenuOpen(false)}>Testimonials</a>
               <a href="#faq" className="py-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
               <button
                 onClick={() => openAuthModal('login')}
@@ -214,8 +199,16 @@ function Landing() {
                 <span>and Earn Together</span>
               </h1>
               <p className="mt-6 text-xl text-slate-600 dark:text-slate-400 max-w-lg">
-                Join Nigeria's largest academic community. Share resources, connect with peers, and earn real rewards for your knowledge.
+                Nigeria's fastest-growing academic community. Share resources, connect with peers, and earn real rewards for your knowledge.
               </p>
+              
+              {/* CAC Registration Badge - Hero Section */}
+              <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-950/30 rounded-full border border-green-200 dark:border-green-800">
+                <Building2 size={14} className="text-green-600" />
+                <FileCheck size={14} className="text-green-600" />
+                <span className="text-xs text-green-700 dark:text-green-400 font-medium">Officially registered with CAC Nigeria</span>
+              </div>
+              
               <div className="mt-8 flex flex-wrap gap-4">
                 <button
                   onClick={() => openAuthModal('signup')}
@@ -240,8 +233,8 @@ function Landing() {
                   ))}
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-800 dark:text-white">10,000+ Active Students</p>
-                  <p className="text-sm text-slate-500">Join thousands of learners across Nigeria</p>
+                  <p className="font-semibold text-slate-800 dark:text-white">Join 500+ Active Students</p>
+                  <p className="text-sm text-slate-500">Be part of Nigeria's learning revolution</p>
                 </div>
               </div>
             </motion.div>
@@ -267,7 +260,7 @@ function Landing() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Active Users</p>
-                  <p className="text-xl font-bold text-slate-800 dark:text-white">10,000+</p>
+                  <p className="text-xl font-bold text-slate-800 dark:text-white">500+</p>
                 </div>
               </div>
               <div className="absolute -bottom-6 -left-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg p-3 flex items-center gap-3">
@@ -276,7 +269,7 @@ function Landing() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Rewards Paid</p>
-                  <p className="text-xl font-bold text-slate-800 dark:text-white">₦5M+</p>
+                  <p className="text-xl font-bold text-slate-800 dark:text-white">₦50K+</p>
                 </div>
               </div>
             </motion.div>
@@ -284,9 +277,13 @@ function Landing() {
         </div>
       </section>
 
-      {/* Stats Section */}
+      {/* Stats Section - Updated for launched platform */}
       <section className="py-16 bg-white dark:bg-slate-900/50">
         <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center mb-8">
+            <p className="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Our Growing Community</p>
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white mt-2">Making an Impact</h2>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, index) => (
               <motion.div
@@ -303,6 +300,7 @@ function Landing() {
                 </div>
                 <p className="text-3xl font-bold text-slate-800 dark:text-white">{stat.value}</p>
                 <p className="text-slate-600 dark:text-slate-400">{stat.label}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{stat.note}</p>
               </motion.div>
             ))}
           </div>
@@ -397,45 +395,6 @@ function Landing() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-20 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 dark:text-white mb-4">
-              What Our Users Say
-            </h2>
-            <p className="text-xl text-slate-600 dark:text-slate-400">
-              Join thousands of satisfied students and educators
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg"
-              >
-                <div className="flex items-center gap-4 mb-4">
-                  <img src={testimonial.avatar} alt={testimonial.name} className="w-12 h-12 rounded-full object-cover" />
-                  <div>
-                    <h4 className="font-semibold text-slate-800 dark:text-white">{testimonial.name}</h4>
-                    <p className="text-sm text-slate-500">{testimonial.role}</p>
-                  </div>
-                </div>
-                <div className="flex gap-1 mb-3">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-amber-500 text-amber-500" />
-                  ))}
-                </div>
-                <p className="text-slate-600 dark:text-slate-400">"{testimonial.content}"</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* FAQ Section */}
       <section id="faq" className="py-20 bg-white dark:bg-slate-900/50 px-4">
         <div className="max-w-4xl mx-auto">
@@ -504,12 +463,15 @@ function Landing() {
                 <span className="text-xl font-bold">WE CONNECT</span>
               </div>
               <p className="text-slate-400">Connecting Nigerian students for academic excellence and financial empowerment.</p>
+              <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-green-900/30 rounded-full border border-green-800">
+                <BadgeCheck size={12} className="text-green-400" />
+                <span className="text-xs text-green-400 font-medium">CAC Registered Nigeria</span>
+              </div>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Quick Links</h4>
               <ul className="space-y-2 text-slate-400">
                 <li><a href="#features" className="hover:text-white transition">Features</a></li>
-                <li><a href="#testimonials" className="hover:text-white transition">Testimonials</a></li>
                 <li><a href="#faq" className="hover:text-white transition">FAQ</a></li>
                 <li><button onClick={() => openAuthModal('signup')} className="hover:text-white transition">Sign Up</button></li>
               </ul>
@@ -520,19 +482,24 @@ function Landing() {
                 <li><a href="#" className="hover:text-white transition">Privacy Policy</a></li>
                 <li><a href="#" className="hover:text-white transition">Terms of Service</a></li>
                 <li><a href="#" className="hover:text-white transition">Cookie Policy</a></li>
+                <li><a href="#" className="hover:text-white transition">CAC Registration</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-slate-400">
-                <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> support@weconnect.com</li>
-                <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> +234 123 456 7890</li>
-                <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Lagos, Nigeria</li>
+                <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> weconnect159@gmail.com</li>
+                <li className="flex items-center gap-2">
+                  <a href="https://wa.me/2349013879230" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-green-400 transition">
+                    <MessageCircle className="w-4 h-4" /> +234 901 387 9230 (WhatsApp)
+                  </a>
+                </li>
+                <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Port Harcourt, Nigeria</li>
               </ul>
             </div>
           </div>
           <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-slate-400 text-sm">&copy; 2024 WE CONNECT. All rights reserved.</p>
+            <p className="text-slate-400 text-sm">&copy; 2024 WE CONNECT. All rights reserved. | CAC Registered Nigeria</p>
             <div className="flex gap-4">
               <a href="#" className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center hover:bg-slate-700 transition">
                 <Twitter className="w-5 h-5" />

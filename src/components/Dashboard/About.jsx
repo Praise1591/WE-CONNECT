@@ -110,7 +110,7 @@ function About() {
   ];
 
   const teamMembers = [
-    { name: "Oluwaseun Adekunle", role: "Founder", bio: "Computer Science student passionate about EdTech", avatar: "👨‍💻" },
+    { name: "Onwubiko Praise", role: "Founder and Developer", bio: "Petroleum Engineering student passionate about EdTech", avatar: "👨‍💻" },
     { name: "Amina Mohammed", role: "Community Lead", bio: "Building inclusive learning spaces", avatar: "👩‍💼" },
     { name: "Chidi Okonkwo", role: "Technical Lead", bio: "Full-stack developer & open-source advocate", avatar: "👨‍🔧" },
     { name: "Ngozi Eze", role: "Content Curator", bio: "Ensuring quality educational resources", avatar: "📚" },
@@ -478,7 +478,7 @@ function About() {
 
             <div className="grid md:grid-cols-2 gap-6 mb-12">
               <a
-                href="mailto:hello@weconnect.ng"
+                href="mailto:weconnect159@gmail.com"
                 className="group flex items-center gap-4 p-6 bg-gray-50 dark:bg-slate-900 rounded-2xl hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-950 rounded-xl flex items-center justify-center">
@@ -486,7 +486,7 @@ function About() {
                 </div>
                 <div className="text-left">
                   <p className="text-sm text-gray-500 dark:text-gray-500">Email us</p>
-                  <p className="font-medium text-gray-900 dark:text-white">hello@weconnect.ng</p>
+                  <p className="font-medium text-gray-900 dark:text-white">weconnect159@gmail.com</p>
                 </div>
                 <ArrowUpRight className="w-5 h-5 text-gray-400 ml-auto group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
               </a>

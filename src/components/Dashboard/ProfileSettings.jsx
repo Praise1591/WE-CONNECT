@@ -8,7 +8,8 @@ import {
   Globe, Linkedin, Twitter, Github, CheckCircle,
   Eye, Copy, Share2, QrCode, Sparkles, TrendingUp,
   Award as AwardIcon, Zap, Calendar, Activity, Star, Download,
-  UserPlus, UserMinus, UserCheck
+  UserPlus, UserMinus, UserCheck, Instagram, Facebook, Youtube,
+  EyeOff, Eye as EyeIcon, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -55,9 +56,16 @@ function ProfileSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [following, setFollowing] = useState([]);
-  const [followers, setFollowers] = useState([]);
+  const [followingList, setFollowingList] = useState([]);
+  const [followersList, setFollowersList] = useState([]);
   const [loadingFollowing, setLoadingFollowing] = useState(false);
+  const [loadingFollowers, setLoadingFollowers] = useState(false);
+  const [privacySettings, setPrivacySettings] = useState({
+    showProfessionalInfo: true,
+    showSocialLinks: true,
+    showAchievements: true,
+    showContactInfo: true
+  });
   
   const [stats, setStats] = useState({
     totalUploads: 0,
@@ -77,6 +85,9 @@ function ProfileSettings() {
     website: '',
     linkedin: '',
     twitter: '',
+    instagram: '',
+    facebook: '',
+    youtube: '',
     github: '',
     matricNumber: '',
     school: '',
@@ -128,6 +139,9 @@ function ProfileSettings() {
               website: data.website || '',
               linkedin: data.linkedin || '',
               twitter: data.twitter || '',
+              instagram: data.instagram || '',
+              facebook: data.facebook || '',
+              youtube: data.youtube || '',
               github: data.github || '',
               matricNumber: data.matricNumber || '',
               school: data.school || '',
@@ -145,8 +159,12 @@ function ProfileSettings() {
             }));
             setPreviewUrl(data.photoURL || user.photoURL || null);
             setProfileViews(data.profileViews || 0);
-            setFollowing(data.following || []);
-            setFollowers(data.followers || []);
+            setPrivacySettings({
+              showProfessionalInfo: data.showProfessionalInfo !== false,
+              showSocialLinks: data.showSocialLinks !== false,
+              showAchievements: data.showAchievements !== false,
+              showContactInfo: data.showContactInfo !== false
+            });
             
             // Dispatch custom event for header to update
             window.dispatchEvent(new CustomEvent('profileUpdated', { 
@@ -158,6 +176,18 @@ function ProfileSettings() {
             }));
           }
         });
+
+        // Load following list
+        const followingRef = collection(db, 'users', user.uid, 'following');
+        const followingSnap = await getDocs(followingRef);
+        const followingIds = followingSnap.docs.map(doc => doc.id);
+        setFollowingList(followingIds);
+        
+        // Load followers list
+        const followersRef = collection(db, 'users', user.uid, 'followers');
+        const followersSnap = await getDocs(followersRef);
+        const followerIds = followersSnap.docs.map(doc => doc.id);
+        setFollowersList(followerIds);
 
         // Load user stats
         const materialsRef = collection(db, 'materials');
@@ -191,6 +221,13 @@ function ProfileSettings() {
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handlePrivacyToggle = (setting) => {
+    setPrivacySettings(prev => ({
+      ...prev,
+      [setting]: !prev[setting]
+    }));
   };
 
   const handleImageChange = (e) => {
@@ -250,10 +287,18 @@ function ProfileSettings() {
         website: form.website.trim(),
         linkedin: form.linkedin.trim(),
         twitter: form.twitter.trim(),
+        instagram: form.instagram.trim(),
+        facebook: form.facebook.trim(),
+        youtube: form.youtube.trim(),
         github: form.github.trim(),
         achievements: form.achievements.trim(),
         photoURL,
         updatedAt: serverTimestamp(),
+        // Privacy settings
+        showProfessionalInfo: privacySettings.showProfessionalInfo,
+        showSocialLinks: privacySettings.showSocialLinks,
+        showAchievements: privacySettings.showAchievements,
+        showContactInfo: privacySettings.showContactInfo
       };
 
       if (role === 'student') {
@@ -311,17 +356,17 @@ function ProfileSettings() {
     
     try {
       const user = auth.currentUser;
-      const profileRef = doc(db, 'profiles', user.uid);
+      const batch = writeBatch(db);
       
-      await updateDoc(profileRef, {
-        following: arrayRemove(userId)
-      });
+      const followingRef = doc(db, 'users', user.uid, 'following', userId);
+      batch.delete(followingRef);
       
-      const targetUserRef = doc(db, 'profiles', userId);
-      await updateDoc(targetUserRef, {
-        followers: arrayRemove(user.uid)
-      });
+      const followerRef = doc(db, 'users', userId, 'followers', user.uid);
+      batch.delete(followerRef);
       
+      await batch.commit();
+      
+      setFollowingList(prev => prev.filter(id => id !== userId));
       toast.success(`Unfollowed ${userName}`);
     } catch (err) {
       console.error("Unfollow error:", err);
@@ -407,6 +452,7 @@ function ProfileSettings() {
     { id: 'personal', label: 'Personal Info', icon: User },
     { id: 'professional', label: 'Professional', icon: Briefcase },
     { id: 'social', label: 'Social Links', icon: Globe },
+    { id: 'privacy', label: 'Privacy Settings', icon: Shield },
     { id: 'achievements', label: 'Achievements', icon: AwardIcon },
     { id: 'following', label: 'Following', icon: Users },
   ];
@@ -783,6 +829,51 @@ function ProfileSettings() {
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            Instagram
+          </label>
+          <div className="relative">
+            <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-600 w-5 h-5" />
+            <input
+              name="instagram"
+              value={form.instagram}
+              onChange={handleChange}
+              placeholder="https://instagram.com/username"
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            Facebook
+          </label>
+          <div className="relative">
+            <Facebook className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-700 w-5 h-5" />
+            <input
+              name="facebook"
+              value={form.facebook}
+              onChange={handleChange}
+              placeholder="https://facebook.com/username"
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            YouTube
+          </label>
+          <div className="relative">
+            <Youtube className="absolute left-3 top-1/2 -translate-y-1/2 text-red-600 w-5 h-5" />
+            <input
+              name="youtube"
+              value={form.youtube}
+              onChange={handleChange}
+              placeholder="https://youtube.com/@username"
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             GitHub
           </label>
           <div className="relative">
@@ -795,6 +886,90 @@ function ProfileSettings() {
               className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
             />
           </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPrivacySettings = () => (
+    <div className="space-y-6">
+      <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-4 mb-6">
+        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+          <Shield className="w-5 h-5" />
+          <span className="font-medium">Privacy Controls</span>
+        </div>
+        <p className="text-sm text-blue-600 dark:text-blue-300 mt-2">
+          Control what information is visible to other users on your public profile
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
+          <div>
+            <h4 className="font-medium text-slate-800 dark:text-white">Professional Information</h4>
+            <p className="text-sm text-slate-500">Show your education, work experience, and qualifications</p>
+          </div>
+          <button
+            onClick={() => handlePrivacyToggle('showProfessionalInfo')}
+            className="text-indigo-600 dark:text-indigo-400"
+          >
+            {privacySettings.showProfessionalInfo ? (
+              <ToggleRight size={28} className="text-indigo-600" />
+            ) : (
+              <ToggleLeft size={28} className="text-slate-400" />
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
+          <div>
+            <h4 className="font-medium text-slate-800 dark:text-white">Social Links</h4>
+            <p className="text-sm text-slate-500">Show your social media profiles</p>
+          </div>
+          <button
+            onClick={() => handlePrivacyToggle('showSocialLinks')}
+            className="text-indigo-600 dark:text-indigo-400"
+          >
+            {privacySettings.showSocialLinks ? (
+              <ToggleRight size={28} className="text-indigo-600" />
+            ) : (
+              <ToggleLeft size={28} className="text-slate-400" />
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
+          <div>
+            <h4 className="font-medium text-slate-800 dark:text-white">Achievements</h4>
+            <p className="text-sm text-slate-500">Show your awards, certifications, and accomplishments</p>
+          </div>
+          <button
+            onClick={() => handlePrivacyToggle('showAchievements')}
+            className="text-indigo-600 dark:text-indigo-400"
+          >
+            {privacySettings.showAchievements ? (
+              <ToggleRight size={28} className="text-indigo-600" />
+            ) : (
+              <ToggleLeft size={28} className="text-slate-400" />
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
+          <div>
+            <h4 className="font-medium text-slate-800 dark:text-white">Contact Information</h4>
+            <p className="text-sm text-slate-500">Show your phone number and address</p>
+          </div>
+          <button
+            onClick={() => handlePrivacyToggle('showContactInfo')}
+            className="text-indigo-600 dark:text-indigo-400"
+          >
+            {privacySettings.showContactInfo ? (
+              <ToggleRight size={28} className="text-indigo-600" />
+            ) : (
+              <ToggleLeft size={28} className="text-slate-400" />
+            )}
+          </button>
         </div>
       </div>
     </div>
@@ -853,7 +1028,7 @@ function ProfileSettings() {
 
     useEffect(() => {
       const loadFollowingDetails = async () => {
-        if (!following.length) {
+        if (!followingList.length) {
           setFollowingDetails([]);
           setLoadingDetails(false);
           return;
@@ -862,7 +1037,7 @@ function ProfileSettings() {
         setLoadingDetails(true);
         try {
           const details = await Promise.all(
-            following.map(async (userId) => {
+            followingList.map(async (userId) => {
               const userRef = doc(db, 'profiles', userId);
               const userSnap = await getDoc(userRef);
               if (userSnap.exists()) {
@@ -889,7 +1064,7 @@ function ProfileSettings() {
       };
 
       loadFollowingDetails();
-    }, [following]);
+    }, [followingList]);
 
     if (loadingDetails) {
       return (
@@ -951,7 +1126,7 @@ function ProfileSettings() {
                 {user.photoURL ? (
                   <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-white font-bold">
+                  <div className="w-full h-full flex items-center justify-center text-white font-bold text-lg">
                     {getInitials(user.name)}
                   </div>
                 )}
@@ -1011,6 +1186,8 @@ function ProfileSettings() {
         return renderProfessionalInfo();
       case 'social':
         return renderSocialLinks();
+      case 'privacy':
+        return renderPrivacySettings();
       case 'achievements':
         return renderAchievements();
       case 'following':
@@ -1200,12 +1377,12 @@ function ProfileSettings() {
               <div className="mt-6 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200/70 dark:border-slate-700/60 p-4">
                 <div className="flex justify-between items-center">
                   <div className="text-center flex-1">
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{following.length}</p>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{followingList.length}</p>
                     <p className="text-xs text-slate-500">Following</p>
                   </div>
                   <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
                   <div className="text-center flex-1">
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{followers.length}</p>
+                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{followersList.length}</p>
                     <p className="text-xs text-slate-500">Followers</p>
                   </div>
                 </div>
@@ -1229,7 +1406,7 @@ function ProfileSettings() {
                 {renderActiveSection()}
 
                 {/* Action Buttons - Only show for non-following sections */}
-                {activeSection !== 'following' && (
+                {activeSection !== 'following' && activeSection !== 'privacy' && (
                   <div className="pt-6 flex flex-col sm:flex-row gap-4 border-t border-slate-200 dark:border-slate-700">
                     <button
                       onClick={handleSave}
@@ -1255,7 +1432,7 @@ function ProfileSettings() {
                 )}
 
                 {/* Danger Zone - Only show for non-following sections */}
-                {activeSection !== 'following' && (
+                {activeSection !== 'following' && activeSection !== 'privacy' && (
                   <div className="pt-8 mt-4 border-t border-red-200 dark:border-red-800/50">
                     <div className="flex items-center gap-2 mb-4">
                       <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -1342,7 +1519,7 @@ function ProfileSettings() {
                       <Mail size={16} className="text-slate-400" />
                       <span>{email}</span>
                     </div>
-                    {form.phone && (
+                    {form.phone && privacySettings.showContactInfo && (
                       <div className="flex items-center gap-3 text-sm">
                         <Phone size={16} className="text-slate-400" />
                         <span>{form.phone}</span>
