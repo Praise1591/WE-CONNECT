@@ -1,4 +1,4 @@
-// src/components/Dashboard/AuthForm.jsx - Fixed X Button for Mobile
+// src/components/Dashboard/AuthForm.jsx - Close Button Positioned Close to Form
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -859,15 +859,15 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl animate-pulse delay-700" />
       </div>
 
-      {/* Close Button - FIXED: Now inside the modal container, always visible */}
+      {/* Close Button - Positioned very close to the auth form */}
       <div className="relative w-full max-w-md">
-        {/* Close Button positioned at top-right of the modal */}
+        {/* Close Button - Now at top-right corner of the form itself */}
         <button
           onClick={onClose}
-          className="absolute -top-12 right-0 sm:-top-14 sm:right-0 p-2.5 sm:p-3 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 hover:scale-105 transition-all duration-200 active:scale-95 z-50"
+          className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 p-2 bg-white/90 dark:bg-slate-800/90 rounded-full shadow-lg hover:bg-white dark:hover:bg-slate-700 hover:scale-105 transition-all duration-200 active:scale-95 z-50 border border-slate-200 dark:border-slate-700"
           aria-label="Close"
         >
-          <X size={20} className="text-white sm:w-5 sm:h-5" />
+          <X size={18} className="text-slate-700 dark:text-slate-300 sm:w-5 sm:h-5" />
         </button>
 
         {/* Header Logo */}
