@@ -1,4 +1,4 @@
-// src/components/Dashboard/AuthForm.jsx - Mobile-First with All Fields
+// src/components/Dashboard/AuthForm.jsx - Mobile-First with Fixed X Button
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -52,13 +52,13 @@ const MobileSelect = ({ options, value, onChange, placeholder }) => {
       <AnimatePresence>
         {isOpen && (
           <>
-            <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setIsOpen(false)} />
+            <div className="fixed inset-0 bg-black/50 z-[100]" onClick={() => setIsOpen(false)} />
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25 }}
-              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl z-50 max-h-[70vh] overflow-y-auto"
+              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl z-[100] max-h-[70vh] overflow-y-auto"
             >
               <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4">
                 <div className="flex items-center justify-between">
@@ -860,6 +860,15 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
       </div>
 
       <div className="relative w-full max-w-md">
+        {/* Close Button - FIXED: Now properly positioned and visible */}
+        <button
+          onClick={onClose}
+          className="absolute -top-12 right-0 p-3 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-all duration-200 active:scale-95"
+          style={{ zIndex: 60 }}
+        >
+          <X size={22} className="text-white" />
+        </button>
+
         {/* Header Logo */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg mb-3">
@@ -1226,14 +1235,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
             )}
           </div>
         </div>
-        
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute -top-12 right-0 p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition"
-        >
-          <X size={20} className="text-white" />
-        </button>
       </div>
     </div>
   );
