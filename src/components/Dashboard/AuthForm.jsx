@@ -1,4 +1,4 @@
-// src/components/Dashboard/AuthForm.jsx - Mobile-First with Fixed X Button
+// src/components/Dashboard/AuthForm.jsx - Fixed X Button for Mobile
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -231,7 +231,7 @@ const genderOptions = [
   { value: 'prefer-not-say', label: 'Prefer not to say' },
 ];
 
-// Nigerian Universities List (Sample - you can expand this)
+// Nigerian Universities List
 const universitiesList = [
   { value: 'unilag', label: 'University of Lagos' },
   { value: 'ui', label: 'University of Ibadan' },
@@ -859,14 +859,15 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl animate-pulse delay-700" />
       </div>
 
+      {/* Close Button - FIXED: Now inside the modal container, always visible */}
       <div className="relative w-full max-w-md">
-        {/* Close Button - FIXED: Now properly positioned and visible */}
+        {/* Close Button positioned at top-right of the modal */}
         <button
           onClick={onClose}
-          className="absolute -top-12 right-0 p-3 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-all duration-200 active:scale-95"
-          style={{ zIndex: 60 }}
+          className="absolute -top-12 right-0 sm:-top-14 sm:right-0 p-2.5 sm:p-3 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 hover:scale-105 transition-all duration-200 active:scale-95 z-50"
+          aria-label="Close"
         >
-          <X size={22} className="text-white" />
+          <X size={20} className="text-white sm:w-5 sm:h-5" />
         </button>
 
         {/* Header Logo */}
@@ -908,7 +909,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
             </div>
           )}
 
-          <div className="p-5 max-h-[70vh] overflow-y-auto">
+          <div className="p-5 max-h-[60vh] sm:max-h-[65vh] overflow-y-auto">
             {/* Alert */}
             <AnimatePresence>
               {alert && (
