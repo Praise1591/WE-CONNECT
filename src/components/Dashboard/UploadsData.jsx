@@ -1,4 +1,5 @@
-// UploadsData.jsx - Updated with conditional fields for Past Questions
+// UploadsData.jsx - Fixed with proper data sanitization
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   Upload, X, FileText, Video, BookOpen, ScrollText,
@@ -15,7 +16,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db, storage, auth } from '@/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { v4 as uuidv4 } from 'uuid';
 
 // Category configuration with specific fields
 const CATEGORIES = [
@@ -29,13 +29,11 @@ const CATEGORIES = [
     iconColor: 'text-amber-600',
     accept: '.pdf,.doc,.docx',
     description: 'Share past exam papers and practice questions',
-    // Past Questions don't need course field - they already have subject in title
     showCourseField: false,
     specificFields: [
       { name: 'semester', label: 'Semester', type: 'select', required: true, options: ['First Semester', 'Second Semester', 'Both Semesters'], icon: Calendar },
       { name: 'level', label: 'Level/Year', type: 'select', required: true, options: ['100 Level', '200 Level', '300 Level', '400 Level', '500 Level', 'Postgraduate'], icon: GraduationCap },
       { name: 'examType', label: 'Exam Type', type: 'select', required: true, options: ['Mid-Semester', 'End of Semester', 'Supplementary', 'Mock Exam'], icon: Target },
-      //{ name: 'academicYear', label: 'Academic Year', type: 'text', required: true, placeholder: 'e.g., 2023/2024', icon: CalendarDays }//
     ]
   },
   { 
@@ -97,13 +95,12 @@ const CATEGORIES = [
 const StepIndicator = React.memo(({ step }) => (
   <div className="mb-12">
     <div className="flex items-center justify-between max-w-2xl mx-auto">
-      {[1, 2, 3, 4].map((s, idx) => (
+      {[1, 2, 3, 4].map((s) => (
         <React.Fragment key={s}>
           <div className="flex flex-col items-center">
             <motion.div
               animate={{
                 scale: step === s ? 1.1 : 1,
-                backgroundColor: step >= s ? '#4F46E5' : '#E2E8F0'
               }}
               className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all ${
                 step >= s ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
@@ -161,7 +158,7 @@ const CategoryStep = React.memo(({ onSelectCategory }) => (
             onClick={() => onSelectCategory(cat)}
             whileHover={{ scale: 1.02, y: -4 }}
             whileTap={{ scale: 0.98 }}
-            className={`group relative overflow-hidden rounded-2xl p-8 text-left transition-all bg-gradient-to-br ${cat.bgGradient} border-2 ${cat.borderColor} hover:shadow-2xl`}
+            className={`group relative overflow-hidden rounded-2xl p-8 text-left transition-all bg-gradient-to-br ${cat.bgGradient} border-2 ${cat.borderColor} hover:shadow-2xl cursor-pointer`}
           >
             <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
               <ChevronRight className="w-6 h-6 text-slate-400" />
@@ -183,23 +180,28 @@ const CategoryStep = React.memo(({ onSelectCategory }) => (
 ));
 
 // Dynamic Field Renderer
-const DynamicField = ({ field, value, onChange }) => {
+const DynamicField = React.memo(({ field, value, onChange, name }) => {
   const Icon = field.icon;
+  const fieldName = name || field.name;
+  
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    onChange(fieldName, newValue);
+  };
   
   if (field.type === 'select') {
     return (
-      <div>
+      <div className="mb-4">
         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
           {field.label} {field.required && <span className="text-red-500">*</span>}
         </label>
         <div className="relative">
           <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
           <select
-            name={field.name}
             value={value || ''}
-            onChange={onChange}
+            onChange={handleChange}
             required={field.required}
-            className="w-full pl-12 pr-10 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all appearance-none"
+            className="w-full pl-12 pr-10 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
           >
             <option value="">Select {field.label}</option>
             {field.options.map(opt => (
@@ -214,16 +216,15 @@ const DynamicField = ({ field, value, onChange }) => {
   
   if (field.type === 'textarea') {
     return (
-      <div>
+      <div className="mb-4">
         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
           {field.label} {field.required && <span className="text-red-500">*</span>}
         </label>
         <div className="relative">
           <Icon className="absolute left-4 top-4 text-slate-400 w-5 h-5" />
           <textarea
-            name={field.name}
             value={value || ''}
-            onChange={onChange}
+            onChange={handleChange}
             placeholder={field.placeholder}
             rows={3}
             required={field.required}
@@ -236,7 +237,7 @@ const DynamicField = ({ field, value, onChange }) => {
   
   if (field.type === 'date') {
     return (
-      <div>
+      <div className="mb-4">
         <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
           {field.label} {field.required && <span className="text-red-500">*</span>}
         </label>
@@ -244,9 +245,8 @@ const DynamicField = ({ field, value, onChange }) => {
           <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
           <input
             type="date"
-            name={field.name}
             value={value || ''}
-            onChange={onChange}
+            onChange={handleChange}
             required={field.required}
             className="w-full pl-12 pr-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
           />
@@ -256,7 +256,7 @@ const DynamicField = ({ field, value, onChange }) => {
   }
   
   return (
-    <div>
+    <div className="mb-4">
       <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
         {field.label} {field.required && <span className="text-red-500">*</span>}
       </label>
@@ -264,9 +264,8 @@ const DynamicField = ({ field, value, onChange }) => {
         <Icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
         <input
           type="text"
-          name={field.name}
           value={value || ''}
-          onChange={onChange}
+          onChange={handleChange}
           placeholder={field.placeholder}
           required={field.required}
           className="w-full pl-12 pr-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -274,39 +273,38 @@ const DynamicField = ({ field, value, onChange }) => {
       </div>
     </div>
   );
-};
+});
 
 // Details Form Step Component
 const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange, onNext, onBack, selectedCategory }) => {
-  const handleChange = useCallback((e) => {
-    onInputChange(e.target.name, e.target.value);
+  const handleInputChange = useCallback((e) => {
+    const { name, value } = e.target;
+    onInputChange(name, value);
   }, [onInputChange]);
 
-  const handleSpecificFieldChange = useCallback((e) => {
-    onSpecificFieldChange(e.target.name, e.target.value);
+  const handleSpecificFieldChangeWrapper = useCallback((fieldName, value) => {
+    onSpecificFieldChange(fieldName, value);
   }, [onSpecificFieldChange]);
 
   const handleNext = useCallback(() => {
-    if (!formData.title.trim()) {
+    if (!formData.title?.trim()) {
       toast.error("Please enter a title");
       return;
     }
     
-    // For non-Past Questions, validate course field
-    if (selectedCategory?.showCourseField && !formData.course.trim()) {
+    if (selectedCategory?.showCourseField && !formData.course?.trim()) {
       toast.error("Please enter the course code/name");
       return;
     }
     
-    if (!formData.school.trim()) {
+    if (!formData.school?.trim()) {
       toast.error("Please enter your school/university");
       return;
     }
     
-    // Validate category-specific required fields
     if (selectedCategory?.specificFields) {
       const missingFields = selectedCategory.specificFields
-        .filter(field => field.required && !formData.specificData?.[field.name])
+        .filter(field => field.required && !formData.specificData?.[field.name]?.trim())
         .map(field => field.label);
       
       if (missingFields.length > 0) {
@@ -320,6 +318,8 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
 
   const showCourseField = selectedCategory?.showCourseField !== false;
 
+  if (!selectedCategory) return null;
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 100 }}
@@ -329,20 +329,20 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
     >
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory?.color} text-white`}>
-            {selectedCategory && <selectedCategory.icon size={20} />}
+          <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory.color} text-white`}>
+            {React.createElement(selectedCategory.icon, { size: 20 })}
           </div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
             Material Details
           </h2>
         </div>
         <p className="text-slate-600 dark:text-slate-400">
-          Provide comprehensive information about your {selectedCategory?.label.toLowerCase()}
+          Provide comprehensive information about your {selectedCategory.label.toLowerCase()}
         </p>
       </div>
 
       <div className="space-y-6">
-        {/* Title Field - Always required */}
+        {/* Title Field */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Title <span className="text-red-500">*</span>
@@ -350,14 +350,14 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
           <input
             type="text"
             name="title"
-            value={formData.title}
-            onChange={handleChange}
-            placeholder={`e.g., ${selectedCategory?.value === 'Past Questions' ? 'CHE 101 Organic Chemistry 2023/2024 Past Questions' : selectedCategory?.value === 'Video Tutorials' ? 'Complete Guide to Organic Chemistry Reactions' : 'Introduction to Organic Chemistry Notes'}`}
+            value={formData.title || ''}
+            onChange={handleInputChange}
+            placeholder={`e.g., ${selectedCategory.value === 'Past Questions' ? 'CHE 101 Organic Chemistry 2023/2024 Past Questions' : selectedCategory.value === 'Video Tutorials' ? 'Complete Guide to Organic Chemistry Reactions' : 'Introduction to Organic Chemistry Notes'}`}
             className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
           />
         </div>
 
-        {/* Course Field - Only show for non-Past Questions */}
+        {/* Course Field - Only for categories that need it */}
         {showCourseField && (
           <div>
             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -366,14 +366,15 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
             <input
               type="text"
               name="course"
-              value={formData.course}
-              onChange={handleChange}
+              value={formData.course || ''}
+              onChange={handleInputChange}
               placeholder="e.g., CHE 101, Introduction to Organic Chemistry"
               className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
             />
           </div>
         )}
 
+        {/* School and Department Fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -382,8 +383,8 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
             <input
               type="text"
               name="school"
-              value={formData.school}
-              onChange={handleChange}
+              value={formData.school || ''}
+              onChange={handleInputChange}
               placeholder="e.g., University of Port Harcourt"
               className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
             />
@@ -396,16 +397,16 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
             <input
               type="text"
               name="department"
-              value={formData.department}
-              onChange={handleChange}
+              value={formData.department || ''}
+              onChange={handleInputChange}
               placeholder="e.g., Pure and Industrial Chemistry"
               className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
             />
           </div>
         </div>
 
-        {/* Category-Specific Fields */}
-        {selectedCategory?.specificFields && (
+        {/* Category Specific Fields */}
+        {selectedCategory.specificFields && selectedCategory.specificFields.length > 0 && (
           <div className="border-t border-slate-200 dark:border-slate-700 pt-6 mt-2">
             <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
               <Layers size={18} className="text-indigo-500" />
@@ -416,22 +417,24 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
                 <DynamicField
                   key={field.name}
                   field={field}
-                  value={formData.specificData?.[field.name]}
-                  onChange={handleSpecificFieldChange}
+                  name={field.name}
+                  value={formData.specificData?.[field.name] || ''}
+                  onChange={handleSpecificFieldChangeWrapper}
                 />
               ))}
             </div>
           </div>
         )}
 
+        {/* Description Field */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Description
           </label>
           <textarea
             name="description"
-            value={formData.description}
-            onChange={handleChange}
+            value={formData.description || ''}
+            onChange={handleInputChange}
             rows={4}
             placeholder="Add any additional notes, requirements, or special instructions..."
             className="w-full px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-y"
@@ -444,7 +447,7 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={onBack}
-          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2"
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2 cursor-pointer"
         >
           <ArrowLeft size={18} /> Back
         </motion.button>
@@ -453,7 +456,7 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleNext}
-          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2"
+          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2 cursor-pointer"
         >
           Continue to Upload <ArrowRight size={18} />
         </motion.button>
@@ -461,6 +464,262 @@ const DetailsStep = React.memo(({ formData, onInputChange, onSpecificFieldChange
     </motion.div>
   );
 });
+
+// Upload Step Component
+const UploadStep = React.memo(({ 
+  selectedCategory, 
+  formData, 
+  uploading, 
+  progress, 
+  isPaused, 
+  dragActive,
+  onFileChange,
+  onDragOver,
+  onDragLeave,
+  onDragEnter,
+  onDrop,
+  onRemoveFile,
+  onStartUpload,
+  onTogglePauseResume,
+  onCancelUpload,
+  onBack,
+  fileInputRef
+}) => {
+  if (!selectedCategory) return null;
+  
+  const CategoryIcon = selectedCategory.icon;
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -100 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory.color} text-white`}>
+            <CategoryIcon size={20} />
+          </div>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
+            Upload File
+          </h2>
+        </div>
+        <p className="text-slate-600 dark:text-slate-400">
+          Upload your file to share with the community
+        </p>
+      </div>
+
+      <div className="space-y-8">
+        {/* Main File Upload */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            File <span className="text-red-500">*</span>
+          </label>
+          <div
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDragEnter={onDragEnter}
+            onDrop={onDrop}
+            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
+              dragActive
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
+                : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500'
+            }`}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={selectedCategory.accept}
+              onChange={onFileChange}
+              className="hidden"
+            />
+            
+            {formData.file ? (
+              <div className="flex items-center gap-4 text-left">
+                {formData.preview?.startsWith('data:video') ? (
+                  <video src={formData.preview} className="w-20 h-20 object-cover rounded" controlsList="nodownload" />
+                ) : formData.preview?.startsWith('data:image') ? (
+                  <img src={formData.preview} alt="preview" className="w-20 h-20 object-cover rounded" />
+                ) : (
+                  <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950 dark:to-purple-950 rounded-lg flex items-center justify-center">
+                    <FileText size={32} className="text-indigo-600" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="font-medium text-slate-800 dark:text-white truncate">{formData.file.name}</p>
+                  <p className="text-sm text-slate-500">
+                    {(formData.file.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                {!uploading && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveFile();
+                    }}
+                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full transition cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <CloudUpload className="w-16 h-16 mx-auto text-slate-400 mb-4" />
+                <p className="text-slate-600 dark:text-slate-400">Click or drag & drop to upload</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Supports: {selectedCategory.accept.toUpperCase()}
+                </p>
+                <p className="text-xs text-slate-400 mt-2">
+                  Max size: {selectedCategory.value === 'Video Tutorials' ? '500MB' : '100MB'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Upload Progress */}
+        {uploading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-6"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Uploading {formData.file?.name}...
+              </span>
+              <span className="text-sm font-semibold text-indigo-600">{progress}%</span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 mb-4 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={onTogglePauseResume}
+                className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition cursor-pointer"
+              >
+                {isPaused ? 'Resume' : 'Pause'}
+              </button>
+              <button
+                onClick={onCancelUpload}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      <div className="flex justify-between gap-4 mt-10">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={onBack}
+          disabled={uploading}
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        >
+          <ArrowLeft size={18} /> Back
+        </motion.button>
+
+        {!uploading ? (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onStartUpload}
+            disabled={!formData.file}
+            className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <CloudUpload size={18} />
+            Start Upload
+          </motion.button>
+        ) : (
+          <div className="px-8 py-3 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-xl flex items-center gap-2">
+            <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin" />
+            Uploading...
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+// Success Step Component
+const SuccessStep = React.memo(({ selectedCategory, onReset, onGoToDashboard }) => {
+  if (!selectedCategory) return null;
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="text-center"
+    >
+      <motion.div
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+        className="w-28 h-28 mx-auto mb-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl"
+      >
+        <Check size={48} className="text-white" />
+      </motion.div>
+      
+      <h2 className="text-3xl md:text-4xl font-bold text-slate-800 dark:text-white mb-4">
+        Upload Complete! 🎉
+      </h2>
+      <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-md mx-auto">
+        Your {selectedCategory.label.toLowerCase()} has been successfully uploaded and shared with the community.
+      </p>
+      
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onReset}
+          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all inline-flex items-center gap-2 cursor-pointer"
+        >
+          <Upload size={18} />
+          Upload Another File
+        </motion.button>
+        
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onGoToDashboard}
+          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all inline-flex items-center gap-2 cursor-pointer"
+        >
+          Go to Dashboard
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+});
+
+// Helper function to sanitize data before sending to Firestore
+const sanitizeData = (data) => {
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    // Remove undefined, null, and empty string values
+    if (value !== undefined && value !== null && value !== '') {
+      if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+        const nested = sanitizeData(value);
+        if (Object.keys(nested).length > 0) {
+          sanitized[key] = nested;
+        }
+      } else {
+        sanitized[key] = value;
+      }
+    }
+  }
+  return sanitized;
+};
 
 function UploadsData() {
   const [step, setStep] = useState(1);
@@ -475,16 +734,13 @@ function UploadsData() {
     file: null,
     preview: null,
   });
-  const [previewImages, setPreviewImages] = useState([]);
-  const [previewImagePreviews, setPreviewImagePreviews] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [dragPreviewActive, setDragPreviewActive] = useState(false);
   const uploadTaskRef = useRef(null);
   const fileInputRef = useRef(null);
-  const previewInputRef = useRef(null);
+  const dragCounterRef = useRef(0);
 
   const handleInputChange = useCallback((field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -502,7 +758,6 @@ function UploadsData() {
     setFormData(prev => ({
       ...prev,
       specificData: {},
-      // Reset course field when switching to Past Questions (since they don't need it)
       course: cat.showCourseField ? prev.course : ''
     }));
     setStep(2);
@@ -520,105 +775,98 @@ function UploadsData() {
     setStep(1);
   }, []);
 
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedCategory) return;
-
-    const fileExt = '.' + file.name.split('.').pop().toLowerCase();
-    if (!selectedCategory.accept.split(',').includes(fileExt)) {
-      toast.error(`Invalid file type. Allowed: ${selectedCategory.accept}`);
-      return;
+  const validateFile = useCallback((file) => {
+    if (!selectedCategory) {
+      toast.error("Please select a category first");
+      return false;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData(prev => ({ ...prev, file, preview: reader.result }));
-    };
-    reader.readAsDataURL(file);
-  };
+    const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+    const allowedExtensions = selectedCategory.accept.split(',');
+    
+    if (!allowedExtensions.includes(fileExt)) {
+      toast.error(`Invalid file type. Allowed: ${selectedCategory.accept}`);
+      return false;
+    }
 
-  const handleDragOver = (e, type = 'file') => {
-    e.preventDefault();
-    if (type === 'file') setDragActive(true);
-    else setDragPreviewActive(true);
-  };
+    const maxSize = selectedCategory.value === 'Video Tutorials' ? 500 * 1024 * 1024 : 100 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error(`File too large. Maximum size: ${maxSize / (1024 * 1024)}MB`);
+      return false;
+    }
 
-  const handleDragLeave = (e, type = 'file') => {
-    e.preventDefault();
-    if (type === 'file') setDragActive(false);
-    else setDragPreviewActive(false);
-  };
+    return true;
+  }, [selectedCategory]);
 
-  const handleDrop = (e, type = 'file') => {
-    e.preventDefault();
-    if (type === 'file') setDragActive(false);
-    else setDragPreviewActive(false);
+  const processFile = useCallback((file) => {
+    if (!validateFile(file)) return;
 
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
-
-    if (type === 'file') {
-      const file = files[0];
-      if (!selectedCategory) return;
-
-      const fileExt = '.' + file.name.split('.').pop().toLowerCase();
-      if (!selectedCategory.accept.split(',').includes(fileExt)) {
-        toast.error(`Invalid file type. Allowed: ${selectedCategory.accept}`);
-        return;
-      }
-
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
       const reader = new FileReader();
       reader.onload = () => {
         setFormData(prev => ({ ...prev, file, preview: reader.result }));
       };
       reader.readAsDataURL(file);
     } else {
-      const validFiles = files.filter(f => f.type.startsWith('image/'));
-      if (validFiles.length !== files.length) {
-        toast.error("Only image files (.jpg, .png, .webp) allowed for previews");
-        return;
-      }
-
-      const previews = validFiles.map(file => URL.createObjectURL(file));
-      setPreviewImages(prev => [...prev, ...validFiles].slice(0, 5));
-      setPreviewImagePreviews(prev => [...prev, ...previews].slice(0, 5));
+      setFormData(prev => ({ ...prev, file, preview: null }));
     }
-  };
+  }, [validateFile]);
 
-  const handlePreviewImagesChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const validFiles = files.filter(f => f.type.startsWith('image/'));
-    if (validFiles.length !== files.length) {
-      toast.error("Only image files (.jpg, .png, .webp) allowed for previews");
-      return;
+  const handleFileChange = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
     }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [processFile]);
 
-    const previews = validFiles.map(file => URL.createObjectURL(file));
+  const handleRemoveFile = useCallback(() => {
+    setFormData(prev => ({ ...prev, file: null, preview: null }));
+  }, []);
 
-    setPreviewImages(prev => [...prev, ...validFiles].slice(0, 5));
-    setPreviewImagePreviews(prev => [...prev, ...previews].slice(0, 5));
-  };
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  }, []);
 
-  const removePreviewImage = (index) => {
-    setPreviewImages(prev => prev.filter((_, i) => i !== index));
-    setPreviewImagePreviews(prev => prev.filter((_, i) => i !== index));
-  };
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setDragActive(false);
+  }, []);
 
-  const startUpload = async () => {
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    setDragActive(true);
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    dragCounterRef.current = 0;
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      processFile(files[0]);
+    }
+  }, [processFile]);
+
+  const startUpload = useCallback(async () => {
     if (!auth.currentUser) {
       toast.error("You must be signed in to upload materials");
       return;
     }
     if (!formData.file || !selectedCategory) {
       toast.error("Please select a file and category");
-      return;
-    }
-
-    const isVideo = selectedCategory.value === 'Video Tutorials';
-    if (!isVideo && previewImages.length < 3) {
-      toast.error("Please upload at least 3 preview screenshots for this category");
       return;
     }
 
@@ -630,9 +878,9 @@ function UploadsData() {
     const fileName = file.name;
     const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2,10)}_${fileName}`;
     const storagePath = `users/${auth.currentUser.uid}/materials/${uniqueName}`;
-    const storageRef = ref(storage, storagePath);
+    const storageReference = ref(storage, storagePath);
 
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const uploadTask = uploadBytesResumable(storageReference, file);
     uploadTaskRef.current = uploadTask;
 
     uploadTask.on(
@@ -657,45 +905,52 @@ function UploadsData() {
       },
       async () => {
         try {
-          const publicUrl = await getDownloadURL(storageRef);
-
-          let previewUrls = [];
-          if (previewImages.length > 0) {
-            previewUrls = await Promise.all(
-              previewImages.map(async (imgFile, idx) => {
-                const imgName = `preview-${idx + 1}_${uuidv4().slice(0,8)}.${imgFile.name.split('.').pop()}`;
-                const imgPath = `users/${auth.currentUser.uid}/materials/previews/${uniqueName}/${imgName}`;
-                const imgRef = ref(storage, imgPath);
-                await uploadBytesResumable(imgRef, imgFile);
-                return getDownloadURL(imgRef);
-              })
-            );
-          }
+          const publicUrl = await getDownloadURL(storageReference);
 
           if (!auth.currentUser) {
             throw new Error("User no longer authenticated at save time");
           }
 
-          await addDoc(collection(db, 'materials'), {
+          // Sanitize specificData - remove empty values
+          const sanitizedSpecificData = {};
+          if (formData.specificData) {
+            Object.keys(formData.specificData).forEach(key => {
+              const value = formData.specificData[key];
+              if (value && typeof value === 'string' && value.trim() !== '') {
+                sanitizedSpecificData[key] = value.trim();
+              } else if (value && typeof value !== 'string') {
+                sanitizedSpecificData[key] = value;
+              }
+            });
+          }
+
+          // Prepare data for Firestore - only include non-empty fields
+          const materialData = {
             name: formData.title.trim(),
             title: formData.title.trim(),
-            // For Past Questions, course is not required - use title as fallback
-            course: formData.course.trim() || formData.title.trim(),
-            school: formData.school.trim(),
-            department: formData.department?.trim() || null,
-            description: formData.description?.trim() || null,
             category: selectedCategory.value,
-            specificData: formData.specificData,
             file_name: fileName,
             file_path: storagePath,
             file_size: file.size,
             mime_type: file.type,
             public_url: publicUrl,
-            previewImages: previewUrls,
             uid: auth.currentUser.uid,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-          });
+          };
+
+          // Add optional fields only if they have values
+          if (formData.course?.trim()) materialData.course = formData.course.trim();
+          if (formData.school?.trim()) materialData.school = formData.school.trim();
+          if (formData.department?.trim()) materialData.department = formData.department.trim();
+          if (formData.description?.trim()) materialData.description = formData.description.trim();
+          
+          // Add specificData only if it has values
+          if (Object.keys(sanitizedSpecificData).length > 0) {
+            materialData.specificData = sanitizedSpecificData;
+          }
+
+          await addDoc(collection(db, 'materials'), materialData);
 
           toast.success("Material uploaded and saved successfully!");
           setStep(4);
@@ -711,23 +966,29 @@ function UploadsData() {
         }
       }
     );
-  };
+  }, [formData, selectedCategory]);
 
-  const togglePauseResume = () => {
+  const togglePauseResume = useCallback(() => {
     if (!uploadTaskRef.current) return;
-    isPaused ? uploadTaskRef.current.resume() : uploadTaskRef.current.pause();
-  };
+    if (isPaused) {
+      uploadTaskRef.current.resume();
+    } else {
+      uploadTaskRef.current.pause();
+    }
+  }, [isPaused]);
 
-  const cancelUpload = () => {
-    if (uploadTaskRef.current) uploadTaskRef.current.cancel();
+  const cancelUpload = useCallback(() => {
+    if (uploadTaskRef.current) {
+      uploadTaskRef.current.cancel();
+    }
     setUploading(false);
     setIsPaused(false);
     setProgress(0);
     uploadTaskRef.current = null;
     toast.info("Upload cancelled");
-  };
+  }, []);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     if (uploading) cancelUpload();
     setStep(1);
     setSelectedCategory(null);
@@ -736,289 +997,32 @@ function UploadsData() {
       specificData: {},
       file: null, preview: null,
     });
-    setPreviewImages([]);
-    setPreviewImagePreviews([]);
-  };
+  }, [uploading, cancelUpload]);
 
-  // Success Step Component
-  const SuccessStep = () => (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      className="text-center"
-    >
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", stiffness: 200, damping: 20 }}
-        className="w-28 h-28 mx-auto mb-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl"
-      >
-        <Check size={48} className="text-white" />
-      </motion.div>
-      
-      <h2 className="text-3xl md:text-4xl font-bold text-slate-800 dark:text-white mb-4">
-        Upload Complete! 🎉
-      </h2>
-      <p className="text-slate-600 dark:text-slate-400 mb-8 max-w-md mx-auto">
-        Your {selectedCategory?.label.toLowerCase()} has been successfully uploaded and shared with the community.
-      </p>
-      
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={resetForm}
-          className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-xl transition-all inline-flex items-center gap-2"
-        >
-          <Upload size={18} />
-          Upload Another File
-        </motion.button>
-        
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => window.location.href = '/dashboard'}
-          className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all inline-flex items-center gap-2"
-        >
-          Go to Dashboard
-        </motion.button>
-      </div>
-    </motion.div>
-  );
+  const goToDashboard = useCallback(() => {
+    window.location.href = '/dashboard';
+  }, []);
 
-  // Upload Step Component
-  const UploadStep = () => {
-    const isVideo = selectedCategory?.value === 'Video Tutorials';
-    const previewRequired = !isVideo && previewImages.length < 3;
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, x: 100 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -100 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className={`p-2 rounded-lg bg-gradient-to-br ${selectedCategory.color} text-white`}>
-              {selectedCategory && <selectedCategory.icon size={20} />}
-            </div>
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
-              Upload Files
-            </h2>
-          </div>
-          <p className="text-slate-600 dark:text-slate-400">
-            Upload your main file and preview images
-          </p>
-        </div>
-
-        <div className="space-y-8">
-          {/* Main File Upload */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Main File <span className="text-red-500">*</span>
-            </label>
-            <div
-              onDragOver={(e) => handleDragOver(e, 'file')}
-              onDragLeave={(e) => handleDragLeave(e, 'file')}
-              onDrop={(e) => handleDrop(e, 'file')}
-              className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
-                dragActive
-                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
-                  : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500'
-              }`}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={selectedCategory?.accept}
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              
-              {formData.file ? (
-                <div className="flex items-center gap-4 text-left">
-                  {formData.preview?.startsWith('data:video') ? (
-                    <video src={formData.preview} className="w-20 h-20 object-cover rounded" controlsList="nodownload" />
-                  ) : formData.preview ? (
-                    <img src={formData.preview} alt="preview" className="w-20 h-20 object-cover rounded" />
-                  ) : (
-                    <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950 dark:to-purple-950 rounded-lg flex items-center justify-center">
-                      <FileText size={32} className="text-indigo-600" />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800 dark:text-white truncate">{formData.file.name}</p>
-                    <p className="text-sm text-slate-500">
-                      {(formData.file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFormData(prev => ({ ...prev, file: null, preview: null }));
-                    }}
-                    className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full transition"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <CloudUpload className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-                  <p className="text-slate-600 dark:text-slate-400">Click or drag & drop to upload</p>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Supports: {selectedCategory?.accept.toUpperCase()}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Preview Images Upload */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Preview Screenshots
-              {!isVideo && <span className="text-red-500 ml-1">* (3-5 images)</span>}
-              {isVideo && <span className="text-slate-500 ml-1">(Optional)</span>}
-            </label>
-            <div
-              onDragOver={(e) => handleDragOver(e, 'preview')}
-              onDragLeave={(e) => handleDragLeave(e, 'preview')}
-              onDrop={(e) => handleDrop(e, 'preview')}
-              className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
-                dragPreviewActive
-                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
-                  : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400'
-              }`}
-              onClick={() => previewInputRef.current?.click()}
-            >
-              <input
-                ref={previewInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                onChange={handlePreviewImagesChange}
-                className="hidden"
-              />
-              <div>
-                <Image className="w-12 h-12 mx-auto text-slate-400 mb-3" />
-                <p className="text-slate-600 dark:text-slate-400">Click or drag images here</p>
-                <p className="text-sm text-slate-500">JPEG, PNG, WebP • Up to 5 images</p>
-              </div>
-            </div>
-
-            {previewImagePreviews.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
-                  Selected Images ({previewImagePreviews.length}/5)
-                </p>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                  {previewImagePreviews.map((src, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="relative group"
-                    >
-                      <img
-                        src={src}
-                        alt={`preview ${idx + 1}`}
-                        className="w-full h-24 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
-                      />
-                      <button
-                        onClick={() => removePreviewImage(idx)}
-                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Upload Progress */}
-          {uploading && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-6"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Uploading...
-                </span>
-                <span className="text-sm font-semibold text-indigo-600">{progress}%</span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 mb-4 overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={togglePauseResume}
-                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition"
-                >
-                  {isPaused ? 'Resume' : 'Pause'}
-                </button>
-                <button
-                  onClick={cancelUpload}
-                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </div>
-
-        <div className="flex justify-between gap-4 mt-10">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleBackStep}
-            disabled={uploading && !isPaused}
-            className="px-8 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center gap-2 disabled:opacity-50"
-          >
-            <ArrowLeft size={18} /> Back
-          </motion.button>
-
-          {!uploading ? (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={startUpload}
-              disabled={!formData.file || previewRequired}
-              className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-medium hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <CloudUpload size={18} />
-              Start Upload
-            </motion.button>
-          ) : (
-            <div className="px-8 py-3 bg-slate-200 dark:bg-slate-700 text-slate-500 rounded-xl">
-              Upload in progress...
-            </div>
-          )}
-        </div>
-
-        {previewRequired && !uploading && (
-          <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-            <p className="text-sm text-amber-700 dark:text-amber-400">
-              Please upload at least 3 preview screenshots to continue
-            </p>
-          </div>
-        )}
-      </motion.div>
-    );
-  };
+  // Memoize the upload step props
+  const uploadStepProps = useMemo(() => ({
+    selectedCategory,
+    formData,
+    uploading,
+    progress,
+    isPaused,
+    dragActive,
+    onFileChange: handleFileChange,
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDragEnter: handleDragEnter,
+    onDrop: handleDrop,
+    onRemoveFile: handleRemoveFile,
+    onStartUpload: startUpload,
+    onTogglePauseResume: togglePauseResume,
+    onCancelUpload: cancelUpload,
+    onBack: handleBackStep,
+    fileInputRef
+  }), [selectedCategory, formData, uploading, progress, isPaused, dragActive, handleFileChange, handleDragOver, handleDragLeave, handleDragEnter, handleDrop, handleRemoveFile, startUpload, togglePauseResume, cancelUpload, handleBackStep]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
@@ -1038,8 +1042,15 @@ function UploadsData() {
               selectedCategory={selectedCategory}
             />
           )}
-          {step === 3 && <UploadStep key="upload" />}
-          {step === 4 && <SuccessStep key="success" />}
+          {step === 3 && <UploadStep key="upload" {...uploadStepProps} />}
+          {step === 4 && (
+            <SuccessStep 
+              key="success" 
+              selectedCategory={selectedCategory}
+              onReset={resetForm}
+              onGoToDashboard={goToDashboard}
+            />
+          )}
         </AnimatePresence>
       </div>
     </div>

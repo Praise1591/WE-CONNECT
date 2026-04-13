@@ -111,9 +111,8 @@ function About() {
 
   const teamMembers = [
     { name: "Onwubiko Praise", role: "Founder and Developer", bio: "Petroleum Engineering student passionate about EdTech", avatar: "👨‍💻" },
-    { name: "Amina Mohammed", role: "Community Lead", bio: "Building inclusive learning spaces", avatar: "👩‍💼" },
-    { name: "Chidi Okonkwo", role: "Technical Lead", bio: "Full-stack developer & open-source advocate", avatar: "👨‍🔧" },
-    { name: "Ngozi Eze", role: "Content Curator", bio: "Ensuring quality educational resources", avatar: "📚" },
+    { name: "Praise Elera Nwogu", role: "Community Lead", bio: "Building inclusive learning spaces", avatar: "👩‍💼" },
+    
   ];
 
   return (

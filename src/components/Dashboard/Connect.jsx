@@ -1,4 +1,5 @@
-// Connect.jsx - Complete Redesign with Modern UI/UX
+// Connect.jsx - Enhanced Chat with Beautiful Block Modal
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
@@ -6,9 +7,10 @@ import {
   ChevronLeft, Loader2, UserCircle,
   UserCheck, Home, Users, User, Edit2, LogOut, Camera, Slash,
   Sparkles, Compass, Gift, Star, Zap, MoreHorizontal,
-  Bookmark, Share2, Smile, AtSign, Mic, Phone,
+  Bookmark, Share2, AtSign, Mic, Phone,
   Video, MoreVertical, CheckCircle, XCircle, Clock, Filter,
-  TrendingUp, Flame, Crown, Coffee, Rocket, Palette
+  TrendingUp, Flame, Crown, Coffee, Rocket, Palette,
+  Reply, Download, ExternalLink, File, X, AlertTriangle, Shield, Ban
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,7 +23,7 @@ import {
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const Connect = () => {
-  // State variables (unchanged)
+  // State variables
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
@@ -32,6 +34,7 @@ const Connect = () => {
   const [connections, setConnections] = useState([]);
   const [sentConnectionRequests, setSentConnectionRequests] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
+  const [blockedByUsers, setBlockedByUsers] = useState([]);
   const [messages, setMessages] = useState({});
   const [activeTab, setActiveTab] = useState('feed');
   const [networkSearch, setNetworkSearch] = useState('');
@@ -52,10 +55,28 @@ const Connect = () => {
   const [acceptingId, setAcceptingId] = useState(null);
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
+  // New states for chat features
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [selectedMediaFile, setSelectedMediaFile] = useState(null);
+  const [selectedMediaType, setSelectedMediaType] = useState(null);
+  const [showMediaViewer, setShowMediaViewer] = useState(null);
+  
+  // Block modal state
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [userToBlock, setUserToBlock] = useState(null);
+  const [isBlocking, setIsBlocking] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // All useEffect hooks remain exactly the same as original
+  const minSwipeDistance = 50;
+
+  // useEffect hooks
   useEffect(() => {
     const handleResize = () => setIsNarrowScreen(window.innerWidth < 640);
     window.addEventListener('resize', handleResize);
@@ -96,6 +117,21 @@ const Connect = () => {
         setCurrentUser({ id: firebaseUser.uid, ...profile });
         setEditedName(profile.name);
         setProfilePhotoPreview(profile.photoURL);
+        
+        // Load blocked by users - with error handling for missing collection
+        try {
+          const blockedByRef = collection(db, `users/${firebaseUser.uid}/blockedBy`);
+          const blockedBySnap = await getDocs(blockedByRef);
+          setBlockedByUsers(blockedBySnap.docs.map(d => d.id));
+        } catch (blockErr) {
+          if (blockErr.code === 'permission-denied' || blockErr.code === 'not-found') {
+            console.log('blockedBy collection not accessible yet, using empty array');
+            setBlockedByUsers([]);
+          } else {
+            console.warn('Could not load blockedBy list:', blockErr.message);
+            setBlockedByUsers([]);
+          }
+        }
       } catch (err) {
         console.error("Profile load error:", err);
         toast.error("Failed to load profile");
@@ -194,7 +230,7 @@ const Connect = () => {
       if (newMsgs.length > 0) {
         const lastMsg = newMsgs[newMsgs.length - 1];
         updateDoc(doc(db, 'chats', chatId), {
-          lastMessage: lastMsg.content,
+          lastMessage: lastMsg.content || (lastMsg.mediaType === 'image' ? '📷 Photo' : lastMsg.mediaType === 'video' ? '🎥 Video' : lastMsg.content),
           lastMessageTime: lastMsg.createdAt,
           lastMessageSender: lastMsg.sender
         }).catch(err => console.warn('Could not update last message:', err.message));
@@ -210,7 +246,33 @@ const Connect = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, selectedChat]);
 
-  // All handler functions remain exactly the same
+  // Initialize blockedBy collection if needed
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    
+    const initBlockedBy = async () => {
+      try {
+        const blockedByRef = collection(db, `users/${currentUser.id}/blockedBy`);
+        const testQuery = await getDocs(blockedByRef);
+      } catch (err) {
+        if (err.code === 'permission-denied') {
+          try {
+            await setDoc(doc(db, `users/${currentUser.id}/blockedBy`, '_init'), {
+              _init: true,
+              createdAt: serverTimestamp()
+            });
+            await deleteDoc(doc(db, `users/${currentUser.id}/blockedBy`, '_init'));
+          } catch (initErr) {
+            console.log('Could not initialize blockedBy collection:', initErr.message);
+          }
+        }
+      }
+    };
+    
+    initBlockedBy();
+  }, [currentUser?.id]);
+
+  // Handler functions
   const formatMessageTime = (timestamp) => {
     if (!timestamp?.toDate) return '';
     const date = timestamp.toDate();
@@ -339,43 +401,109 @@ const Connect = () => {
     }
   };
 
-  const handleBlockUser = async (userId, userName = 'this user') => {
-    if (!window.confirm(`Block ${userName}?`)) return;
+  // Open block modal instead of direct alert
+  const openBlockModal = (userId, userName) => {
+    setUserToBlock({ id: userId, name: userName });
+    setShowBlockModal(true);
+  };
 
+  // Execute block from modal
+  const executeBlock = async () => {
+    if (!userToBlock) return;
+    
+    setIsBlocking(true);
+    
     try {
-      await setDoc(doc(db, `users/${currentUser.id}/blocked`, userId), {
+      // Add to blocked list
+      await setDoc(doc(db, `users/${currentUser.id}/blocked`, userToBlock.id), {
         blockedAt: serverTimestamp(),
-        name: userName
+        name: userToBlock.name
       });
       
+      // Add to blockedBy list of the blocked user
+      try {
+        await setDoc(doc(db, `users/${userToBlock.id}/blockedBy`, currentUser.id), {
+          blockedAt: serverTimestamp(),
+          name: currentUser.name
+        });
+      } catch (err) {
+        console.warn('Could not add to blockedBy collection:', err.message);
+      }
+      
+      // Remove any existing connection
       const connectionQuery = query(
         collection(db, 'connections'),
         where('users', 'array-contains', currentUser.id),
-        where('users', 'array-contains', userId)
+        where('users', 'array-contains', userToBlock.id)
       );
       const connSnap = await getDocs(connectionQuery);
       const batch = writeBatch(db);
       connSnap.docs.forEach(doc => batch.delete(doc.ref));
       await batch.commit();
       
-      toast.success('User blocked');
+      // Remove any pending connection requests
+      try {
+        await deleteDoc(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userToBlock.id));
+        await deleteDoc(doc(db, `users/${userToBlock.id}/connectionRequestsSent`, currentUser.id));
+      } catch (err) {}
+      
+      // Delete chat messages if exists
+      const chatId = [currentUser.id, userToBlock.id].sort().join('_');
+      const chatMessagesRef = collection(db, `chats/${chatId}/messages`);
+      const messagesSnap = await getDocs(chatMessagesRef);
+      const deleteBatch = writeBatch(db);
+      messagesSnap.docs.forEach(doc => deleteBatch.delete(doc.ref));
+      await deleteBatch.commit();
+      
+      // Delete chat room
+      await deleteDoc(doc(db, 'chats', chatId)).catch(() => {});
+      
+      // Remove from connections state and close chat if open
+      setConnections(prev => prev.filter(id => id !== userToBlock.id));
+      if (selectedChat === userToBlock.id) {
+        setSelectedChat(null);
+        setReplyingTo(null);
+      }
+      
+      // Update blockedByUsers state
+      setBlockedByUsers(prev => [...prev, userToBlock.id]);
+      
+      toast.success(`${userToBlock.name} has been blocked`);
+      setShowBlockModal(false);
+      setUserToBlock(null);
     } catch (err) {
-      toast.error("Block failed");
+      console.error("Block error:", err);
+      toast.error("Block failed: " + err.message);
+    } finally {
+      setIsBlocking(false);
     }
   };
 
   const handleUnblockUser = async (userId) => {
+    const userToUnblock = users.find(u => u.id === userId);
+    if (!window.confirm(`Unblock ${userToUnblock?.name || 'this user'}? You'll be able to connect and chat again.`)) return;
+    
     try {
       await deleteDoc(doc(db, `users/${currentUser.id}/blocked`, userId));
+      try {
+        await deleteDoc(doc(db, `users/${userId}/blockedBy`, currentUser.id));
+      } catch (err) {
+        console.warn('Could not remove from blockedBy collection:', err.message);
+      }
+      
+      setBlockedByUsers(prev => prev.filter(id => id !== userId));
+      
       toast.success('User unblocked');
     } catch (err) {
-      toast.error("Unblock failed");
+      toast.error("Unblock failed: " + err.message);
     }
   };
 
   const handleSendConnectionRequest = async (userId) => {
     if (connections.includes(userId)) return toast.error('Already connected');
     if (sentConnectionRequests.includes(userId)) return toast.error('Request already sent');
+    if (blockedUsers.includes(userId)) return toast.error('Cannot send request to blocked user');
+    if (blockedByUsers.includes(userId)) return toast.error('You have been blocked by this user');
 
     try {
       await setDoc(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userId), {
@@ -520,12 +648,41 @@ const Connect = () => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedChat || isSendingMessage) return;
+  const handleMediaMessageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !selectedChat) return;
     
-    setIsSendingMessage(true);
+    if (!connections.includes(selectedChat)) {
+      toast.error('Connect first to send media');
+      return;
+    }
+    
+    setUploadingMedia(true);
+    
+    try {
+      const mediaUrl = await uploadMediaToStorage(file);
+      const mediaTypeParam = file.type.startsWith('video') ? 'video' : 'image';
+      
+      await sendChatMessage(null, mediaUrl, mediaTypeParam);
+      toast.success('Media sent!');
+    } catch (err) {
+      console.error("Media upload error:", err);
+      toast.error("Failed to send media");
+    } finally {
+      setUploadingMedia(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+  
+  const uploadMediaToStorage = async (file) => {
+    const sRef = storageRef(storage, `chat_media/${[currentUser.id, selectedChat].sort().join('_')}/${Date.now()}_${file.name}`);
+    await uploadBytes(sRef, file);
+    return await getDownloadURL(sRef);
+  };
+  
+  const sendChatMessage = async (text, mediaUrl = null, mediaTypeParam = null) => {
     const chatId = [currentUser.id, selectedChat].sort().join('_');
-
+    
     try {
       const chatRoomRef = doc(db, 'chats', chatId);
       const chatRoomSnap = await getDoc(chatRoomRef);
@@ -540,33 +697,241 @@ const Connect = () => {
         });
       }
       
-      await addDoc(collection(db, `chats/${chatId}/messages`), {
+      const messageData = {
         sender: currentUser.id,
         senderName: currentUser.name,
-        content: newMessage.trim(),
         createdAt: serverTimestamp(),
         read: false
-      });
+      };
+      
+      if (text) {
+        messageData.content = text;
+      }
+      
+      if (mediaUrl) {
+        messageData.mediaUrl = mediaUrl;
+        messageData.mediaType = mediaTypeParam;
+        if (!text) {
+          messageData.content = mediaTypeParam === 'image' ? '📷 Photo' : '🎥 Video';
+        }
+      }
+      
+      if (replyingTo) {
+        messageData.replyTo = {
+          messageId: replyingTo.id,
+          content: replyingTo.content,
+          senderName: replyingTo.senderName,
+          mediaType: replyingTo.mediaType,
+          mediaUrl: replyingTo.mediaUrl
+        };
+        setReplyingTo(null);
+      }
+      
+      await addDoc(collection(db, `chats/${chatId}/messages`), messageData);
       
       await updateDoc(chatRoomRef, {
-        lastMessage: newMessage.trim(),
+        lastMessage: messageData.content,
         lastMessageTime: serverTimestamp(),
         lastMessageSender: currentUser.id,
         lastMessageSenderName: currentUser.name
       });
       
-      setNewMessage('');
+      return true;
     } catch (err) {
       console.error("Send message error:", err.message);
       toast.error("Failed to send message");
+      return false;
+    }
+  };
+  
+  const handleSendMessage = async () => {
+    if ((!newMessage.trim() && !selectedMediaFile) || !selectedChat || isSendingMessage) return;
+    if (!connections.includes(selectedChat)) {
+      toast.error('Connect first to send messages');
+      return;
+    }
+    
+    setIsSendingMessage(true);
+    
+    try {
+      if (selectedMediaFile) {
+        await handleMediaMessageUpload({ target: { files: [selectedMediaFile] } });
+        setSelectedMediaFile(null);
+        setSelectedMediaType(null);
+      } else if (newMessage.trim()) {
+        await sendChatMessage(newMessage.trim());
+        setNewMessage('');
+      }
     } finally {
       setIsSendingMessage(false);
     }
   };
-
+  
+  const onTouchStart = (e, message) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+    window.replyMessageData = message;
+  };
+  
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  
+  const onTouchEnd = (message) => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    
+    if (isLeftSwipe && message.sender !== currentUser.id) {
+      setReplyingTo({
+        id: message.id,
+        content: message.content || (message.mediaType === 'image' ? '📷 Photo' : message.mediaType === 'video' ? '🎥 Video' : 'Media'),
+        senderName: message.senderName,
+        mediaType: message.mediaType,
+        mediaUrl: message.mediaUrl
+      });
+      toast.info(`Replying to ${message.senderName}`);
+    }
+    
+    setTouchStart(null);
+    setTouchEnd(null);
+  };
+  
   const getUserById = (id) => users.find(u => u.id === id) || { name: 'Unknown', photoURL: null };
 
-  // Creative bottom navigation
+  // Media viewer component
+  const MediaViewer = ({ url, type, onClose }) => (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <button onClick={onClose} className="absolute top-4 right-4 text-white p-2 hover:bg-white/20 rounded-full z-10">
+        <X size={24} />
+      </button>
+      {type === 'image' ? (
+        <img src={url} alt="Full size" className="max-w-full max-h-[90vh] object-contain" />
+      ) : (
+        <video src={url} controls autoPlay className="max-w-full max-h-[90vh]" />
+      )}
+    </motion.div>
+  );
+
+  // Beautiful Block Modal Component
+  const BlockModal = () => (
+    <AnimatePresence>
+      {showBlockModal && userToBlock && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => !isBlocking && setShowBlockModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="relative max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with gradient */}
+            <div className="relative bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
+              <div className="flex items-center gap-3 relative z-10">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                  <Ban size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Block User</h3>
+                  <p className="text-red-100 text-sm">This action can be reversed later</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4 p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+                <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={24} className="text-amber-600 dark:text-amber-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-800 dark:text-amber-400">
+                    Are you sure?
+                  </p>
+                  <p className="text-sm text-amber-700 dark:text-amber-500">
+                    You won't be able to message or connect with them
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3 mb-6 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
+                {userToBlock.photoURL ? (
+                  <img src={userToBlock.photoURL} className="w-12 h-12 rounded-full object-cover" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center">
+                    <User size={20} className="text-white" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="font-bold text-slate-800 dark:text-white">{userToBlock.name}</p>
+                  <p className="text-xs text-slate-500">will be blocked</p>
+                </div>
+              </div>
+              
+              <div className="space-y-2 mb-6">
+                <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                  <Shield size={14} className="text-red-500" />
+                  They won't be able to message you
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                  <Shield size={14} className="text-red-500" />
+                  Your chat history will be hidden
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                  <Shield size={14} className="text-red-500" />
+                  They won't see your posts or profile
+                </p>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowBlockModal(false)}
+                  disabled={isBlocking}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeBlock}
+                  disabled={isBlocking}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-red-600 text-white font-medium hover:from-red-600 hover:to-red-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isBlocking ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Blocking...
+                    </>
+                  ) : (
+                    <>
+                      <Ban size={18} />
+                      Block User
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  // Bottom navigation component
   const BottomNav = () => (
     <motion.div 
       initial={{ y: 100 }}
@@ -609,7 +974,7 @@ const Connect = () => {
     </motion.div>
   );
 
-  // Creative desktop navigation
+  // Desktop navigation component
   const DesktopNav = () => (
     <motion.div 
       initial={{ y: -20, opacity: 0 }}
@@ -719,10 +1084,9 @@ const Connect = () => {
             transition={{ duration: 0.3 }}
           >
             
-            {/* FEED TAB - Minimalist Card Design */}
+            {/* FEED TAB - Same structure as before */}
             {activeTab === 'feed' && (
               <div className="max-w-2xl mx-auto space-y-6">
-                {/* Create Post - Floating Card */}
                 <motion.div 
                   initial={{ scale: 0.95, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
@@ -788,7 +1152,6 @@ const Connect = () => {
                   </div>
                 </motion.div>
 
-                {/* Posts Feed */}
                 <div className="space-y-5">
                   {posts.map((post, index) => (
                     <motion.div
@@ -799,7 +1162,6 @@ const Connect = () => {
                       className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
                     >
                       <div className="p-5">
-                        {/* Post Header */}
                         <div className="flex items-center gap-3 mb-4">
                           {post.user.photoURL ? (
                             <img src={post.user.photoURL} className="w-10 h-10 rounded-full object-cover" />
@@ -824,12 +1186,10 @@ const Connect = () => {
                           )}
                         </div>
                         
-                        {/* Post Content */}
                         {post.content && (
                           <p className="mb-4 text-slate-700 dark:text-slate-300 leading-relaxed">{post.content}</p>
                         )}
                         
-                        {/* Media */}
                         {post.media && post.mediaType === 'image' && (
                           <div className="rounded-xl overflow-hidden mb-4">
                             <img src={post.media} alt="" className="w-full max-h-96 object-cover" />
@@ -839,7 +1199,6 @@ const Connect = () => {
                           <video src={post.media} controls className="rounded-xl mb-4 max-h-96 w-full" />
                         )}
                         
-                        {/* Engagement */}
                         <div className="flex items-center gap-6 pt-2 border-t border-slate-200 dark:border-slate-700">
                           <button onClick={() => handleLike(post.id)} className="flex items-center gap-2 py-2 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-colors group">
                             <Heart size={20} className="group-hover:fill-red-500 group-hover:text-red-500" />
@@ -854,7 +1213,6 @@ const Connect = () => {
                           </button>
                         </div>
                         
-                        {/* Comments Section */}
                         {selectedPostId === post.id && (
                           <motion.div
                             initial={{ opacity: 0, height: 0 }}
@@ -888,10 +1246,9 @@ const Connect = () => {
               </div>
             )}
 
-            {/* NETWORK TAB - Glassmorphism Grid */}
+            {/* NETWORK TAB - Updated with block modal */}
             {activeTab === 'network' && (
               <div className="space-y-6">
-                {/* Search Header */}
                 <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 p-6">
                   <div className="flex flex-col sm:flex-row gap-4 items-center">
                     <div className="relative flex-1 w-full">
@@ -916,7 +1273,6 @@ const Connect = () => {
                   </div>
                 </div>
 
-                {/* Users Grid */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {users
                     .filter(u => u.id !== currentUser.id && (!networkSearch || u.name?.toLowerCase().includes(networkSearch.toLowerCase())))
@@ -924,24 +1280,20 @@ const Connect = () => {
                       const isConnected = connections.includes(user.id);
                       const hasSent = sentConnectionRequests.includes(user.id);
                       const isBlocked = blockedUsers.includes(user.id);
+                      const isBlockedBy = blockedByUsers.includes(user.id);
 
                       let btn;
-                      if (isBlocked) btn = <span className="px-4 py-2 bg-slate-500 text-white rounded-full text-sm">Blocked</span>;
-                      else if (isConnected) btn = (
-                        <span className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-sm flex items-center gap-1">
-                          <CheckCircle size={14} /> Connected
-                        </span>
-                      );
-                      else if (hasSent) btn = (
-                        <button onClick={() => handleCancelSentRequest(user.id)} className="px-4 py-2 bg-amber-500 text-white rounded-full text-sm hover:bg-amber-600 transition-colors">
-                          Cancel Request
-                        </button>
-                      );
-                      else btn = (
-                        <button onClick={() => handleSendConnectionRequest(user.id)} className="px-4 py-2 bg-indigo-600 text-white rounded-full text-sm hover:bg-indigo-700 transition-colors flex items-center gap-1">
-                          <UserPlus size={14} /> Connect
-                        </button>
-                      );
+                      if (isBlocked) {
+                        btn = <button onClick={() => handleUnblockUser(user.id)} className="px-4 py-2 bg-emerald-600 text-white rounded-full text-sm hover:bg-emerald-700 transition-colors">Unblock</button>;
+                      } else if (isBlockedBy) {
+                        btn = <span className="px-4 py-2 bg-red-500 text-white rounded-full text-sm">Blocked You</span>;
+                      } else if (isConnected) {
+                        btn = <span className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-sm flex items-center gap-1"><CheckCircle size={14} /> Connected</span>;
+                      } else if (hasSent) {
+                        btn = <button onClick={() => handleCancelSentRequest(user.id)} className="px-4 py-2 bg-amber-500 text-white rounded-full text-sm hover:bg-amber-600 transition-colors">Cancel Request</button>;
+                      } else {
+                        btn = <button onClick={() => handleSendConnectionRequest(user.id)} className="px-4 py-2 bg-indigo-600 text-white rounded-full text-sm hover:bg-indigo-700 transition-colors flex items-center gap-1"><UserPlus size={14} /> Connect</button>;
+                      }
 
                       return (
                         <motion.div
@@ -968,18 +1320,14 @@ const Connect = () => {
                             </div>
                             <div className="flex-1">
                               <h4 className="font-bold text-slate-800 dark:text-white">{user.name}</h4>
-                              {user.role && (
-                                <p className="text-xs text-slate-500 mt-0.5 capitalize">{user.role}</p>
-                              )}
-                              {user.school && (
-                                <p className="text-xs text-slate-400 mt-1 truncate">{user.school}</p>
-                              )}
-                              <div className="mt-3">
-                                {btn}
-                              </div>
+                              <div className="mt-3">{btn}</div>
                             </div>
-                            {!isBlocked && !isConnected && (
-                              <button onClick={() => handleBlockUser(user.id, user.name)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
+                            {!isBlocked && !isConnected && !isBlockedBy && (
+                              <button 
+                                onClick={() => openBlockModal(user.id, user.name)} 
+                                className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                title="Block user"
+                              >
                                 <Slash size={16} />
                               </button>
                             )}
@@ -991,10 +1339,9 @@ const Connect = () => {
               </div>
             )}
 
-            {/* REQUESTS TAB - Split View Design */}
+            {/* REQUESTS TAB */}
             {activeTab === 'requests' && (
               <div className="grid lg:grid-cols-2 gap-6">
-                {/* Incoming Requests */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-violet-500/10 to-purple-500/10">
                     <h2 className="text-xl font-bold flex items-center gap-2">
@@ -1052,7 +1399,6 @@ const Connect = () => {
                   </div>
                 </div>
 
-                {/* Sent Requests */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
                     <h2 className="text-xl font-bold flex items-center gap-2">
@@ -1094,7 +1440,7 @@ const Connect = () => {
               </div>
             )}
 
-            {/* MESSAGES TAB - Modern Chat Layout */}
+            {/* MESSAGES TAB - Updated with block modal for profile connections */}
             {activeTab === 'messages' && (
               <div className={isNarrowScreen ? "space-y-4" : "grid lg:grid-cols-12 gap-6"}>
                 {(!isNarrowScreen || !selectedChat) && (
@@ -1114,39 +1460,41 @@ const Connect = () => {
                           <p className="text-xs text-slate-400 mt-1">Connect with people to start chatting</p>
                         </div>
                       ) : (
-                        connections.map(id => {
-                          const u = getUserById(id);
-                          const chatId = [currentUser.id, id].sort().join('_');
-                          const last = messages[chatId]?.slice(-1)[0];
-                          return (
-                            <button
-                              key={id}
-                              onClick={() => setSelectedChat(id)}
-                              className={`w-full p-4 flex items-center gap-3 transition-all text-left hover:bg-slate-50 dark:hover:bg-slate-700/30 ${
-                                selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40' : ''
-                              }`}
-                            >
-                              {u.photoURL ? (
-                                <img src={u.photoURL} className="w-12 h-12 rounded-full object-cover" />
-                              ) : (
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                                  <User className="w-6 h-6 text-white" />
+                        connections
+                          .filter(id => !blockedUsers.includes(id) && !blockedByUsers.includes(id))
+                          .map(id => {
+                            const u = getUserById(id);
+                            const chatId = [currentUser.id, id].sort().join('_');
+                            const last = messages[chatId]?.slice(-1)[0];
+                            return (
+                              <button
+                                key={id}
+                                onClick={() => setSelectedChat(id)}
+                                className={`w-full p-4 flex items-center gap-3 transition-all text-left hover:bg-slate-50 dark:hover:bg-slate-700/30 ${
+                                  selectedChat === id ? 'bg-indigo-50 dark:bg-indigo-950/40' : ''
+                                }`}
+                              >
+                                {u.photoURL ? (
+                                  <img src={u.photoURL} className="w-12 h-12 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                                    <User className="w-6 h-6 text-white" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold truncate">{u.name}</div>
+                                  <div className="text-xs text-slate-500 truncate mt-0.5">
+                                    {last ? (
+                                      <span>{last.sender === currentUser.id ? 'You: ' : ''}{last.content?.slice(0, 35)}</span>
+                                    ) : 'Start a conversation'}
+                                  </div>
                                 </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold truncate">{u.name}</div>
-                                <div className="text-xs text-slate-500 truncate mt-0.5">
-                                  {last ? (
-                                    <span>{last.sender === currentUser.id ? 'You: ' : ''}{last.content?.slice(0, 35)}</span>
-                                  ) : 'Start a conversation'}
-                                </div>
-                              </div>
-                              {last && last.sender !== currentUser.id && !last.read && (
-                                <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full"></div>
-                              )}
-                            </button>
-                          );
-                        })
+                                {last && last.sender !== currentUser.id && !last.read && (
+                                  <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full"></div>
+                                )}
+                              </button>
+                            );
+                          })
                       )}
                     </div>
                   </div>
@@ -1158,7 +1506,7 @@ const Connect = () => {
                       <>
                         <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
                           {isNarrowScreen && (
-                            <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
+                            <button onClick={() => { setSelectedChat(null); setReplyingTo(null); }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
                               <ChevronLeft size={20} />
                             </button>
                           )}
@@ -1171,21 +1519,45 @@ const Connect = () => {
                           )}
                           <div className="flex-1">
                             <h3 className="font-bold">{getUserById(selectedChat).name}</h3>
-                            {connections.includes(selectedChat) && (
-                              <p className="text-xs text-emerald-600">Connected</p>
-                            )}
+                            {connections.includes(selectedChat) && <p className="text-xs text-emerald-600">Connected</p>}
+                            {blockedUsers.includes(selectedChat) && <p className="text-xs text-red-600">Blocked</p>}
+                            {blockedByUsers.includes(selectedChat) && <p className="text-xs text-red-600">Blocked You</p>}
                           </div>
                           <div className="flex gap-1">
-                            <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
-                              <Phone size={18} />
-                            </button>
-                            <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
-                              <Video size={18} />
-                            </button>
+                            {!blockedUsers.includes(selectedChat) && !blockedByUsers.includes(selectedChat) && connections.includes(selectedChat) && (
+                              <>
+                                <label className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full cursor-pointer">
+                                  <ImageIcon size={18} className="text-indigo-500" />
+                                  <input type="file" accept="image/*,video/*" hidden ref={fileInputRef} onChange={handleMediaMessageUpload} />
+                                </label>
+                                <button 
+                                  onClick={() => openBlockModal(selectedChat, getUserById(selectedChat).name)}
+                                  className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full transition-colors"
+                                  title="Block user"
+                                >
+                                  <Ban size={18} className="text-red-500" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
 
-                        <div className="flex-1 p-4 overflow-y-auto space-y-3">
+                        {replyingTo && (
+                          <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-950/40 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Reply size={14} className="text-indigo-500" />
+                              <span className="text-slate-600 dark:text-slate-400">
+                                Replying to <span className="font-semibold text-indigo-600">{replyingTo.senderName}</span>
+                              </span>
+                              <span className="text-slate-500 truncate max-w-[200px]">"{replyingTo.content?.slice(0, 50)}"</span>
+                            </div>
+                            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded">
+                              <XCircle size={16} />
+                            </button>
+                          </div>
+                        )}
+
+                        <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-3">
                           {(messages[[currentUser.id, selectedChat].sort().join('_')] || []).length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-slate-500">
                               <MessageCircle size={48} className="mb-3 opacity-30" />
@@ -1195,17 +1567,61 @@ const Connect = () => {
                           ) : (
                             messages[[currentUser.id, selectedChat].sort().join('_')].map((msg, i) => {
                               const isOwn = msg.sender === currentUser.id;
+                              const showSwipeInstruction = !isOwn && !replyingTo;
+                              
                               return (
-                                <div key={msg.id || i} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${
-                                    isOwn 
-                                      ? 'bg-indigo-600 text-white' 
-                                      : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white'
-                                  }`}>
-                                    <p className="break-words text-sm">{msg.content}</p>
-                                    <div className={`text-[10px] mt-1 ${isOwn ? 'text-indigo-200' : 'text-slate-400'}`}>
-                                      {formatMessageTime(msg.createdAt)}
+                                <div
+                                  key={msg.id || i}
+                                  className={`flex ${isOwn ? 'justify-end' : 'justify-start'} message-item`}
+                                  onTouchStart={(e) => showSwipeInstruction && onTouchStart(e, msg)}
+                                  onTouchMove={showSwipeInstruction ? onTouchMove : undefined}
+                                  onTouchEnd={() => showSwipeInstruction && onTouchEnd(msg)}
+                                >
+                                  <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
+                                    {msg.replyTo && (
+                                      <div className={`mb-1 px-3 py-1.5 rounded-lg text-xs ${isOwn ? 'bg-indigo-700/50' : 'bg-slate-200 dark:bg-slate-700'} border-l-3 border-indigo-500`}>
+                                        <p className="font-semibold text-indigo-600 dark:text-indigo-400">↪ {msg.replyTo.senderName}</p>
+                                        <p className="text-slate-500 dark:text-slate-400 truncate">{msg.replyTo.content}</p>
+                                      </div>
+                                    )}
+                                    
+                                    <div className={`px-4 py-2.5 rounded-2xl ${
+                                      isOwn ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white'
+                                    }`}>
+                                      {msg.mediaUrl && msg.mediaType === 'image' && (
+                                        <div className="mb-2">
+                                          <img 
+                                            src={msg.mediaUrl} 
+                                            alt="Shared image" 
+                                            className="rounded-lg max-w-full max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => setShowMediaViewer({ url: msg.mediaUrl, type: 'image' })}
+                                          />
+                                        </div>
+                                      )}
+                                      {msg.mediaUrl && msg.mediaType === 'video' && (
+                                        <div className="mb-2">
+                                          <video 
+                                            src={msg.mediaUrl} 
+                                            controls 
+                                            className="rounded-lg max-w-full max-h-48"
+                                            onClick={() => setShowMediaViewer({ url: msg.mediaUrl, type: 'video' })}
+                                          />
+                                        </div>
+                                      )}
+                                      {msg.content && msg.content !== '📷 Photo' && msg.content !== '🎥 Video' && (
+                                        <p className="break-words text-sm">{msg.content}</p>
+                                      )}
+                                      <div className={`text-[10px] mt-1 ${isOwn ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                        {formatMessageTime(msg.createdAt)}
+                                      </div>
                                     </div>
+                                    
+                                    {showSwipeInstruction && (
+                                      <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Reply size={10} />
+                                        <span>Swipe left to reply</span>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1214,25 +1630,53 @@ const Connect = () => {
                           <div ref={messagesEndRef} />
                         </div>
 
-                        <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex gap-2">
-                          <button className="p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full">
-                            <Smile size={20} className="text-slate-500" />
-                          </button>
-                          <input
-                            value={newMessage}
-                            onChange={e => setNewMessage(e.target.value)}
-                            placeholder={connections.includes(selectedChat) ? "Type a message..." : "Connect first to send messages"}
-                            disabled={!connections.includes(selectedChat)}
-                            className="flex-1 px-4 py-2.5 rounded-full bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                            onKeyDown={e => e.key === 'Enter' && connections.includes(selectedChat) && handleSendMessage()}
-                          />
-                          <button 
-                            onClick={handleSendMessage} 
-                            disabled={!newMessage.trim() || !connections.includes(selectedChat)} 
-                            className="p-2.5 bg-indigo-600 text-white rounded-full disabled:opacity-50 hover:bg-indigo-700 transition-colors"
-                          >
-                            {isSendingMessage ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                          </button>
+                        <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+                          {selectedMediaFile && (
+                            <div className="mb-3 p-2 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {selectedMediaType === 'image' ? <ImageIcon size={20} className="text-indigo-500" /> : <VideoIcon size={20} className="text-purple-500" />}
+                                <span className="text-sm truncate">{selectedMediaFile.name}</span>
+                              </div>
+                              <button onClick={() => { setSelectedMediaFile(null); setSelectedMediaType(null); }} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded">
+                                <XCircle size={16} />
+                              </button>
+                            </div>
+                          )}
+                          
+                          <div className="flex gap-2">
+                            {!blockedUsers.includes(selectedChat) && !blockedByUsers.includes(selectedChat) && connections.includes(selectedChat) && (
+                              <label className="p-2.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full cursor-pointer">
+                                <ImageIcon size={20} className="text-indigo-500" />
+                                <input 
+                                  type="file" 
+                                  accept="image/*,video/*" 
+                                  hidden 
+                                  onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                      setSelectedMediaFile(file);
+                                      setSelectedMediaType(file.type.startsWith('video') ? 'video' : 'image');
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+                            <input
+                              value={newMessage}
+                              onChange={e => setNewMessage(e.target.value)}
+                              placeholder={!connections.includes(selectedChat) ? "Connect first to send messages" : blockedUsers.includes(selectedChat) ? "You blocked this user" : blockedByUsers.includes(selectedChat) ? "You have been blocked" : "Type a message..."}
+                              disabled={!connections.includes(selectedChat) || blockedUsers.includes(selectedChat) || blockedByUsers.includes(selectedChat)}
+                              className="flex-1 px-4 py-2.5 rounded-full bg-slate-100 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                              onKeyDown={e => e.key === 'Enter' && connections.includes(selectedChat) && !blockedUsers.includes(selectedChat) && !blockedByUsers.includes(selectedChat) && handleSendMessage()}
+                            />
+                            <button 
+                              onClick={handleSendMessage} 
+                              disabled={(!newMessage.trim() && !selectedMediaFile) || !connections.includes(selectedChat) || blockedUsers.includes(selectedChat) || blockedByUsers.includes(selectedChat) || uploadingMedia || isSendingMessage} 
+                              className="p-2.5 bg-indigo-600 text-white rounded-full disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                            >
+                              {uploadingMedia || isSendingMessage ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                            </button>
+                          </div>
                         </div>
                       </>
                     ) : (
@@ -1247,16 +1691,14 @@ const Connect = () => {
               </div>
             )}
 
-            {/* NOTIFICATIONS TAB - Timeline Style */}
+            {/* NOTIFICATIONS TAB */}
             {activeTab === 'notifications' && (
               <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                 <div className="p-5 border-b border-slate-200 dark:border-slate-700">
                   <h2 className="text-xl font-bold flex items-center gap-2">
                     <Bell size={22} className="text-amber-500" />
                     Notifications
-                    {notifications.length > 0 && (
-                      <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full">{notifications.length}</span>
-                    )}
+                    {notifications.length > 0 && <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full">{notifications.length}</span>}
                   </h2>
                 </div>
                 <div className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -1266,15 +1708,11 @@ const Connect = () => {
                       <p className="text-slate-500">No notifications yet</p>
                     </div>
                   ) : (
-                    notifications.map((n, idx) => (
+                    notifications.map((n) => (
                       <div key={n.id} className="p-5 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                         <div className="flex gap-4">
                           <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                            {n.type === 'connection_accepted' ? (
-                              <UserCheck size={20} className="text-amber-600" />
-                            ) : (
-                              <Bell size={20} className="text-amber-600" />
-                            )}
+                            {n.type === 'connection_accepted' ? <UserCheck size={20} className="text-amber-600" /> : <Bell size={20} className="text-amber-600" />}
                           </div>
                           <div className="flex-1">
                             <p className="font-medium text-slate-800 dark:text-white">{n.title}</p>
@@ -1292,10 +1730,9 @@ const Connect = () => {
               </div>
             )}
 
-            {/* PROFILE TAB - Modern Dashboard Style */}
+            {/* PROFILE TAB - Updated with block modal for connections */}
             {activeTab === 'profile' && (
               <div className="max-w-3xl mx-auto space-y-6">
-                {/* Profile Header Card */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="relative h-32 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
                   <div className="relative px-6 pb-6">
@@ -1373,7 +1810,6 @@ const Connect = () => {
                   </div>
                 </div>
 
-                {/* My Posts Section */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700">
                     <h3 className="font-bold text-lg flex items-center gap-2">
@@ -1410,7 +1846,6 @@ const Connect = () => {
                   </div>
                 </div>
 
-                {/* Connections List */}
                 {connections.length > 0 && (
                   <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                     <div className="p-5 border-b border-slate-200 dark:border-slate-700">
@@ -1423,6 +1858,7 @@ const Connect = () => {
                       <div className="grid sm:grid-cols-2 gap-3">
                         {connections.slice(0, 6).map(id => {
                           const u = getUserById(id);
+                          const isBlocked = blockedUsers.includes(id);
                           return (
                             <div key={id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl">
                               <div className="flex items-center gap-3">
@@ -1433,8 +1869,11 @@ const Connect = () => {
                                 )}
                                 <span className="font-medium text-sm truncate">{u.name}</span>
                               </div>
-                              <button onClick={() => handleBlockUser(id, u.name)} className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700">
-                                Block
+                              <button 
+                                onClick={() => isBlocked ? handleUnblockUser(id) : openBlockModal(id, u.name)} 
+                                className={`px-3 py-1 rounded-lg text-xs transition-colors ${isBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'} text-white`}
+                              >
+                                {isBlocked ? 'Unblock' : 'Block'}
                               </button>
                             </div>
                           );
@@ -1449,6 +1888,20 @@ const Connect = () => {
         </AnimatePresence>
       </div>
       <BottomNav />
+      
+      {/* Block Modal */}
+      <BlockModal />
+      
+      {/* Media Viewer Modal */}
+      <AnimatePresence>
+        {showMediaViewer && (
+          <MediaViewer 
+            url={showMediaViewer.url} 
+            type={showMediaViewer.type} 
+            onClose={() => setShowMediaViewer(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

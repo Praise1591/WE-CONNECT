@@ -1,5 +1,5 @@
-// StatsGrid.jsx - Enhanced Version
-import React, { useState, useEffect } from 'react';
+// StatsGrid.jsx - Ultra-Modern Design with No Blinking
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   BookOpen,
   DownloadCloud,
@@ -35,10 +35,34 @@ import {
   MessageCircle,
   Share2,
   Link2,
-  ExternalLink
+  ExternalLink,
+  Globe,
+  Layers,
+  Shield,
+  Compass,
+  Map,
+  Infinity,
+  Diamond,
+  Star as StarIcon,
+  BadgeCheck,
+  CircleDot,
+  ChartLine,
+  Microscope,
+  Atom,
+  Database,
+  Cpu,
+  Cloud,
+  Sparkle,
+  ZapOff,
+  Wind,
+  Sun,
+  Moon,
+  CloudRain,
+  CloudSnow,
+  CloudLightning
 } from 'lucide-react';
 import CountUp from 'react-countup';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
 import { db, auth } from '@/firebase';
@@ -49,9 +73,225 @@ import {
   where,
   doc,
   orderBy,
-  limit
+  limit,
+  getDocs
 } from 'firebase/firestore';
 
+// Animated Number Component
+const AnimatedNumber = memo(({ value, suffix = '', prefix = '' }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+  
+  useEffect(() => {
+    const duration = 2000;
+    const steps = 60;
+    const increment = value / steps;
+    let current = 0;
+    let step = 0;
+    
+    const timer = setInterval(() => {
+      step++;
+      current += increment;
+      if (step >= steps) {
+        setDisplayValue(value);
+        clearInterval(timer);
+      } else {
+        setDisplayValue(Math.floor(current));
+      }
+    }, duration / steps);
+    
+    return () => clearInterval(timer);
+  }, [value]);
+  
+  return (
+    <span>
+      {prefix}{displayValue.toLocaleString()}{suffix}
+    </span>
+  );
+});
+
+// 3D Card Component
+const Card3D = memo(({ children, className, onClick }) => {
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotateX = useTransform(y, [-100, 100], [30, -30]);
+  const rotateY = useTransform(x, [-100, 100], [-30, 30]);
+  
+  const springConfig = { damping: 25, stiffness: 300 };
+  const rotateXSpring = useSpring(rotateX, springConfig);
+  const rotateYSpring = useSpring(rotateY, springConfig);
+  
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const mouseX = e.clientX - centerX;
+    const mouseY = e.clientY - centerY;
+    x.set(mouseX);
+    y.set(mouseY);
+  };
+  
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+  
+  return (
+    <motion.div
+      style={{
+        rotateX: rotateXSpring,
+        rotateY: rotateYSpring,
+        transformStyle: "preserve-3d",
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      whileHover={{ scale: 1.02 }}
+      className={className}
+      onClick={onClick}
+    >
+      {children}
+    </motion.div>
+  );
+});
+
+// Floating Particles Background
+const FloatingParticles = memo(() => {
+  const particles = useMemo(() => Array.from({ length: 20 }, (_, i) => ({
+    id: i,
+    size: Math.random() * 4 + 2,
+    left: Math.random() * 100,
+    duration: Math.random() * 20 + 10,
+    delay: Math.random() * 5,
+    opacity: Math.random() * 0.3 + 0.1,
+  })), []);
+  
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {particles.map((particle) => (
+        <motion.div
+          key={particle.id}
+          className="absolute rounded-full bg-gradient-to-r from-indigo-400 to-purple-400"
+          style={{
+            width: particle.size,
+            height: particle.size,
+            left: `${particle.left}%`,
+            opacity: particle.opacity,
+          }}
+          animate={{
+            y: ["0vh", "100vh"],
+            x: [`${Math.random() * 20 - 10}%`, `${Math.random() * 20 - 10}%`],
+          }}
+          transition={{
+            duration: particle.duration,
+            repeat: Infinity,
+            delay: particle.delay,
+            ease: "linear",
+          }}
+        />
+      ))}
+    </div>
+  );
+});
+
+// Stat Card Component
+const StatCard = memo(({ icon: Icon, label, value, color, gradient, description, onClick, suffix, prefix }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  const gradientColors = {
+    blue: 'from-blue-500 to-cyan-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    purple: 'from-purple-500 to-pink-500',
+    orange: 'from-orange-500 to-red-500',
+    amber: 'from-amber-500 to-yellow-500',
+    violet: 'from-violet-500 to-fuchsia-500',
+    rose: 'from-rose-500 to-pink-500',
+    indigo: 'from-indigo-500 to-purple-500',
+    cyan: 'from-cyan-500 to-blue-500',
+  };
+  
+  const bgGradients = {
+    blue: 'bg-gradient-to-br from-blue-500/10 to-cyan-500/10',
+    emerald: 'bg-gradient-to-br from-emerald-500/10 to-teal-500/10',
+    purple: 'bg-gradient-to-br from-purple-500/10 to-pink-500/10',
+    orange: 'bg-gradient-to-br from-orange-500/10 to-red-500/10',
+    amber: 'bg-gradient-to-br from-amber-500/10 to-yellow-500/10',
+    violet: 'bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10',
+    rose: 'bg-gradient-to-br from-rose-500/10 to-pink-500/10',
+    indigo: 'bg-gradient-to-br from-indigo-500/10 to-purple-500/10',
+    cyan: 'bg-gradient-to-br from-cyan-500/10 to-blue-500/10',
+  };
+  
+  return (
+    <Card3D
+      className={`relative overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-6 shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer border border-slate-200/70 dark:border-slate-700/60 ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Animated gradient background */}
+      <motion.div
+        className={`absolute inset-0 bg-gradient-to-br ${gradientColors[gradient]} opacity-0 rounded-2xl`}
+        animate={{ opacity: isHovered ? 0.15 : 0 }}
+        transition={{ duration: 0.3 }}
+      />
+      
+      {/* Glow effect */}
+      <motion.div
+        className={`absolute -inset-1 bg-gradient-to-r ${gradientColors[gradient]} rounded-2xl blur-xl`}
+        animate={{ opacity: isHovered ? 0.3 : 0 }}
+        transition={{ duration: 0.3 }}
+        style={{ zIndex: -1 }}
+      />
+      
+      <div className="relative z-10">
+        <div className="flex items-start justify-between mb-4">
+          <motion.div
+            className={`p-3 rounded-xl bg-gradient-to-br ${gradientColors[gradient]} shadow-lg`}
+            animate={{ rotate: isHovered ? [0, -10, 10, -5, 0] : 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Icon className="w-6 h-6 text-white" />
+          </motion.div>
+          <motion.div
+            animate={{ x: isHovered ? 5 : 0 }}
+            className="text-slate-400 dark:text-slate-500"
+          >
+            <ArrowUpRight className="w-4 h-4" />
+          </motion.div>
+        </div>
+        
+        <div>
+          <p className="text-3xl lg:text-4xl font-bold text-slate-800 dark:text-white tracking-tight">
+            {suffix || prefix ? (
+              <AnimatedNumber value={value} suffix={suffix} prefix={prefix} />
+            ) : (
+              <CountUp end={value} separator="," duration={2} />
+            )}
+          </p>
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-2">{label}</p>
+          {description && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{description}</p>
+          )}
+        </div>
+        
+        {/* Progress bar */}
+        <motion.div
+          className="mt-4 h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isHovered ? 1 : 0.5 }}
+        >
+          <motion.div
+            className={`h-full bg-gradient-to-r ${gradientColors[gradient]} rounded-full`}
+            initial={{ width: "0%" }}
+            animate={{ width: `${Math.min(100, value / 1000 * 100)}%` }}
+            transition={{ duration: 1, delay: 0.2 }}
+          />
+        </motion.div>
+      </div>
+    </Card3D>
+  );
+});
+
+// Main Component
 function StatsGrid() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
@@ -59,29 +299,29 @@ function StatsGrid() {
   const [userName, setUserName] = useState('Scholar');
   const [greeting, setGreeting] = useState('');
   const [showAchievements, setShowAchievements] = useState(false);
-
-  // Platform stats
-  const [totalMaterials, setTotalMaterials] = useState(0);
-  const [totalDownloads, setTotalDownloads] = useState(0);
-  const [activeLearners, setActiveLearners] = useState(0);
-  const [totalVideos, setTotalVideos] = useState(0);
-  const [weeklyGrowth, setWeeklyGrowth] = useState(0);
-  const [monthlyActive, setMonthlyActive] = useState(0);
+  const [statsData, setStatsData] = useState({
+    totalMaterials: 0,
+    totalDownloads: 0,
+    activeLearners: 0,
+    totalVideos: 0,
+    weeklyGrowth: 0,
+    monthlyActive: 0,
+    userDownloads: 0,
+    userFavorites: 0,
+    userUploads: 0,
+    userStreak: 0,
+    userReviews: 0,
+    coins: 0,
+    diamonds: 0,
+  });
   const [topCategories, setTopCategories] = useState([]);
   const [recentActivities, setRecentActivities] = useState([]);
-
-  // User stats
-  const [userDownloads, setUserDownloads] = useState(0);
-  const [userFavorites, setUserFavorites] = useState(0);
-  const [userUploads, setUserUploads] = useState(0);
-  const [userStreak, setUserStreak] = useState(0);
   const [achievements, setAchievements] = useState([]);
   const [rank, setRank] = useState('Beginner');
   const [nextRankProgress, setNextRankProgress] = useState(0);
-  const [userReviews, setUserReviews] = useState(0);
-  const [userShares, setUserShares] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Set greeting based on time
+  // Set greeting
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good morning');
@@ -89,9 +329,9 @@ function StatsGrid() {
     else setGreeting('Good evening');
   }, []);
 
-  // Auth & Profile
+  // Auth listener
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged((user) => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
       setCurrentUser(user);
       if (user) {
         const displayName = user.displayName || user.email?.split('@')[0] || 'Learner';
@@ -99,24 +339,28 @@ function StatsGrid() {
       } else {
         setUserName('Guest');
       }
+      setIsLoading(false);
     });
-    return unsub;
+    return () => unsubscribe();
   }, []);
 
+  // Profile listener
   useEffect(() => {
-    if (!currentUser) {
-      setProfile(null);
-      return;
-    }
-    const profileUnsub = onSnapshot(
+    if (!currentUser) return;
+    
+    const unsubscribe = onSnapshot(
       doc(db, 'users', currentUser.uid),
       (snap) => {
-        const data = snap.exists() ? snap.data() : { coins: 0, diamonds: 0, streak: 0 };
+        const data = snap.exists() ? snap.data() : { coins: 0, diamonds: 0, streak: 0, achievements: [] };
         setProfile(data);
-        setUserStreak(data.streak || 0);
+        setStatsData(prev => ({
+          ...prev,
+          coins: data.coins || 0,
+          diamonds: data.diamonds || 0,
+          userStreak: data.streak || 0,
+        }));
         setAchievements(data.achievements || []);
         
-        // Calculate rank based on contributions
         const totalContributions = (data.uploads || 0) + (data.reviews || 0) + (data.shares || 0);
         if (totalContributions >= 100) setRank('Grandmaster');
         else if (totalContributions >= 50) setRank('Master');
@@ -127,203 +371,159 @@ function StatsGrid() {
         
         setNextRankProgress(Math.min(100, (totalContributions / 100) * 100));
       },
-      console.error
+      (error) => console.error("Profile error:", error)
     );
-    return profileUnsub;
+    return () => unsubscribe();
   }, [currentUser]);
 
-  // Platform Stats
+  // Materials listener
   useEffect(() => {
-    const q = query(collection(db, 'materials'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTotalMaterials(snapshot.size);
-
-      const downloadsSum = items.reduce((sum, item) => sum + (item.downloads || 0), 0);
-      setTotalDownloads(downloadsSum);
-
-      const videosCount = items.filter((item) =>
-        item.category?.toLowerCase().includes('video')
-      ).length;
-      setTotalVideos(videosCount);
-
-      // Calculate weekly growth
-      const lastWeekItems = items.filter(item => {
-        const createdAt = item.createdAt?.toDate?.() || new Date();
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        return createdAt > weekAgo;
-      });
-      setWeeklyGrowth(lastWeekItems.length);
-
-      // Get top categories
-      const categoryCount = {};
-      items.forEach(item => {
-        const cat = item.category || 'Other';
-        categoryCount[cat] = (categoryCount[cat] || 0) + 1;
-      });
-      const topCats = Object.entries(categoryCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([name, count]) => ({ name, count }));
-      setTopCategories(topCats);
-    }, console.error);
-    return unsub;
+    const unsubscribe = onSnapshot(
+      collection(db, 'materials'),
+      (snapshot) => {
+        const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        
+        const downloadsSum = items.reduce((sum, item) => sum + (item.downloads || 0), 0);
+        const videosCount = items.filter((item) =>
+          item.category?.toLowerCase().includes('video')
+        ).length;
+        
+        const lastWeekItems = items.filter(item => {
+          const createdAt = item.createdAt?.toDate?.() || new Date();
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          return createdAt > weekAgo;
+        });
+        
+        const categoryCount = {};
+        items.forEach(item => {
+          const cat = item.category || 'Other';
+          categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+        });
+        const topCats = Object.entries(categoryCount)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([name, count]) => ({ name, count }));
+        
+        setTopCategories(topCats);
+        setStatsData(prev => ({
+          ...prev,
+          totalMaterials: snapshot.size,
+          totalDownloads: downloadsSum,
+          totalVideos: videosCount,
+          weeklyGrowth: lastWeekItems.length,
+        }));
+      },
+      (error) => console.error("Materials error:", error)
+    );
+    return () => unsubscribe();
   }, []);
 
+  // Users listener
   useEffect(() => {
-    const q = query(collection(db, 'users'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setActiveLearners(snapshot.size);
-      const active = snapshot.docs.filter(doc => {
-        const lastActive = doc.data().lastActive?.toDate?.() || new Date();
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        return lastActive > thirtyDaysAgo;
-      }).length;
-      setMonthlyActive(active);
-    }, console.error);
-    return unsub;
+    const unsubscribe = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const active = snapshot.docs.filter(doc => {
+          const lastActive = doc.data().lastActive?.toDate?.() || new Date();
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          return lastActive > thirtyDaysAgo;
+        }).length;
+        
+        setStatsData(prev => ({
+          ...prev,
+          activeLearners: snapshot.size,
+          monthlyActive: active,
+        }));
+      },
+      (error) => console.error("Users error:", error)
+    );
+    return () => unsubscribe();
   }, []);
 
-  // User Stats
+  // User downloads listener
   useEffect(() => {
     if (!currentUser) return;
-    const q = query(collection(db, `users/${currentUser.uid}/downloads`));
-    const unsub = onSnapshot(q, (snapshot) => setUserDownloads(snapshot.size), console.error);
-    return unsub;
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, `users/${currentUser.uid}/favorites`));
-    const unsub = onSnapshot(q, (snapshot) => setUserFavorites(snapshot.size), console.error);
-    return unsub;
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(collection(db, 'materials'), where('uid', '==', currentUser.uid));
-    const unsub = onSnapshot(q, (snapshot) => setUserUploads(snapshot.size), console.error);
-    return unsub;
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const q = query(
-      collection(db, `users/${currentUser.uid}/transactions`),
-      where('type', '==', 'review'),
-      orderBy('timestamp', 'desc'),
-      limit(100)
+    const unsubscribe = onSnapshot(
+      collection(db, `users/${currentUser.uid}/downloads`),
+      (snapshot) => setStatsData(prev => ({ ...prev, userDownloads: snapshot.size })),
+      (error) => console.error("Downloads error:", error)
     );
-    const unsub = onSnapshot(q, (snapshot) => setUserReviews(snapshot.size), console.error);
-    return unsub;
+    return () => unsubscribe();
   }, [currentUser]);
 
-  // Recent activities
+  // User favorites listener
   useEffect(() => {
     if (!currentUser) return;
-    const q = query(
-      collection(db, `users/${currentUser.uid}/transactions`),
-      orderBy('timestamp', 'desc'),
-      limit(5)
+    const unsubscribe = onSnapshot(
+      collection(db, `users/${currentUser.uid}/favorites`),
+      (snapshot) => setStatsData(prev => ({ ...prev, userFavorites: snapshot.size })),
+      (error) => console.error("Favorites error:", error)
     );
-    const unsub = onSnapshot(q, (snapshot) => {
-      const activities = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate?.() || new Date()
-      }));
-      setRecentActivities(activities);
-    });
-    return unsub;
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // User uploads listener
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'materials'), where('uid', '==', currentUser.uid)),
+      (snapshot) => setStatsData(prev => ({ ...prev, userUploads: snapshot.size })),
+      (error) => console.error("Uploads error:", error)
+    );
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // User reviews listener
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, `users/${currentUser.uid}/transactions`),
+        where('type', '==', 'review')
+      ),
+      (snapshot) => setStatsData(prev => ({ ...prev, userReviews: snapshot.size })),
+      (error) => console.error("Reviews error:", error)
+    );
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Recent activities listener
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, `users/${currentUser.uid}/transactions`),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      ),
+      (snapshot) => {
+        const activities = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          timestamp: doc.data().timestamp?.toDate?.() || new Date()
+        }));
+        setRecentActivities(activities);
+      }
+    );
+    return () => unsubscribe();
   }, [currentUser]);
 
   const platformStats = [
-    { 
-      icon: BookOpen, 
-      label: 'Learning Materials', 
-      value: totalMaterials, 
-      color: 'from-blue-500 to-cyan-500',
-      description: 'Resources available',
-      gradient: 'blue',
-    },
-    { 
-      icon: DownloadCloud, 
-      label: 'Total Downloads', 
-      value: totalDownloads, 
-      color: 'from-emerald-500 to-teal-500',
-      description: 'All time',
-      gradient: 'emerald',
-    },
-    { 
-      icon: Users, 
-      label: 'Active Community', 
-      value: activeLearners, 
-      color: 'from-purple-500 to-pink-500',
-      description: `${monthlyActive} active this month`,
-      gradient: 'purple',
-    },
-    { 
-      icon: Video, 
-      label: 'Video Lessons', 
-      value: totalVideos, 
-      color: 'from-orange-500 to-red-500',
-      description: 'Premium content',
-      gradient: 'orange',
-    },
+    { icon: BookOpen, label: 'Learning Materials', value: statsData.totalMaterials, color: 'from-blue-500 to-cyan-500', gradient: 'blue', description: 'Resources available' },
+    { icon: DownloadCloud, label: 'Total Downloads', value: statsData.totalDownloads, color: 'from-emerald-500 to-teal-500', gradient: 'emerald', description: 'All time' },
+    { icon: Users, label: 'Active Community', value: statsData.activeLearners, color: 'from-purple-500 to-pink-500', gradient: 'purple', description: `${statsData.monthlyActive} active this month` },
+    { icon: Video, label: 'Video Lessons', value: statsData.totalVideos, color: 'from-orange-500 to-red-500', gradient: 'orange', description: 'Premium content' },
   ];
 
   const userStats = [
-    { 
-      icon: Coins, 
-      label: 'Coins', 
-      value: profile?.coins ?? 0, 
-      color: 'from-amber-500 to-yellow-500',
-      description: 'Available to spend',
-      suffix: '🪙',
-      action: () => navigate('/monetary'),
-    },
-    { 
-      icon: Gem, 
-      label: 'Diamonds', 
-      value: profile?.diamonds ?? 0, 
-      color: 'from-violet-500 to-fuchsia-500',
-      description: 'Premium currency',
-      suffix: '💎',
-      action: () => navigate('/monetary'),
-    },
-    { 
-      icon: Download, 
-      label: 'Downloads', 
-      value: userDownloads, 
-      color: 'from-cyan-500 to-blue-500',
-      description: 'Resources saved',
-      action: () => navigate('/downloads'),
-    },
-    { 
-      icon: Heart, 
-      label: 'Favorites', 
-      value: userFavorites, 
-      color: 'from-rose-500 to-pink-500',
-      description: 'Liked content',
-      action: () => navigate('/favorites'),
-    },
-    { 
-      icon: CloudUpload, 
-      label: 'Contributions', 
-      value: userUploads, 
-      color: 'from-indigo-500 to-purple-500',
-      description: 'Materials shared',
-      action: () => navigate('/upload'),
-    },
-    { 
-      icon: Star, 
-      label: 'Reviews', 
-      value: userReviews, 
-      color: 'from-yellow-500 to-amber-500',
-      description: 'Reviews written',
-    },
+    { icon: Coins, label: 'Coins', value: statsData.coins, color: 'from-amber-500 to-yellow-500', gradient: 'amber', description: 'Available to spend', suffix: ' 🪙', action: () => navigate('/monetary') },
+    { icon: Gem, label: 'Diamonds', value: statsData.diamonds, color: 'from-violet-500 to-fuchsia-500', gradient: 'violet', description: 'Premium currency', suffix: ' 💎', action: () => navigate('/monetary') },
+    { icon: Download, label: 'Downloads', value: statsData.userDownloads, color: 'from-cyan-500 to-blue-500', gradient: 'cyan', description: 'Resources saved', action: () => navigate('/downloads') },
+    { icon: Heart, label: 'Favorites', value: statsData.userFavorites, color: 'from-rose-500 to-pink-500', gradient: 'rose', description: 'Liked content', action: () => navigate('/favorites') },
+    { icon: CloudUpload, label: 'Contributions', value: statsData.userUploads, color: 'from-indigo-500 to-purple-500', gradient: 'indigo', description: 'Materials shared', action: () => navigate('/upload') },
+    { icon: Star, label: 'Reviews', value: statsData.userReviews, color: 'from-yellow-500 to-amber-500', gradient: 'amber', description: 'Reviews written' },
   ];
 
   const quickActions = [
@@ -335,125 +535,114 @@ function StatsGrid() {
     { icon: MessageCircle, label: 'Study Groups', color: 'bg-pink-500', path: '/connect' },
   ];
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.05, delayChildren: 0.1 },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: {
-      y: 0,
-      opacity: 1,
-      transition: { type: "spring", stiffness: 100, damping: 12 },
-    },
-  };
-
-  const getGradientClass = (gradient) => {
-    const gradients = {
-      blue: 'from-blue-500/20 to-cyan-500/20',
-      emerald: 'from-emerald-500/20 to-teal-500/20',
-      purple: 'from-purple-500/20 to-pink-500/20',
-      orange: 'from-orange-500/20 to-red-500/20',
-      amber: 'from-amber-500/20 to-yellow-500/20',
-      violet: 'from-violet-500/20 to-fuchsia-500/20',
-      rose: 'from-rose-500/20 to-pink-500/20',
-      indigo: 'from-indigo-500/20 to-purple-500/20',
-      yellow: 'from-yellow-500/20 to-amber-500/20',
-      cyan: 'from-cyan-500/20 to-blue-500/20',
-    };
-    return gradients[gradient] || 'from-gray-500/20 to-gray-600/20';
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="relative">
+          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+          <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-indigo-600" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={containerVariants}
-      className="space-y-8 lg:space-y-10"
-    >
-      {/* Hero Section - Enhanced */}
-      <motion.div variants={itemVariants} className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/20 via-purple-600/20 to-pink-600/20 rounded-3xl blur-3xl animate-pulse" />
+    <div className="space-y-8 lg:space-y-10">
+      {/* Hero Section - 3D Effect */}
+      <div className="relative overflow-hidden rounded-3xl">
+        <FloatingParticles />
         
-        <div className="relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl p-6 lg:p-8 shadow-2xl border border-white/20 dark:border-slate-800/50">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-emerald-500/10 to-cyan-500/10 rounded-full blur-3xl" />
+        <div className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 p-8 lg:p-10 shadow-2xl">
+          {/* Animated grid background */}
+          <div className="absolute inset-0 opacity-10">
+            <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="0.5" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>
+          </div>
           
           <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="space-y-3">
-              <motion.div 
+            <div className="space-y-4">
+              <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring" }}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full text-white text-sm font-medium"
+                transition={{ type: "spring", delay: 0.2 }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full text-white text-sm font-medium"
               >
                 <Sparkles className="w-4 h-4" />
-                {greeting}, {userName}!
+                {greeting}, {userName}! ✨
               </motion.div>
               
-              <h1 className="text-3xl lg:text-5xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                Ready to learn something <br className="hidden sm:block" />
-                <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-3xl lg:text-5xl font-bold text-white"
+              >
+                Ready to learn something{' '}
+                <span className="bg-gradient-to-r from-yellow-300 to-amber-300 bg-clip-text text-transparent">
                   amazing today?
                 </span>
-              </h1>
+              </motion.h1>
               
-              <p className="text-slate-600 dark:text-slate-400 text-lg max-w-2xl">
-                Your learning journey continues with {totalMaterials.toLocaleString()}+ resources 
-                and a community of {activeLearners.toLocaleString()}+ learners.
-              </p>
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-indigo-100 text-lg max-w-2xl"
+              >
+                Your learning journey continues with {statsData.totalMaterials.toLocaleString()}+ resources
+                and a community of {statsData.activeLearners.toLocaleString()}+ learners.
+              </motion.p>
               
-              {/* Achievement badges */}
-              <motion.div 
+              <motion.div
                 initial={{ x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="flex flex-wrap items-center gap-3 mt-4"
+                transition={{ delay: 0.5 }}
+                className="flex flex-wrap items-center gap-3"
               >
-                {userStreak > 0 && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-full shadow-sm">
-                    <Flame className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                    <span className="font-semibold text-amber-700 dark:text-amber-400">
-                      {userStreak} day streak!
+                {statsData.userStreak > 0 && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 backdrop-blur-sm rounded-full">
+                    <Flame className="w-5 h-5 text-amber-300" />
+                    <span className="font-semibold text-amber-100">
+                      {statsData.userStreak} day streak!
                     </span>
                   </div>
                 )}
                 
                 {achievements.length > 0 && (
                   <button
-                    onClick={() => setShowAchievements(!showAchievements)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 rounded-full shadow-sm hover:shadow-md transition"
+                    onClick={() => setShowAchievements(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 backdrop-blur-sm rounded-full hover:bg-purple-500/30 transition"
                   >
-                    <Trophy className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                    <span className="font-semibold text-purple-700 dark:text-purple-400">
+                    <Trophy className="w-5 h-5 text-purple-300" />
+                    <span className="font-semibold text-purple-100">
                       {achievements.length} achievements
                     </span>
-                    <ArrowUpRight className="w-4 h-4" />
                   </button>
                 )}
                 
-                {/* Rank Badge */}
-                <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 rounded-full shadow-sm">
-                  <Crown className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-                  <span className="font-semibold text-cyan-700 dark:text-cyan-400">
-                    {rank}
-                  </span>
+                <div className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 backdrop-blur-sm rounded-full">
+                  <Crown className="w-5 h-5 text-cyan-300" />
+                  <span className="font-semibold text-cyan-100">{rank}</span>
                 </div>
               </motion.div>
             </div>
             
-            {/* Quick Stats Card */}
-            <motion.div 
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.6, type: "spring" }}
               whileHover={{ scale: 1.05 }}
-              className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 shadow-xl min-w-[200px]"
+              className="bg-white/20 backdrop-blur-sm rounded-2xl p-6 min-w-[200px]"
             >
               <div className="text-center text-white">
                 <p className="text-sm opacity-90">Weekly Growth</p>
-                <p className="text-4xl font-bold mt-2">+{weeklyGrowth}</p>
+                <p className="text-4xl font-bold mt-2">+{statsData.weeklyGrowth}</p>
                 <p className="text-xs mt-2 opacity-80">new materials added</p>
                 <div className="flex items-center justify-center gap-1 mt-3 text-xs">
                   <TrendingUp className="w-3 h-3" />
@@ -463,85 +652,44 @@ function StatsGrid() {
             </motion.div>
           </div>
           
-          {/* Rank Progress Bar */}
-          {nextRankProgress > 0 && (
-            <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-              <div className="flex justify-between text-xs text-slate-500 mb-1">
-                <span>Progress to next rank</span>
-                <span>{Math.round(nextRankProgress)}%</span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${nextRankProgress}%` }}
-                  transition={{ duration: 1, delay: 0.5 }}
-                  className="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Achievements Popup */}
-      <AnimatePresence>
-        {showAchievements && achievements.length > 0 && (
+          {/* Rank Progress */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-            onClick={() => setShowAchievements(false)}
+            initial={{ width: 0 }}
+            animate={{ width: "100%" }}
+            transition={{ delay: 0.8, duration: 1 }}
+            className="mt-6 pt-4 border-t border-white/20"
           >
-            <motion.div
-              initial={{ y: 50 }}
-              animate={{ y: 0 }}
-              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                  <Trophy className="w-6 h-6 text-amber-500" />
-                  Your Achievements
-                </h3>
-                <button onClick={() => setShowAchievements(false)} className="text-slate-400 hover:text-slate-600">
-                  ✕
-                </button>
-              </div>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {achievements.map((ach, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
-                    <div className="w-10 h-10 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-full flex items-center justify-center">
-                      <Medal className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-800 dark:text-white">{ach.title}</p>
-                      <p className="text-xs text-slate-500">{ach.description}</p>
-                    </div>
-                    <div className="text-xs text-amber-500 font-semibold">{ach.date || 'Unlocked'}</div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
+            <div className="flex justify-between text-xs text-white/80 mb-2">
+              <span>Progress to next rank</span>
+              <span>{Math.round(nextRankProgress)}%</span>
+            </div>
+            <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${nextRankProgress}%` }}
+                transition={{ duration: 1, delay: 1 }}
+                className="bg-gradient-to-r from-yellow-300 to-amber-300 h-2 rounded-full"
+              />
+            </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </div>
 
-      {/* Quick Actions - Enhanced */}
-      <motion.div variants={itemVariants}>
+      {/* Quick Actions */}
+      <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl lg:text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <Zap className="w-6 h-6 text-indigo-500" />
             Quick Actions
           </h2>
-          <button className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
-            View all <ArrowUpRight size={14} />
-          </button>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {quickActions.map((action, idx) => (
             <motion.button
               key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.05 }}
               whileHover={{ scale: 1.02, y: -2 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => navigate(action.path)}
@@ -554,10 +702,10 @@ function StatsGrid() {
             </motion.button>
           ))}
         </div>
-      </motion.div>
+      </div>
 
-      {/* Platform Stats Section - Enhanced */}
-      <motion.div variants={itemVariants}>
+      {/* Platform Stats */}
+      <div>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -574,59 +722,45 @@ function StatsGrid() {
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {platformStats.map((stat, i) => (
-            <motion.div
-              key={i}
-              variants={itemVariants}
-              whileHover={{ y: -5, transition: { duration: 0.2 } }}
-              className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${stat.color} p-6 shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer`}
-              onClick={() => navigate('/materials')}
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <div className="relative z-10">
-                <div className="flex items-start justify-between">
-                  <div className="bg-white/20 rounded-xl p-2.5 backdrop-blur-sm">
-                    <stat.icon className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl lg:text-4xl font-bold text-white tracking-tight">
-                      <CountUp end={stat.value} separator="," duration={2.2} />
-                    </p>
-                    <p className="text-xs text-white/80 mt-1 font-medium">{stat.description}</p>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-white/90 font-semibold text-sm">{stat.label}</p>
-                  <div className="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full bg-white/40 rounded-full w-3/4" />
-                  </div>
-                </div>
-              </div>
-            </motion.div>
+            <StatCard key={i} {...stat} onClick={() => navigate('/materials')} />
           ))}
         </div>
 
         {/* Top Categories */}
         {topCategories.length > 0 && (
-          <div className="mt-6 p-5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl border border-slate-200/70 dark:border-slate-700/60">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mt-6 p-5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl border border-slate-200/70 dark:border-slate-700/60"
+          >
             <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
               <PieChart className="w-5 h-5 text-indigo-500" />
               Top Categories
             </h3>
             <div className="flex flex-wrap gap-3">
               {topCategories.map((cat, idx) => (
-                <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-full">
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: idx * 0.05 }}
+                  whileHover={{ scale: 1.05 }}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 rounded-full cursor-pointer"
+                  onClick={() => navigate(`/materials?category=${encodeURIComponent(cat.name)}`)}
+                >
                   <div className="w-2 h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500" />
                   <span className="text-sm">{cat.name}</span>
                   <span className="text-xs text-slate-500">{cat.count} items</span>
-                </div>
+                </motion.div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
-      </motion.div>
+      </div>
 
-      {/* User Activity Section - Enhanced */}
-      <motion.div variants={itemVariants}>
+      {/* User Activity */}
+      <div>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl lg:text-3xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -643,39 +777,18 @@ function StatsGrid() {
         
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {userStats.map((stat, i) => (
-            <motion.div
-              key={i}
-              variants={itemVariants}
-              whileHover={{ y: -5, transition: { duration: 0.2 } }}
-              onClick={stat.action}
-              className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${stat.color} p-4 shadow-lg hover:shadow-2xl transition-all duration-300 ${stat.action ? 'cursor-pointer' : ''}`}
-            >
-              <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className="bg-white/20 rounded-xl p-1.5 backdrop-blur-sm">
-                    <stat.icon className="w-4 h-4 text-white" />
-                  </div>
-                  {stat.suffix && (
-                    <span className="text-lg">{stat.suffix}</span>
-                  )}
-                </div>
-                <div className="mt-2">
-                  <p className="text-xl lg:text-2xl font-bold text-white tracking-tight">
-                    <CountUp end={stat.value} separator="," duration={2} />
-                  </p>
-                  <p className="text-xs text-white/80 mt-0.5 font-medium">{stat.label}</p>
-                  <p className="text-[9px] text-white/60 mt-0.5">{stat.description}</p>
-                </div>
-              </div>
-            </motion.div>
+            <StatCard key={i} {...stat} />
           ))}
         </div>
-      </motion.div>
+      </div>
 
       {/* Recent Activity Feed */}
       {recentActivities.length > 0 && (
-        <motion.div variants={itemVariants}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
           <div className="flex items-center gap-2 mb-4">
             <Activity className="w-5 h-5 text-indigo-500" />
             <h2 className="text-xl font-bold text-slate-800 dark:text-white">Recent Activity</h2>
@@ -687,6 +800,7 @@ function StatsGrid() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.05 }}
+                whileHover={{ x: 5 }}
                 className="flex items-center gap-3 p-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl border border-slate-200/70 dark:border-slate-700/60 hover:shadow-md transition"
               >
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -696,29 +810,37 @@ function StatsGrid() {
                     {activity.timestamp.toLocaleDateString()} at {activity.timestamp.toLocaleTimeString()}
                   </p>
                 </div>
-                {activity.type === 'purchase' && (
-                  <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 rounded-full text-xs text-green-600">Deposit</div>
-                )}
-                {activity.type === 'withdrawal' && (
-                  <div className="px-2 py-1 bg-red-100 dark:bg-red-900/30 rounded-full text-xs text-red-600">Withdrawal</div>
-                )}
-                {activity.type === 'upload' && (
-                  <div className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-full text-xs text-blue-600">Upload</div>
-                )}
+                <div className={`px-2 py-1 rounded-full text-xs ${
+                  activity.type === 'purchase' ? 'bg-green-100 dark:bg-green-900/30 text-green-600' :
+                  activity.type === 'withdrawal' ? 'bg-red-100 dark:bg-red-900/30 text-red-600' :
+                  'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
+                }`}>
+                  {activity.type === 'purchase' ? 'Deposit' : activity.type === 'withdrawal' ? 'Withdrawal' : 'Upload'}
+                </div>
               </motion.div>
             ))}
           </div>
         </motion.div>
       )}
 
-      {/* Motivational Banner - Enhanced */}
-      <motion.div variants={itemVariants}>
+      {/* Motivational Banner */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.5 }}
+        whileHover={{ scale: 1.01 }}
+      >
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-8 shadow-xl">
-          <div className="absolute inset-0 opacity-20" 
-               style={{
-                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='grid' width='60' height='60' patternUnits='userSpaceOnUse'%3E%3Cpath d='M 60 0 L 0 0 0 60' fill='none' stroke='white' stroke-width='0.5' stroke-opacity='0.1'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grid)'/%3E%3C/svg%3E")`
-               }}
-          />
+          <div className="absolute inset-0 opacity-10">
+            <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <circle cx="2" cy="2" r="1" fill="white" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#dots)" />
+            </svg>
+          </div>
           
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="text-center md:text-left">
@@ -753,8 +875,12 @@ function StatsGrid() {
         </div>
       </motion.div>
 
-      {/* Learning Tip of the Day */}
-      <motion.div variants={itemVariants}>
+      {/* Learning Tip */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6 }}
+      >
         <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-xl border border-blue-200 dark:border-blue-800">
           <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
             <Lightbulb className="w-5 h-5 text-blue-600" />
@@ -763,10 +889,61 @@ function StatsGrid() {
             <p className="text-sm font-medium text-blue-800 dark:text-blue-300">💡 Learning Tip</p>
             <p className="text-xs text-blue-600 dark:text-blue-400">Take breaks every 45 minutes to maximize retention and avoid burnout!</p>
           </div>
-          <button className="text-xs text-blue-600 hover:underline">Share tip</button>
         </div>
       </motion.div>
-    </motion.div>
+
+      {/* Achievements Modal */}
+      <AnimatePresence>
+        {showAchievements && achievements.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowAchievements(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 50 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 50 }}
+              transition={{ type: "spring", damping: 25 }}
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Trophy className="w-6 h-6 text-amber-500" />
+                  Your Achievements
+                </h3>
+                <button onClick={() => setShowAchievements(false)} className="text-slate-400 hover:text-slate-600">
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {achievements.map((ach, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl"
+                  >
+                    <div className="w-10 h-10 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-full flex items-center justify-center">
+                      <Medal className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-800 dark:text-white">{ach.title}</p>
+                      <p className="text-xs text-slate-500">{ach.description}</p>
+                    </div>
+                    <div className="text-xs text-amber-500 font-semibold">{ach.date || 'Unlocked'}</div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
