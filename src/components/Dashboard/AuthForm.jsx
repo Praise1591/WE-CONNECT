@@ -1,537 +1,245 @@
-// src/components/Dashboard/AuthForm.jsx - Close Button Positioned Close to Form
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
-  Briefcase, Award, X, Chrome, Phone, Home, AlertCircle,
-  CheckCircle, Shield, Sparkles, UserCheck, Fingerprint,
-  Send, Key, RefreshCw, UserPlus, LogIn,
-  ChevronRight, ChevronLeft, Hash, Building2, User,
-  Smartphone, Globe, Zap, BookOpen, Video, FileText, ScrollText, Users, Star,
-  Calendar, MapPin, School, BriefcaseBusiness, Award as AwardIcon
+// components/AuthForm.jsx - Complete with Role-Based Dynamic Forms
+import React, { useState, useEffect } from 'react';
+import {
+  Mail, Lock, User, Eye, EyeOff, Sparkles, BookOpen,
+  GraduationCap, Users, School, Bookmark, Calendar,
+  Phone, MapPin, Briefcase, Award, Globe, Linkedin,
+  Twitter, Github, CheckCircle, AlertCircle, ChevronRight,
+  UserCheck, Video, FileText, MessageCircle, Star,
+  Trophy, Target, Compass, Zap, Shield, Crown
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import Select from 'react-select';
+import { toast } from 'react-toastify';
+import { useAuth } from '../contexts/AuthContext';
 
-// Firebase imports
-import { 
-  auth, 
-  db, 
-  GoogleAuthProvider,
-  signInWithPopup,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-  sendEmailVerification,
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp
-} from '../../firebase';
+const ROLES = [
+  { 
+    id: 'student', 
+    label: 'Student', 
+    icon: GraduationCap, 
+    color: 'from-blue-500 to-cyan-500',
+    bgGradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30',
+    borderColor: 'border-blue-200 dark:border-blue-800',
+    description: 'Access study materials, past questions, and video tutorials'
+  },
+  { 
+    id: 'tutor', 
+    label: 'Tutor', 
+    icon: Users, 
+    color: 'from-emerald-500 to-teal-500',
+    bgGradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30',
+    borderColor: 'border-emerald-200 dark:border-emerald-800',
+    description: 'Create and share educational content, host study sessions'
+  },
+  { 
+    id: 'lecturer', 
+    label: 'Lecturer', 
+    icon: Award, 
+    color: 'from-purple-500 to-pink-500',
+    bgGradient: 'from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30',
+    borderColor: 'border-purple-200 dark:border-purple-800',
+    description: 'Upload course materials, manage classes, and assess students'
+  },
+];
 
-// Custom Select Component for Mobile
-const MobileSelect = ({ options, value, onChange, placeholder }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const COUNTRIES = [
+  'Nigeria', 'Ghana', 'Kenya', 'South Africa', 'Egypt',
+  'United States', 'United Kingdom', 'Canada', 'Australia',
+  'Other'
+];
+
+const NIGERIAN_UNIVERSITIES = [
+  'University of Lagos (UNILAG)',
+  'University of Ibadan (UI)',
+  'Obafemi Awolowo University (OAU)',
+  'Ahmadu Bello University (ABU)',
+  'University of Nigeria, Nsukka (UNN)',
+  'University of Port Harcourt (UNIPORT)',
+  'Covenant University',
+  'Babcock University',
+  'Federal University of Technology, Akure (FUTA)',
+  'University of Ilorin (UNILORIN)',
+  'University of Benin (UNIBEN)',
+  'Lagos State University (LASU)',
+  'Nnamdi Azikiwe University (UNIZIK)',
+  'Federal University of Technology, Minna',
+  'University of Abuja',
+  'Other'
+];
+
+const DEPARTMENTS = [
+  'Computer Science',
+  'Electrical Engineering',
+  'Mechanical Engineering',
+  'Civil Engineering',
+  'Chemical Engineering',
+  'Petroleum Engineering',
+  'Business Administration',
+  'Accounting',
+  'Economics',
+  'Mass Communication',
+  'Law',
+  'Medicine',
+  'Pharmacy',
+  'Biochemistry',
+  'Microbiology',
+  'Chemistry',
+  'Physics',
+  'Mathematics',
+  'Statistics',
+  'English',
+  'History',
+  'Political Science',
+  'Psychology',
+  'Sociology',
+  'Other'
+];
+
+const EXPERTISE_AREAS = [
+  'Web Development',
+  'Mobile Development',
+  'Data Science',
+  'Machine Learning',
+  'Artificial Intelligence',
+  'Cloud Computing',
+  'Cybersecurity',
+  'Database Management',
+  'UI/UX Design',
+  'Graphic Design',
+  'Digital Marketing',
+  'Business Strategy',
+  'Leadership',
+  'Communication',
+  'Research Methods',
+  'Academic Writing',
+  'Test Preparation',
+  'Language Learning',
+  'Other'
+];
+
+const COURSES = [
+  'Mathematics',
+  'English',
+  'Physics',
+  'Chemistry',
+  'Biology',
+  'Computer Science',
+  'Economics',
+  'Accounting',
+  'Business Studies',
+  'History',
+  'Geography',
+  'Government',
+  'Literature',
+  'French',
+  'Arabic',
+  'Islamic Studies',
+  'Christian Religious Studies',
+  'Agricultural Science',
+  'Technical Drawing',
+  'Other'
+];
+
+function AuthForm() {
+  const { signIn, signUp, loading: authLoading } = useAuth();
   
-  const selectedOption = options.find(opt => opt.value === value?.value);
-  
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="w-full flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700"
-      >
-        <span className="text-slate-900 dark:text-white">
-          {selectedOption ? selectedOption.label : placeholder}
-        </span>
-        <ChevronRight size={18} className="text-slate-400" />
-      </button>
-      
-      <AnimatePresence>
-        {isOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/50 z-[100]" onClick={() => setIsOpen(false)} />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25 }}
-              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl z-[100] max-h-[70vh] overflow-y-auto"
-            >
-              <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">{placeholder}</h3>
-                  <button onClick={() => setIsOpen(false)} className="p-1 rounded-full hover:bg-slate-100">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 space-y-2">
-                {options.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      onChange(opt);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full text-left p-4 rounded-xl transition-all ${
-                      selectedOption?.value === opt.value
-                        ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
-  );
-};
-
-// Mobile Input Component
-const MobileInput = ({ icon: Icon, label, error, required, ...props }) => {
-  const [isFocused, setIsFocused] = useState(false);
-  
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2">
-          <Icon size={18} className="text-slate-400" />
-        </div>
-        <input
-          {...props}
-          onFocus={() => setIsFocused(true)}
-          onBlur={(e) => {
-            setIsFocused(false);
-            props.onBlur?.(e);
-          }}
-          className={`w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none ${
-            error
-              ? 'border-red-500 focus:border-red-500'
-              : isFocused
-                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-                : 'border-transparent focus:border-indigo-500'
-          }`}
-        />
-      </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
-  );
-};
-
-// Mobile Password Input
-const MobilePasswordInput = ({ icon: Icon, label, error, required, ...props }) => {
-  const [isFocused, setIsFocused] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedRole, setSelectedRole] = useState('student');
+  const [step, setStep] = useState(1);
   
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2">
-          <Icon size={18} className="text-slate-400" />
-        </div>
-        <input
-          {...props}
-          type={showPassword ? 'text' : 'password'}
-          onFocus={() => setIsFocused(true)}
-          onBlur={(e) => {
-            setIsFocused(false);
-            props.onBlur?.(e);
-          }}
-          className={`w-full pl-10 pr-12 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none ${
-            error
-              ? 'border-red-500 focus:border-red-500'
-              : isFocused
-                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-                : 'border-transparent focus:border-indigo-500'
-          }`}
-        />
-        <button
-          type="button"
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 top-1/2 -translate-y-1/2"
-        >
-          {showPassword ? <EyeOff size={18} className="text-slate-400" /> : <Eye size={18} className="text-slate-400" />}
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
-  );
-};
-
-// Mobile TextArea
-const MobileTextArea = ({ icon: Icon, label, error, ...props }) => {
-  const [isFocused, setIsFocused] = useState(false);
-  
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-      <div className="relative">
-        <div className="absolute left-3 top-3">
-          <Icon size={18} className="text-slate-400" />
-        </div>
-        <textarea
-          {...props}
-          rows={3}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          className={`w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none resize-none ${
-            error
-              ? 'border-red-500 focus:border-red-500'
-              : isFocused
-                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-                : 'border-transparent focus:border-indigo-500'
-          }`}
-        />
-      </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
-  );
-};
-
-// Role Card Component
-const RoleCard = ({ icon: Icon, label, isSelected, onClick, color }) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-        isSelected
-          ? `border-${color}-500 bg-gradient-to-br from-${color}-500/10 to-${color}-600/10`
-          : 'border-slate-200 dark:border-slate-700'
-      }`}
-    >
-      <div className={`p-2 rounded-lg ${isSelected ? `bg-${color}-500` : 'bg-slate-100 dark:bg-slate-700'}`}>
-        <Icon size={20} className={isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'} />
-      </div>
-      <span className={`text-xs font-medium ${isSelected ? `text-${color}-600` : 'text-slate-700 dark:text-slate-300'}`}>
-        {label}
-      </span>
-    </button>
-  );
-};
-
-// Gender Options
-const genderOptions = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-  { value: 'other', label: 'Other' },
-  { value: 'prefer-not-say', label: 'Prefer not to say' },
-];
-
-// Nigerian Universities List
-const universitiesList = [
-  { value: 'unilag', label: 'University of Lagos' },
-  { value: 'ui', label: 'University of Ibadan' },
-  { value: 'unn', label: 'University of Nigeria, Nsukka' },
-  { value: 'oau', label: 'Obafemi Awolowo University' },
-  { value: 'abu', label: 'Ahmadu Bello University' },
-  { value: 'uniben', label: 'University of Benin' },
-  { value: 'unilorin', label: 'University of Ilorin' },
-  { value: 'uniport', label: 'University of Port Harcourt' },
-  { value: 'futa', label: 'FUT Akure' },
-  { value: 'futo', label: 'FUT Owerri' },
-  { value: 'lasu', label: 'Lagos State University' },
-  { value: 'delsu', label: 'Delta State University' },
-  { value: 'other', label: 'Other' },
-];
-
-// Departments List
-const departmentsList = [
-  { value: 'accounting', label: 'Accounting' },
-  { value: 'agric-economics', label: 'Agricultural Economics' },
-  { value: 'architecture', label: 'Architecture' },
-  { value: 'biochemistry', label: 'Biochemistry' },
-  { value: 'business-admin', label: 'Business Administration' },
-  { value: 'chemical-engineering', label: 'Chemical Engineering' },
-  { value: 'chemistry', label: 'Chemistry' },
-  { value: 'civil-engineering', label: 'Civil Engineering' },
-  { value: 'computer-engineering', label: 'Computer Engineering' },
-  { value: 'computer-science', label: 'Computer Science' },
-  { value: 'economics', label: 'Economics' },
-  { value: 'electrical-engineering', label: 'Electrical Engineering' },
-  { value: 'english', label: 'English Language' },
-  { value: 'law', label: 'Law' },
-  { value: 'mass-communication', label: 'Mass Communication' },
-  { value: 'mathematics', label: 'Mathematics' },
-  { value: 'mechanical-engineering', label: 'Mechanical Engineering' },
-  { value: 'medicine-surgery', label: 'Medicine & Surgery' },
-  { value: 'microbiology', label: 'Microbiology' },
-  { value: 'nursing', label: 'Nursing' },
-  { value: 'pharmacy', label: 'Pharmacy' },
-  { value: 'physics', label: 'Physics' },
-  { value: 'political-science', label: 'Political Science' },
-  { value: 'psychology', label: 'Psychology' },
-  { value: 'sociology', label: 'Sociology' },
-  { value: 'other', label: 'Other' },
-];
-
-// Faculties List
-const facultiesList = [
-  { value: 'agriculture', label: 'Faculty of Agriculture' },
-  { value: 'arts', label: 'Faculty of Arts' },
-  { value: 'education', label: 'Faculty of Education' },
-  { value: 'engineering', label: 'Faculty of Engineering' },
-  { value: 'environmental-sciences', label: 'Faculty of Environmental Sciences' },
-  { value: 'law', label: 'Faculty of Law' },
-  { value: 'management-sciences', label: 'Faculty of Management Sciences' },
-  { value: 'medical-sciences', label: 'Faculty of Medical Sciences' },
-  { value: 'pharmacy', label: 'Faculty of Pharmacy' },
-  { value: 'science', label: 'Faculty of Science' },
-  { value: 'social-sciences', label: 'Faculty of Social Sciences' },
-  { value: 'veterinary-medicine', label: 'Faculty of Veterinary Medicine' },
-  { value: 'other', label: 'Other' },
-];
-
-// Tutor Specializations
-const specializationsList = [
-  { value: 'mathematics', label: 'Mathematics' },
-  { value: 'physics', label: 'Physics' },
-  { value: 'chemistry', label: 'Chemistry' },
-  { value: 'biology', label: 'Biology' },
-  { value: 'english', label: 'English' },
-  { value: 'computer-science', label: 'Computer Science' },
-  { value: 'economics', label: 'Economics' },
-  { value: 'accounting', label: 'Accounting' },
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'medicine', label: 'Medicine' },
-  { value: 'law', label: 'Law' },
-  { value: 'other', label: 'Other' },
-];
-
-// Main AuthForm Component
-function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
-  const [isLogin, setIsLogin] = useState(initialMode === 'login');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showResetPassword, setShowResetPassword] = useState(false);
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetSent, setResetSent] = useState(false);
-  const [role, setRole] = useState('student');
-  const [gender, setGender] = useState(null);
-  const [selectedSchool, setSelectedSchool] = useState(null);
-  const [selectedFaculty, setSelectedFaculty] = useState(null);
-  const [selectedDepartment, setSelectedDepartment] = useState(null);
-  const [selectedSpecialization, setSelectedSpecialization] = useState(null);
-  const [activeStep, setActiveStep] = useState(1);
+  // Form data
   const [formData, setFormData] = useState({
-    name: '',
-    matricNumber: '',
-    school: '',
-    faculty: '',
-    department: '',
-    specialization: '',
-    yearsExperience: '',
-    title: '',
-    yearsTeaching: '',
     email: '',
     password: '',
     confirmPassword: '',
+    name: '',
+    // Common fields
     phone: '',
-    address: '',
+    country: 'Nigeria',
+    state: '',
+    city: '',
+    bio: '',
+    // Student specific
+    studentId: '',
+    level: '',
+    department: '',
+    school: '',
+    matricNumber: '',
+    graduationYear: '',
+    courses: [],
+    // Tutor specific
+    expertise: [],
+    yearsOfExperience: '',
+    hourlyRate: '',
+    qualifications: [],
+    availability: '',
+    teachingStyle: '',
+    portfolio: '',
+    // Lecturer specific
+    staffId: '',
+    faculty: '',
+    rank: '',
+    researchAreas: [],
+    publications: '',
+    officeHours: '',
+    coursesTeaching: [],
   });
-  const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState(null);
+  
   const [errors, setErrors] = useState({});
-  const navigate = useNavigate();
 
-  const googleProvider = new GoogleAuthProvider();
-
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
-    setAlert(null);
-  };
-
-  const clearAlert = () => setAlert(null);
-
-  const showAlert = (type, title, message) => {
-    setAlert({ type, title, message });
-    setTimeout(() => setAlert(null), 5000);
-  };
-
-  const triggerCelebration = () => {
-    const container = document.createElement('div');
-    container.style.position = 'fixed';
-    container.style.top = '0';
-    container.style.left = '0';
-    container.style.width = '100%';
-    container.style.height = '100%';
-    container.style.pointerEvents = 'none';
-    container.style.zIndex = '9999';
-    document.body.appendChild(container);
-
-    for (let i = 0; i < 50; i++) {
-      const particle = document.createElement('div');
-      particle.style.position = 'absolute';
-      particle.style.width = `${Math.random() * 8 + 4}px`;
-      particle.style.height = particle.style.width;
-      particle.style.borderRadius = '50%';
-      particle.style.backgroundColor = `hsl(${Math.random() * 60 + 280}, 80%, 60%)`;
-      particle.style.left = `${Math.random() * 100}%`;
-      particle.style.top = '50%';
-      particle.style.opacity = '1';
-      particle.style.transition = 'all 1s ease-out';
-      container.appendChild(particle);
-
-      setTimeout(() => {
-        particle.style.transform = `translateY(${Math.random() * -200 - 100}px) translateX(${Math.random() * 200 - 100}px)`;
-        particle.style.opacity = '0';
-      }, 10);
-
-      setTimeout(() => {
-        particle.remove();
-      }, 1000);
-    }
-
-    setTimeout(() => {
-      container.remove();
-    }, 1500);
-  };
-
-  const handlePasswordReset = async (e) => {
-    e.preventDefault();
-    const email = resetEmail.trim();
-    if (!email) {
-      showAlert('error', 'Email Required', 'Please enter your email address');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, email);
-      setResetSent(true);
-      showAlert('success', 'Reset Email Sent', `We've sent a password reset link to ${email}.`);
-    } catch (error) {
-      let message = 'Failed to send reset email.';
-      let title = 'Reset Failed';
-      if (error.code === 'auth/user-not-found') {
-        message = 'No account found with this email address.';
-        title = 'Account Not Found';
-      } else if (error.code === 'auth/invalid-email') {
-        message = 'Please enter a valid email address.';
-        title = 'Invalid Email';
-      }
-      showAlert('error', title, message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAuthSuccess = (userProfile) => {
-    triggerCelebration();
-    if (onClose) onClose();
-    if (onLoginSuccess) onLoginSuccess(userProfile);
-    navigate('/dashboard', { replace: true });
-    window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
-  };
-
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    setAlert(null);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileDoc = await getDoc(profileRef);
-      let userProfile;
-
-      if (!profileDoc.exists()) {
-        const profileData = {
-          name: user.displayName || 'User',
-          email: user.email,
-          role: 'student',
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-        await setDoc(profileRef, profileData);
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: user.displayName || 'User',
-          role: 'student',
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
+  // Handle input change
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    if (type === 'checkbox') {
+      if (checked) {
+        setFormData(prev => ({
+          ...prev,
+          [name]: [...(prev[name] || []), value]
+        }));
       } else {
-        const profileData = profileDoc.data();
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: profileData.name || user.displayName || 'User',
-          role: profileData.role || 'student',
-          photoURL: user.photoURL || profileData.photoURL,
-          coins: profileData.coins || 0,
-          diamonds: profileData.diamonds || 0,
-          emailVerified: user.emailVerified,
-        };
+        setFormData(prev => ({
+          ...prev,
+          [name]: (prev[name] || []).filter(item => item !== value)
+        }));
       }
-
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      showAlert('success', 'Welcome!', `Signed in successfully as ${userProfile.name}`);
-      setTimeout(() => handleAuthSuccess(userProfile), 500);
-    } catch (error) {
-      let message = 'Google sign-in failed. Please try again.';
-      let title = 'Authentication Failed';
-      if (error.code === 'auth/popup-closed-by-user') {
-        message = 'Sign-in was cancelled. Please try again.';
-        title = 'Cancelled';
-      } else if (error.code === 'auth/network-request-failed') {
-        message = 'Network error. Please check your internet connection.';
-        title = 'Network Error';
-      } else if (error.code === 'auth/popup-blocked') {
-        message = 'Popup was blocked. Please allow popups for this site.';
-        title = 'Popup Blocked';
-      }
-      showAlert('error', title, message);
-    } finally {
-      setLoading(false);
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
+    
     if (!formData.email) newErrors.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email';
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid';
     
     if (!formData.password) newErrors.password = 'Password is required';
     else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
     
     if (!isLogin) {
-      if (!formData.name) newErrors.name = 'Name is required';
-      if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+      if (!formData.name) newErrors.name = 'Full name is required';
+      if (formData.password !== formData.confirmPassword) {
+        newErrors.confirmPassword = 'Passwords do not match';
+      }
       
-      if (role === 'student') {
-        if (!formData.matricNumber) newErrors.matricNumber = 'Matric number required';
-        if (!selectedSchool) newErrors.school = 'School required';
-        if (!selectedDepartment) newErrors.department = 'Department required';
-      }
-      if (role === 'tutor') {
-        if (!selectedSpecialization) newErrors.specialization = 'Specialization required';
-        if (!formData.yearsExperience) newErrors.yearsExperience = 'Years of experience required';
-      }
-      if (role === 'lecturer') {
-        if (!formData.title) newErrors.title = 'Title required';
-        if (!selectedSchool) newErrors.school = 'School required';
-        if (!selectedDepartment) newErrors.department = 'Department required';
-        if (!formData.yearsTeaching) newErrors.yearsTeaching = 'Years of teaching required';
+      // Role-specific validations
+      if (selectedRole === 'student') {
+        if (!formData.school) newErrors.school = 'School/University is required';
+        if (!formData.department) newErrors.department = 'Department is required';
+        if (!formData.level) newErrors.level = 'Level/Year is required';
+      } else if (selectedRole === 'tutor') {
+        if (!formData.expertise?.length) newErrors.expertise = 'At least one expertise area is required';
+        if (!formData.qualifications?.length) newErrors.qualifications = 'At least one qualification is required';
+      } else if (selectedRole === 'lecturer') {
+        if (!formData.staffId) newErrors.staffId = 'Staff ID is required';
+        if (!formData.faculty) newErrors.faculty = 'Faculty is required';
+        if (!formData.rank) newErrors.rank = 'Academic rank is required';
       }
     }
     
@@ -544,701 +252,836 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     if (!validateForm()) return;
     
     setLoading(true);
-    setAlert(null);
-
     try {
-      const email = formData.email.trim();
-      const password = formData.password.trim();
-
-      if (!isLogin) {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        await sendEmailVerification(user);
-
-        const profileData = {
-          name: formData.name.trim() || 'User',
-          email: user.email,
-          role: role,
-          gender: gender?.value || null,
-          phone: formData.phone.trim() || null,
-          address: formData.address.trim() || null,
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          photoURL: user.photoURL || null,
-          emailVerified: false,
-        };
-
-        if (role === 'student') {
-          profileData.matricNumber = formData.matricNumber.trim() || null;
-          profileData.school = selectedSchool?.label || formData.school;
-          profileData.faculty = selectedFaculty?.label || formData.faculty;
-          profileData.department = selectedDepartment?.label || formData.department;
-        } else if (role === 'tutor') {
-          profileData.specialization = selectedSpecialization?.label || formData.specialization;
-          profileData.yearsExperience = Number(formData.yearsExperience) || 0;
-        } else if (role === 'lecturer') {
-          profileData.title = formData.title.trim() || null;
-          profileData.school = selectedSchool?.label || formData.school;
-          profileData.department = selectedDepartment?.label || formData.department;
-          profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
-        }
-
-        const profileRef = doc(db, 'profiles', user.uid);
-        await setDoc(profileRef, profileData);
-
-        const userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: formData.name.trim() || 'User',
-          role: role,
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          emailVerified: false,
-        };
-        
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        showAlert('success', 'Account Created!', `Welcome to WE CONNECT! Please check your email to verify your account.`);
-        setTimeout(() => handleAuthSuccess(userProfile), 2000);
+      const userData = {
+        role: selectedRole,
+        ...formData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isVerified: false,
+        profileComplete: true,
+      };
+      
+      if (isLogin) {
+        await signIn(formData.email, formData.password);
+        toast.success('Welcome back!');
       } else {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        await user.reload();
-        
-        if (!user.emailVerified) {
-          showAlert('warning', 'Email Not Verified', 'Please verify your email before logging in.');
-          setLoading(false);
-          return;
-        }
-        
-        const profileRef = doc(db, 'profiles', user.uid);
-        const profileDoc = await getDoc(profileRef);
-        let userProfile;
-        
-        if (profileDoc.exists()) {
-          const profileData = profileDoc.data();
-          userProfile = {
-            id: user.uid,
-            email: user.email,
-            name: profileData.name || user.displayName || 'User',
-            role: profileData.role || 'student',
-            photoURL: user.photoURL || profileData.photoURL,
-            coins: profileData.coins || 0,
-            diamonds: profileData.diamonds || 0,
-            emailVerified: user.emailVerified,
-          };
-        } else {
-          const defaultProfile = {
-            name: user.displayName || 'User',
-            email: user.email,
-            role: 'student',
-            createdAt: serverTimestamp(),
-            coins: 0,
-            diamonds: 0,
-            photoURL: user.photoURL || null,
-            emailVerified: user.emailVerified,
-          };
-          await setDoc(profileRef, defaultProfile);
-          userProfile = {
-            id: user.uid,
-            email: user.email,
-            name: defaultProfile.name,
-            role: defaultProfile.role,
-            coins: 0,
-            diamonds: 0,
-            emailVerified: user.emailVerified,
-          };
-        }
-        
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        showAlert('success', 'Welcome Back!', `Hello ${userProfile.name}, you have successfully signed in.`);
-        setTimeout(() => handleAuthSuccess(userProfile), 500);
+        await signUp(formData.email, formData.password, userData);
+        toast.success('Account created successfully! Please complete your profile.');
       }
     } catch (error) {
-      let message = 'An error occurred. Please try again.';
-      let title = 'Authentication Failed';
-      
-      switch (error.code) {
-        case 'auth/invalid-credential':
-          message = 'The email or password you entered is incorrect.';
-          title = 'Invalid Credentials';
-          break;
-        case 'auth/email-already-in-use':
-          message = 'This email is already registered. Please sign in instead.';
-          title = 'Email Already Exists';
-          break;
-        case 'auth/user-not-found':
-          message = 'No account found with this email. Please sign up first.';
-          title = 'Account Not Found';
-          break;
-        case 'auth/wrong-password':
-          message = 'Incorrect password. Please try again or click "Forgot Password".';
-          title = 'Wrong Password';
-          break;
-        default:
-          message = error.message || 'Authentication failed.';
-      }
-      showAlert('error', title, message);
+      console.error('Auth error:', error);
+      toast.error(error.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setShowResetPassword(false);
-    setResetSent(false);
-    setResetEmail('');
-    setAlert(null);
-    setActiveStep(1);
-    setGender(null);
-    setSelectedSchool(null);
-    setSelectedFaculty(null);
-    setSelectedDepartment(null);
-    setSelectedSpecialization(null);
-    setFormData({
-      name: '',
-      matricNumber: '',
-      school: '',
-      faculty: '',
-      department: '',
-      specialization: '',
-      yearsExperience: '',
-      title: '',
-      yearsTeaching: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-      phone: '',
-      address: '',
-    });
-    setErrors({});
+  const nextStep = () => {
+    if (step === 1) {
+      if (!formData.email || !formData.password || (!isLogin && !formData.name)) {
+        toast.error('Please fill in all required fields');
+        return;
+      }
+      if (!isLogin && formData.password !== formData.confirmPassword) {
+        toast.error('Passwords do not match');
+        return;
+      }
+      setStep(2);
+    }
   };
 
-  const renderRoleSpecificFields = () => {
-    if (role === 'student') {
-      return (
-        <>
-          <MobileInput
-            icon={Hash}
-            label="Matric Number"
+  const prevStep = () => setStep(1);
+
+  // Student Form Fields
+  const StudentFields = () => (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="space-y-4"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            School / University <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <School className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <select
+              name="school"
+              value={formData.school}
+              onChange={handleChange}
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.school ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+            >
+              <option value="">Select University</option>
+              {NIGERIAN_UNIVERSITIES.map(uni => (
+                <option key={uni} value={uni}>{uni}</option>
+              ))}
+            </select>
+          </div>
+          {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Department <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <select
+              name="department"
+              value={formData.department}
+              onChange={handleChange}
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.department ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+            >
+              <option value="">Select Department</option>
+              {DEPARTMENTS.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
+          {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Level/Year <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <Target className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <select
+              name="level"
+              value={formData.level}
+              onChange={handleChange}
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.level ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+            >
+              <option value="">Select Level</option>
+              <option value="100">100 Level</option>
+              <option value="200">200 Level</option>
+              <option value="300">300 Level</option>
+              <option value="400">400 Level</option>
+              <option value="500">500 Level</option>
+              <option value="Postgraduate">Postgraduate</option>
+            </select>
+          </div>
+          {errors.level && <p className="text-xs text-red-500 mt-1">{errors.level}</p>}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Matriculation Number
+          </label>
+          <div className="relative">
+            <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="matricNumber"
+              value={formData.matricNumber}
+              onChange={handleChange}
+              placeholder="e.g., U2023/123456"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Courses/Subjects
+        </label>
+        <div className="relative">
+          <Bookmark className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+          <select
+            multiple
+            name="courses"
+            value={formData.courses}
+            onChange={handleChange}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition min-h-[100px]"
+            size={4}
+          >
+            {COURSES.map(course => (
+              <option key={course} value={course}>{course}</option>
+            ))}
+          </select>
+        </div>
+        <p className="text-xs text-slate-500 mt-1">Hold Ctrl/Cmd to select multiple courses</p>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Expected Graduation Year
+          </label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="number"
+              name="graduationYear"
+              value={formData.graduationYear}
+              onChange={handleChange}
+              placeholder="e.g., 2027"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Student ID
+          </label>
+          <div className="relative">
+            <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="studentId"
+              value={formData.studentId}
+              onChange={handleChange}
+              placeholder="Your student ID number"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  // Tutor Form Fields
+  const TutorFields = () => (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="space-y-4"
+    >
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Areas of Expertise <span className="text-red-500">*</span>
+        </label>
+        <div className="relative">
+          <Star className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+          <select
+            multiple
+            name="expertise"
+            value={formData.expertise}
+            onChange={handleChange}
+            className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.expertise ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition min-h-[120px]`}
+            size={5}
+          >
+            {EXPERTISE_AREAS.map(area => (
+              <option key={area} value={area}>{area}</option>
+            ))}
+          </select>
+        </div>
+        {errors.expertise && <p className="text-xs text-red-500 mt-1">{errors.expertise}</p>}
+        <p className="text-xs text-slate-500 mt-1">Hold Ctrl/Cmd to select multiple areas</p>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Years of Experience
+          </label>
+          <div className="relative">
+            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="number"
+              name="yearsOfExperience"
+              value={formData.yearsOfExperience}
+              onChange={handleChange}
+              placeholder="e.g., 3"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Hourly Rate (USD)
+          </label>
+          <div className="relative">
+            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="number"
+              name="hourlyRate"
+              value={formData.hourlyRate}
+              onChange={handleChange}
+              placeholder="e.g., 25"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Qualifications/Certifications <span className="text-red-500">*</span>
+        </label>
+        <div className="relative">
+          <Award className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+          <select
+            multiple
+            name="qualifications"
+            value={formData.qualifications}
+            onChange={handleChange}
+            className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.qualifications ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition min-h-[100px]`}
+            size={4}
+          >
+            <option value="Bachelor's Degree">Bachelor's Degree</option>
+            <option value="Master's Degree">Master's Degree</option>
+            <option value="PhD">PhD</option>
+            <option value="Professional Certification">Professional Certification</option>
+            <option value="Teaching License">Teaching License</option>
+            <option value="TEFL/TESOL">TEFL/TESOL</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        {errors.qualifications && <p className="text-xs text-red-500 mt-1">{errors.qualifications}</p>}
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Teaching Style / Methodology
+        </label>
+        <textarea
+          name="teachingStyle"
+          value={formData.teachingStyle}
+          onChange={handleChange}
+          rows={2}
+          placeholder="Describe your teaching approach, methods, and philosophy..."
+          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none"
+        />
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Availability
+        </label>
+        <div className="relative">
+          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
             type="text"
-            name="matricNumber"
-            value={formData.matricNumber}
-            onChange={handleInputChange}
-            error={errors.matricNumber}
-            required
+            name="availability"
+            value={formData.availability}
+            onChange={handleChange}
+            placeholder="e.g., Weekdays 4PM-8PM, Weekends 9AM-5PM"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
           />
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
-              School/University <span className="text-red-500">*</span>
-            </label>
-            <MobileSelect
-              options={universitiesList}
-              value={selectedSchool}
-              onChange={setSelectedSchool}
-              placeholder="Select your school"
-            />
-            {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Faculty</label>
-            <MobileSelect
-              options={facultiesList}
-              value={selectedFaculty}
-              onChange={setSelectedFaculty}
-              placeholder="Select your faculty (optional)"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
-              Department <span className="text-red-500">*</span>
-            </label>
-            <MobileSelect
-              options={departmentsList}
-              value={selectedDepartment}
-              onChange={setSelectedDepartment}
-              placeholder="Select your department"
-            />
-            {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
-          </div>
-        </>
-      );
-    }
-    
-    if (role === 'tutor') {
-      return (
-        <>
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
-              Specialization <span className="text-red-500">*</span>
-            </label>
-            <MobileSelect
-              options={specializationsList}
-              value={selectedSpecialization}
-              onChange={setSelectedSpecialization}
-              placeholder="Select your specialization"
-            />
-            {errors.specialization && <p className="text-xs text-red-500 mt-1">{errors.specialization}</p>}
-          </div>
-          <MobileInput
-            icon={Star}
-            label="Years of Experience"
-            type="number"
-            name="yearsExperience"
-            value={formData.yearsExperience}
-            onChange={handleInputChange}
-            error={errors.yearsExperience}
-            required
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Portfolio / Website
+        </label>
+        <div className="relative">
+          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="url"
+            name="portfolio"
+            value={formData.portfolio}
+            onChange={handleChange}
+            placeholder="https://your-portfolio.com"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
           />
-        </>
-      );
-    }
-    
-    if (role === 'lecturer') {
-      return (
-        <>
-          <MobileInput
-            icon={AwardIcon}
-            label="Title (e.g., Dr., Prof., Mr.)"
-            type="text"
-            name="title"
-            value={formData.title}
-            onChange={handleInputChange}
-            error={errors.title}
-            required
-          />
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
-              School/University <span className="text-red-500">*</span>
-            </label>
-            <MobileSelect
-              options={universitiesList}
-              value={selectedSchool}
-              onChange={setSelectedSchool}
-              placeholder="Select your institution"
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  // Lecturer Form Fields
+  const LecturerFields = () => (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="space-y-4"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Staff ID <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="staffId"
+              value={formData.staffId}
+              onChange={handleChange}
+              placeholder="e.g., UNN/STAFF/2023/001"
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.staffId ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
             />
-            {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
           </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
-              Department <span className="text-red-500">*</span>
-            </label>
-            <MobileSelect
-              options={departmentsList}
-              value={selectedDepartment}
-              onChange={setSelectedDepartment}
-              placeholder="Select your department"
+          {errors.staffId && <p className="text-xs text-red-500 mt-1">{errors.staffId}</p>}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Faculty <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <School className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="faculty"
+              value={formData.faculty}
+              onChange={handleChange}
+              placeholder="e.g., Faculty of Science"
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.faculty ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
             />
-            {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
           </div>
-          <MobileInput
-            icon={Calendar}
-            label="Years of Teaching"
-            type="number"
-            name="yearsTeaching"
-            value={formData.yearsTeaching}
-            onChange={handleInputChange}
-            error={errors.yearsTeaching}
-            required
-          />
-        </>
-      );
-    }
-    
-    return null;
-  };
+          {errors.faculty && <p className="text-xs text-red-500 mt-1">{errors.faculty}</p>}
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Academic Rank <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <Trophy className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <select
+              name="rank"
+              value={formData.rank}
+              onChange={handleChange}
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.rank ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+            >
+              <option value="">Select Rank</option>
+              <option value="Professor">Professor</option>
+              <option value="Associate Professor">Associate Professor</option>
+              <option value="Senior Lecturer">Senior Lecturer</option>
+              <option value="Lecturer I">Lecturer I</option>
+              <option value="Lecturer II">Lecturer II</option>
+              <option value="Assistant Lecturer">Assistant Lecturer</option>
+              <option value="Graduate Assistant">Graduate Assistant</option>
+            </select>
+          </div>
+          {errors.rank && <p className="text-xs text-red-500 mt-1">{errors.rank}</p>}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Department
+          </label>
+          <div className="relative">
+            <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <select
+              name="department"
+              value={formData.department}
+              onChange={handleChange}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            >
+              <option value="">Select Department</option>
+              {DEPARTMENTS.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Research Areas
+        </label>
+        <div className="relative">
+          <Target className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+          <select
+            multiple
+            name="researchAreas"
+            value={formData.researchAreas}
+            onChange={handleChange}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition min-h-[100px]"
+            size={4}
+          >
+            <option value="Artificial Intelligence">Artificial Intelligence</option>
+            <option value="Machine Learning">Machine Learning</option>
+            <option value="Data Science">Data Science</option>
+            <option value="Renewable Energy">Renewable Energy</option>
+            <option value="Biotechnology">Biotechnology</option>
+            <option value="Nanotechnology">Nanotechnology</option>
+            <option value="Climate Change">Climate Change</option>
+            <option value="Public Health">Public Health</option>
+            <option value="Educational Technology">Educational Technology</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Courses Teaching
+        </label>
+        <div className="relative">
+          <Bookmark className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+          <select
+            multiple
+            name="coursesTeaching"
+            value={formData.coursesTeaching}
+            onChange={handleChange}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition min-h-[100px]"
+            size={4}
+          >
+            {COURSES.map(course => (
+              <option key={course} value={course}>{course}</option>
+            ))}
+          </select>
+        </div>
+        <p className="text-xs text-slate-500 mt-1">Hold Ctrl/Cmd to select multiple courses</p>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Office Hours
+          </label>
+          <div className="relative">
+            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="officeHours"
+              value={formData.officeHours}
+              onChange={handleChange}
+              placeholder="e.g., Mondays & Wednesdays 2PM-4PM"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Publications (Count)
+          </label>
+          <div className="relative">
+            <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="number"
+              name="publications"
+              value={formData.publications}
+              onChange={handleChange}
+              placeholder="Number of publications"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  // Common Fields (for all roles)
+  const CommonFields = () => (
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="space-y-4"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Full Name {!isLogin && <span className="text-red-500">*</span>}
+          </label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="Enter your full name"
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.name ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+            />
+          </div>
+          {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Email Address {!isLogin && <span className="text-red-500">*</span>}
+          </label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="you@example.com"
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.email ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+            />
+          </div>
+          {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Phone Number
+          </label>
+          <div className="relative">
+            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              placeholder="+234 123 456 7890"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            />
+          </div>
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Country
+          </label>
+          <div className="relative">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <select
+              name="country"
+              value={formData.country}
+              onChange={handleChange}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+            >
+              {COUNTRIES.map(country => (
+                <option key={country} value={country}>{country}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          Bio / About
+        </label>
+        <textarea
+          name="bio"
+          value={formData.bio}
+          onChange={handleChange}
+          rows={3}
+          placeholder="Tell us about yourself, your interests, and what you hope to achieve..."
+          className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none"
+        />
+      </div>
+    </motion.div>
+  );
+
+  // Role Selection Component
+  const RoleSelection = () => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {ROLES.map((role) => {
+        const Icon = role.icon;
+        const isSelected = selectedRole === role.id;
+        return (
+          <motion.button
+            key={role.id}
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setSelectedRole(role.id)}
+            className={`relative p-4 rounded-2xl text-left transition-all ${
+              isSelected
+                ? `bg-gradient-to-br ${role.color} text-white shadow-lg`
+                : `bg-white dark:bg-slate-800 border-2 ${role.borderColor} hover:shadow-md`
+            }`}
+          >
+            <div className={`p-2 rounded-xl mb-3 inline-block ${
+              isSelected ? 'bg-white/20' : `bg-gradient-to-br ${role.color}`
+            }`}>
+              <Icon size={24} className={isSelected ? 'text-white' : 'text-white'} />
+            </div>
+            <h3 className={`font-bold ${isSelected ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
+              {role.label}
+            </h3>
+            <p className={`text-xs mt-1 ${isSelected ? 'text-white/80' : 'text-slate-500'}`}>
+              {role.description}
+            </p>
+            {isSelected && (
+              <CheckCircle size={16} className="absolute top-4 right-4 text-white" />
+            )}
+          </motion.button>
+        );
+      })}
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-indigo-900/95 via-purple-900/95 to-pink-900/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-0 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-0 right-0 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl animate-pulse delay-700" />
-      </div>
-
-      {/* Close Button - Positioned very close to the auth form */}
-      <div className="relative w-full max-w-md">
-        {/* Close Button - Now at top-right corner of the form itself */}
-        <button
-          onClick={onClose}
-          className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 p-2 bg-white/90 dark:bg-slate-800/90 rounded-full shadow-lg hover:bg-white dark:hover:bg-slate-700 hover:scale-105 transition-all duration-200 active:scale-95 z-50 border border-slate-200 dark:border-slate-700"
-          aria-label="Close"
-        >
-          <X size={18} className="text-slate-700 dark:text-slate-300 sm:w-5 sm:h-5" />
-        </button>
-
-        {/* Header Logo */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg mb-3">
-            <GraduationCap className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">WE CONNECT</h1>
-          <p className="text-white/70 text-sm mt-1">Learn. Connect. Earn.</p>
-        </div>
-
-        {/* Main Card */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden">
-          {/* Toggle Buttons */}
-          {!showResetPassword && (
-            <div className="flex border-b border-slate-200 dark:border-slate-700">
-              <button
-                onClick={() => setIsLogin(true)}
-                className={`flex-1 py-4 text-center font-semibold transition-all relative ${
-                  isLogin ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
-                }`}
-              >
-                Sign In
-                {isLogin && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
-                )}
-              </button>
-              <button
-                onClick={() => setIsLogin(false)}
-                className={`flex-1 py-4 text-center font-semibold transition-all relative ${
-                  !isLogin ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
-                }`}
-              >
-                Sign Up
-                {!isLogin && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
-                )}
-              </button>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-4xl"
+      >
+        <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200/50 dark:border-slate-700/50">
+          {/* Header */}
+          <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-8 py-6">
+            <div className="absolute inset-0 opacity-20">
+              <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <circle cx="2" cy="2" r="1" fill="white" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#dots)" />
+              </svg>
             </div>
-          )}
-
-          <div className="p-5 max-h-[60vh] sm:max-h-[65vh] overflow-y-auto">
-            {/* Alert */}
-            <AnimatePresence>
-              {alert && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className={`mb-4 p-3 rounded-xl text-sm ${
-                    alert.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
-                    alert.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
-                    'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    {alert.type === 'error' && <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />}
-                    {alert.type === 'success' && <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />}
-                    <div className="flex-1">
-                      <p className="font-semibold text-sm">{alert.title}</p>
-                      <p className="text-xs">{alert.message}</p>
-                    </div>
-                    <button onClick={clearAlert}><X size={14} /></button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {showResetPassword ? (
-              // Reset Password Form
-              <form onSubmit={handlePasswordReset} className="space-y-4">
-                {resetSent ? (
-                  <div className="text-center py-6">
-                    <div className="w-16 h-16 mx-auto bg-green-500 rounded-full flex items-center justify-center mb-4">
-                      <CheckCircle className="w-8 h-8 text-white" />
-                    </div>
-                    <h3 className="text-lg font-bold mb-2">Check Your Email</h3>
-                    <p className="text-slate-600 dark:text-slate-400 text-sm">
-                      We've sent a password reset link to <strong>{resetEmail}</strong>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResetSent(false);
-                        setResetEmail('');
-                      }}
-                      className="mt-4 text-indigo-600 hover:underline text-sm"
-                    >
-                      Try another email
-                    </button>
-                  </div>
+            <div className="relative">
+              <div className="flex items-center gap-3 mb-2">
+                <Sparkles className="w-8 h-8 text-white" />
+                <h1 className="text-2xl font-bold text-white">
+                  {isLogin ? 'Welcome Back!' : 'Join WeConnect'}
+                </h1>
+              </div>
+              <p className="text-indigo-100">
+                {isLogin 
+                  ? 'Sign in to continue your learning journey' 
+                  : 'Create an account to access premium educational resources'}
+              </p>
+            </div>
+          </div>
+          
+          <div className="p-8">
+            {!isLogin && <RoleSelection />}
+            
+            <form onSubmit={handleSubmit}>
+              <AnimatePresence mode="wait">
+                {step === 1 ? (
+                  <CommonFields key="common" />
                 ) : (
-                  <>
-                    <MobileInput
-                      icon={Mail}
-                      label="Email Address"
-                      type="email"
-                      value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
-                      required
-                    />
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send size={18} />}
-                      Send Reset Link
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowResetPassword(false)}
-                      className="w-full text-center text-sm text-slate-500 hover:text-indigo-600 transition"
-                    >
-                      ← Back to Sign In
-                    </button>
-                  </>
+                  <div key="role-specific">
+                    {selectedRole === 'student' && <StudentFields />}
+                    {selectedRole === 'tutor' && <TutorFields />}
+                    {selectedRole === 'lecturer' && <LecturerFields />}
+                  </div>
                 )}
-              </form>
-            ) : isLogin ? (
-              // Login Form
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <MobileInput
-                  icon={Mail}
-                  label="Email Address"
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  error={errors.email}
-                  required
-                />
-                
-                <MobilePasswordInput
-                  icon={Lock}
-                  label="Password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  error={errors.password}
-                  required
-                />
-                
-                <button
-                  type="button"
-                  onClick={() => setShowResetPassword(true)}
-                  className="text-sm text-indigo-600 hover:text-indigo-700 text-right block w-full"
-                >
-                  Forgot Password?
-                </button>
-                
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <LogIn size={18} />}
-                  Sign In
-                </button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200 dark:border-slate-700" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="px-3 bg-white dark:bg-slate-900 text-xs text-slate-500">or continue with</span>
-                  </div>
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={handleGoogleSignIn}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-                >
-                  <Chrome className="w-5 h-5 text-red-600" />
-                  <span className="font-medium">Google</span>
-                </button>
-                
-                <p className="text-center text-sm text-slate-600 dark:text-slate-400">
-                  Don't have an account?{' '}
-                  <button type="button" onClick={toggleMode} className="font-semibold text-indigo-600 hover:text-indigo-700">
-                    Sign up
-                  </button>
-                </p>
-              </form>
-            ) : (
-              // Sign Up Form - Step by Step with All Fields
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Step 1: Basic Info */}
-                {activeStep === 1 && (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">I am a</label>
-                      <div className="grid grid-cols-3 gap-3">
-                        <RoleCard
-                          icon={GraduationCap}
-                          label="Student"
-                          isSelected={role === 'student'}
-                          onClick={() => setRole('student')}
-                          color="indigo"
-                        />
-                        <RoleCard
-                          icon={Briefcase}
-                          label="Tutor"
-                          isSelected={role === 'tutor'}
-                          onClick={() => setRole('tutor')}
-                          color="purple"
-                        />
-                        <RoleCard
-                          icon={Award}
-                          label="Lecturer"
-                          isSelected={role === 'lecturer'}
-                          onClick={() => setRole('lecturer')}
-                          color="pink"
-                        />
-                      </div>
-                    </div>
-                    
-                    <MobileInput
-                      icon={User}
-                      label="Full Name"
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      error={errors.name}
-                      required
-                    />
-                    
-                    <MobileInput
-                      icon={Mail}
-                      label="Email Address"
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      error={errors.email}
-                      required
-                    />
-                    
-                    <MobilePasswordInput
-                      icon={Lock}
-                      label="Password"
+              </AnimatePresence>
+              
+              {/* Password Fields */}
+              <div className="space-y-4 mt-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Password {!isLogin && <span className="text-red-500">*</span>}
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
                       name="password"
                       value={formData.password}
-                      onChange={handleInputChange}
-                      error={errors.password}
-                      required
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className={`w-full pl-10 pr-12 py-2.5 rounded-xl border ${errors.password ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
                     />
-                    
-                    <MobilePasswordInput
-                      icon={Lock}
-                      label="Confirm Password"
-                      name="confirmPassword"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      error={errors.confirmPassword}
-                      required
-                    />
-                    
-                    <div>
-                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Gender (Optional)</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {genderOptions.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setGender(opt)}
-                            className={`py-2 rounded-lg border transition-all ${
-                              gender?.value === opt.value
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                                : 'border-slate-200 dark:border-slate-700 text-slate-600'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <MobileInput
-                      icon={Smartphone}
-                      label="Phone Number (Optional)"
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                    />
-                    
-                    <MobileTextArea
-                      icon={Home}
-                      label="Address (Optional)"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleInputChange}
-                    />
-                    
                     <button
                       type="button"
-                      onClick={() => setActiveStep(2)}
-                      className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
                     >
-                      Continue
-                      <ArrowRight size={18} />
+                      {showPassword ? <EyeOff size={18} className="text-slate-400" /> : <Eye size={18} className="text-slate-400" />}
                     </button>
-                  </>
-                )}
+                  </div>
+                  {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
+                </div>
                 
-                {/* Step 2: Role-Specific Fields */}
-                {activeStep === 2 && (
-                  <>
-                    {renderRoleSpecificFields()}
-                    
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setActiveStep(1)}
-                        className="flex-1 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-medium"
-                      >
-                        Back
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <UserPlus size={18} />}
-                        Create Account
-                      </button>
-                    </div>
-                  </>
-                )}
-                
-                {/* Social Login - Only on Step 1 */}
-                {activeStep === 1 && (
-                  <>
+                {!isLogin && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Confirm Password <span className="text-red-500">*</span>
+                    </label>
                     <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-slate-200 dark:border-slate-700" />
-                      </div>
-                      <div className="relative flex justify-center">
-                        <span className="px-3 bg-white dark:bg-slate-900 text-xs text-slate-500">or continue with</span>
-                      </div>
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        name="confirmPassword"
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                        placeholder="••••••••"
+                        className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${errors.confirmPassword ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+                      />
                     </div>
-                    
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      disabled={loading}
-                      className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-                    >
-                      <Chrome className="w-5 h-5 text-red-600" />
-                      <span className="font-medium">Google</span>
-                    </button>
-                    
-                    <p className="text-center text-sm text-slate-600 dark:text-slate-400">
-                      Already have an account?{' '}
-                      <button type="button" onClick={toggleMode} className="font-semibold text-indigo-600 hover:text-indigo-700">
-                        Sign in
-                      </button>
-                    </p>
-                  </>
+                    {errors.confirmPassword && <p className="text-xs text-red-500 mt-1">{errors.confirmPassword}</p>}
+                  </div>
                 )}
-              </form>
-            )}
+              </div>
+              
+              {/* Navigation Buttons */}
+              <div className="flex gap-4 mt-8">
+                {!isLogin && step === 2 && (
+                  <button
+                    type="button"
+                    onClick={prevStep}
+                    className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium hover:bg-slate-200 transition"
+                  >
+                    Back
+                  </button>
+                )}
+                
+                {!isLogin && step === 1 ? (
+                  <button
+                    type="button"
+                    onClick={nextStep}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition flex items-center justify-center gap-2"
+                  >
+                    Continue <ChevronRight size={18} />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={loading || authLoading}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loading || authLoading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      isLogin ? 'Sign In' : 'Create Account'
+                    )}
+                  </button>
+                )}
+              </div>
+            </form>
+            
+            {/* Toggle between Login and Signup */}
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setStep(1);
+                  setErrors({});
+                }}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm"
+              >
+                {isLogin 
+                  ? "Don't have an account? Sign up" 
+                  : "Already have an account? Sign in"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
+
+// Helper components for icons
+const Hash = ({ size = 16, className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <line x1="4" y1="9" x2="20" y2="9" />
+    <line x1="4" y1="15" x2="20" y2="15" />
+    <line x1="10" y1="3" x2="8" y2="21" />
+    <line x1="16" y1="3" x2="14" y2="21" />
+  </svg>
+);
+
+const DollarSign = ({ size = 16, className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <line x1="12" y1="1" x2="12" y2="23" />
+    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+  </svg>
+);
 
 export default AuthForm;
