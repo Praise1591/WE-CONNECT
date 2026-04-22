@@ -1,4 +1,4 @@
-// components/Dashboard/AuthForm.jsx - Fixed Import Path
+// components/Dashboard/AuthForm.jsx - With Close Button & No Country Field
 import React, { useState, useEffect } from 'react';
 import {
   Mail, Lock, User, Eye, EyeOff, Sparkles, BookOpen,
@@ -6,11 +6,11 @@ import {
   Phone, MapPin, Briefcase, Award, Globe, Linkedin,
   Twitter, Github, CheckCircle, AlertCircle, ChevronRight,
   UserCheck, Video, FileText, MessageCircle, Star,
-  Trophy, Target, Compass, Zap, Shield, Crown
+  Trophy, Target, Compass, Zap, Shield, Crown, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
-import { useAuth } from '../../contexts/AuthContext'; // FIXED: Changed from '../contexts/AuthContext' to '../../contexts/AuthContext'
+import { useAuth } from '../../contexts/AuthContext';
 
 const ROLES = [
   { 
@@ -40,12 +40,6 @@ const ROLES = [
     borderColor: 'border-purple-200 dark:border-purple-800',
     description: 'Upload course materials, manage classes, and assess students'
   },
-];
-
-const COUNTRIES = [
-  'Nigeria', 'Ghana', 'Kenya', 'South Africa', 'Egypt',
-  'United States', 'United Kingdom', 'Canada', 'Australia',
-  'Other'
 ];
 
 const NIGERIAN_UNIVERSITIES = [
@@ -140,7 +134,7 @@ const COURSES = [
   'Other'
 ];
 
-function AuthForm() {
+function AuthForm({ onClose }) {
   const { signIn, signUp, loading: authLoading } = useAuth();
   
   const [isLogin, setIsLogin] = useState(true);
@@ -157,7 +151,6 @@ function AuthForm() {
     name: '',
     // Common fields
     phone: '',
-    country: 'Nigeria',
     state: '',
     city: '',
     bio: '',
@@ -838,20 +831,18 @@ function AuthForm() {
         
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-            Country
+            State
           </label>
           <div className="relative">
-            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <select
-              name="country"
-              value={formData.country}
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              name="state"
+              value={formData.state}
               onChange={handleChange}
+              placeholder="e.g., Lagos"
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition"
-            >
-              {COUNTRIES.map(country => (
-                <option key={country} value={country}>{country}</option>
-              ))}
-            </select>
+            />
           </div>
         </div>
       </div>
@@ -915,8 +906,16 @@ function AuthForm() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-4xl"
+        className="w-full max-w-4xl relative"
       >
+        {/* Close Button */}
+        <button
+          onClick={onClose || (() => window.location.href = '/')}
+          className="absolute -top-12 right-0 z-50 p-2 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-full shadow-lg hover:scale-110 transition-transform duration-200 group"
+        >
+          <X className="w-5 h-5 text-slate-600 dark:text-slate-300 group-hover:text-red-500 transition-colors" />
+        </button>
+
         <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200/50 dark:border-slate-700/50">
           {/* Header */}
           <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-8 py-6">
