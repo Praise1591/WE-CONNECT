@@ -1,13 +1,16 @@
-// src/components/Dashboard/AuthForm.jsx - Complete with Role-Based Fields
-import React, { useState } from 'react';
+// src/components/Dashboard/AuthForm.jsx - Mobile-First with All Fields and Role Selection
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
-  Briefcase, Award, X, Chrome, AlertCircle,
-  CheckCircle, UserPlus, LogIn, User, Smartphone,
-  Hash, School, BookOpen, Target, Star, Calendar,
-  CreditCard, Building2, Phone, MapPin, Send,
-  Globe, Linkedin, Twitter, Github, Facebook
+  Briefcase, Award, X, Chrome, Phone, Home, AlertCircle,
+  CheckCircle, Shield, Sparkles, UserCheck, Fingerprint,
+  Send, Key, RefreshCw, UserPlus, LogIn,
+  ChevronRight, ChevronLeft, Hash, Building2, User,
+  Smartphone, Globe, Zap, BookOpen, Video, FileText, ScrollText, Users, Star,
+  Calendar, MapPin, School, BriefcaseBusiness, Award as AwardIcon,
+  Target, Layers, BookMarked, Library, PenTool, Microscope
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
@@ -28,39 +31,55 @@ import {
 } from '../../firebase';
 
 // Role Card Component
-const RoleCard = ({ icon: Icon, label, isSelected, onClick, color }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-      isSelected
-        ? `border-${color}-500 bg-gradient-to-br from-${color}-500 to-${color}-600 text-white shadow-lg`
-        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:shadow-md'
-    }`}
-  >
-    <Icon size={22} className={isSelected ? 'text-white' : `text-${color}-500`} />
-    <span className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-      {label}
-    </span>
-  </button>
-);
+const RoleCard = ({ icon: Icon, label, isSelected, onClick, color }) => {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+        isSelected
+          ? `border-${color}-500 bg-gradient-to-br from-${color}-500/10 to-${color}-600/10 shadow-lg`
+          : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+      }`}
+    >
+      <div className={`p-2 rounded-lg ${isSelected ? `bg-${color}-500` : 'bg-slate-100 dark:bg-slate-700'}`}>
+        <Icon size={20} className={isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'} />
+      </div>
+      <span className={`text-xs font-medium ${isSelected ? `text-${color}-600` : 'text-slate-700 dark:text-slate-300'}`}>
+        {label}
+      </span>
+    </motion.button>
+  );
+};
 
-// Input Component
-const FormInput = ({ icon: Icon, label, error, required, ...props }) => {
-  const [focused, setFocused] = useState(false);
+// Mobile Input Component
+const MobileInput = ({ icon: Icon, label, error, required, ...props }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  
   return (
     <div className="space-y-1">
       <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <div className="relative">
-        <Icon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+          <Icon size={18} className="text-slate-400" />
+        </div>
         <input
           {...props}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={(e) => {
+            setIsFocused(false);
+            props.onBlur?.(e);
+          }}
           className={`w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none ${
-            error ? 'border-red-500' : focused ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-transparent'
+            error
+              ? 'border-red-500 focus:border-red-500'
+              : isFocused
+                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                : 'border-transparent focus:border-indigo-500'
           }`}
         />
       </div>
@@ -69,32 +88,42 @@ const FormInput = ({ icon: Icon, label, error, required, ...props }) => {
   );
 };
 
-// Password Input
-const PasswordInput = ({ icon: Icon, label, error, required, ...props }) => {
-  const [focused, setFocused] = useState(false);
-  const [show, setShow] = useState(false);
+// Mobile Password Input
+const MobilePasswordInput = ({ icon: Icon, label, error, required, ...props }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  
   return (
     <div className="space-y-1">
       <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <div className="relative">
-        <Icon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+          <Icon size={18} className="text-slate-400" />
+        </div>
         <input
           {...props}
-          type={show ? 'text' : 'password'}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          type={showPassword ? 'text' : 'password'}
+          onFocus={() => setIsFocused(true)}
+          onBlur={(e) => {
+            setIsFocused(false);
+            props.onBlur?.(e);
+          }}
           className={`w-full pl-10 pr-12 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none ${
-            error ? 'border-red-500' : focused ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-transparent'
+            error
+              ? 'border-red-500 focus:border-red-500'
+              : isFocused
+                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                : 'border-transparent focus:border-indigo-500'
           }`}
         />
         <button
           type="button"
-          onClick={() => setShow(!show)}
+          onClick={() => setShowPassword(!showPassword)}
           className="absolute right-3 top-1/2 -translate-y-1/2"
         >
-          {show ? <EyeOff size={18} className="text-slate-400" /> : <Eye size={18} className="text-slate-400" />}
+          {showPassword ? <EyeOff size={18} className="text-slate-400" /> : <Eye size={18} className="text-slate-400" />}
         </button>
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -102,245 +131,174 @@ const PasswordInput = ({ icon: Icon, label, error, required, ...props }) => {
   );
 };
 
-// Select Component
-const FormSelect = ({ icon: Icon, label, options, value, onChange, error, required, placeholder }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const selected = options.find(opt => opt.value === value);
+// Mobile TextArea
+const MobileTextArea = ({ icon: Icon, label, error, ...props }) => {
+  const [isFocused, setIsFocused] = useState(false);
   
   return (
     <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className={`w-full flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-800 rounded-xl border ${
-          error ? 'border-red-500' : 'border-transparent'
-        }`}
-      >
-        <div className="flex items-center gap-2">
+      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
+      <div className="relative">
+        <div className="absolute left-3 top-3">
           <Icon size={18} className="text-slate-400" />
-          <span className="text-slate-900 dark:text-white">
-            {selected?.label || placeholder}
-          </span>
         </div>
-        <ArrowRight size={16} className="text-slate-400" />
-      </button>
-      
-      <AnimatePresence>
-        {isOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/50 z-[100]" onClick={() => setIsOpen(false)} />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25 }}
-              className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl z-[100] max-h-[70vh] overflow-y-auto"
-            >
-              <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-4 flex justify-between items-center">
-                <h3 className="font-semibold text-slate-800 dark:text-white">{label}</h3>
-                <button onClick={() => setIsOpen(false)} className="p-1 rounded-full hover:bg-slate-100">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-4 space-y-2">
-                {options.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      onChange(opt.value);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full text-left p-3 rounded-xl transition-all ${
-                      value === opt.value
-                        ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+        <textarea
+          {...props}
+          rows={3}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          className={`w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none resize-none ${
+            error
+              ? 'border-red-500 focus:border-red-500'
+              : isFocused
+                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                : 'border-transparent focus:border-indigo-500'
+          }`}
+        />
+      </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   );
 };
 
-// Data Lists
-const universities = [
-  { value: 'unilag', label: 'University of Lagos (UNILAG)' },
-  { value: 'ui', label: 'University of Ibadan (UI)' },
-  { value: 'unn', label: 'University of Nigeria, Nsukka (UNN)' },
-  { value: 'oau', label: 'Obafemi Awolowo University (OAU)' },
-  { value: 'abu', label: 'Ahmadu Bello University (ABU)' },
-  { value: 'uniben', label: 'University of Benin (UNIBEN)' },
-  { value: 'unilorin', label: 'University of Ilorin (UNILORIN)' },
-  { value: 'uniport', label: 'University of Port Harcourt (UNIPORT)' },
-  { value: 'futa', label: 'Federal University of Technology, Akure (FUTA)' },
-  { value: 'futo', label: 'Federal University of Technology, Owerri (FUTO)' },
-  { value: 'lasu', label: 'Lagos State University (LASU)' },
-  { value: 'delsu', label: 'Delta State University (DELSU)' },
-  { value: 'covenant', label: 'Covenant University' },
-  { value: 'babcock', label: 'Babcock University' },
+// Gender Options
+const genderOptions = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+  { value: 'prefer-not-say', label: 'Prefer not to say' },
+];
+
+// Nigerian Universities List
+const universitiesList = [
+  { value: 'unilag', label: 'University of Lagos' },
+  { value: 'ui', label: 'University of Ibadan' },
+  { value: 'unn', label: 'University of Nigeria, Nsukka' },
+  { value: 'oau', label: 'Obafemi Awolowo University' },
+  { value: 'abu', label: 'Ahmadu Bello University' },
+  { value: 'uniben', label: 'University of Benin' },
+  { value: 'unilorin', label: 'University of Ilorin' },
+  { value: 'uniport', label: 'University of Port Harcourt' },
+  { value: 'futa', label: 'FUT Akure' },
+  { value: 'futo', label: 'FUT Owerri' },
+  { value: 'lasu', label: 'Lagos State University' },
+  { value: 'delsu', label: 'Delta State University' },
   { value: 'other', label: 'Other' },
 ];
 
-const departments = [
-  { value: 'cs', label: 'Computer Science' },
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'medicine', label: 'Medicine & Surgery' },
-  { value: 'law', label: 'Law' },
-  { value: 'business', label: 'Business Administration' },
+// Departments List
+const departmentsList = [
   { value: 'accounting', label: 'Accounting' },
-  { value: 'economics', label: 'Economics' },
-  { value: 'masscomm', label: 'Mass Communication' },
+  { value: 'agric-economics', label: 'Agricultural Economics' },
+  { value: 'architecture', label: 'Architecture' },
   { value: 'biochemistry', label: 'Biochemistry' },
-  { value: 'microbiology', label: 'Microbiology' },
+  { value: 'business-admin', label: 'Business Administration' },
+  { value: 'chemical-engineering', label: 'Chemical Engineering' },
   { value: 'chemistry', label: 'Chemistry' },
-  { value: 'physics', label: 'Physics' },
-  { value: 'mathematics', label: 'Mathematics' },
-  { value: 'statistics', label: 'Statistics' },
+  { value: 'civil-engineering', label: 'Civil Engineering' },
+  { value: 'computer-engineering', label: 'Computer Engineering' },
+  { value: 'computer-science', label: 'Computer Science' },
+  { value: 'economics', label: 'Economics' },
+  { value: 'electrical-engineering', label: 'Electrical Engineering' },
   { value: 'english', label: 'English Language' },
-  { value: 'history', label: 'History' },
+  { value: 'law', label: 'Law' },
+  { value: 'mass-communication', label: 'Mass Communication' },
+  { value: 'mathematics', label: 'Mathematics' },
+  { value: 'mechanical-engineering', label: 'Mechanical Engineering' },
+  { value: 'medicine-surgery', label: 'Medicine & Surgery' },
+  { value: 'microbiology', label: 'Microbiology' },
+  { value: 'nursing', label: 'Nursing' },
+  { value: 'pharmacy', label: 'Pharmacy' },
+  { value: 'physics', label: 'Physics' },
   { value: 'political-science', label: 'Political Science' },
   { value: 'psychology', label: 'Psychology' },
   { value: 'sociology', label: 'Sociology' },
-  { value: 'pharmacy', label: 'Pharmacy' },
-  { value: 'nursing', label: 'Nursing' },
-  { value: 'architecture', label: 'Architecture' },
-  { value: 'estate', label: 'Estate Management' },
   { value: 'other', label: 'Other' },
 ];
 
-const levels = [
-  { value: '100', label: '100 Level' },
-  { value: '200', label: '200 Level' },
-  { value: '300', label: '300 Level' },
-  { value: '400', label: '400 Level' },
-  { value: '500', label: '500 Level' },
-  { value: 'postgraduate', label: 'Postgraduate' },
+// Faculties List
+const facultiesList = [
+  { value: 'agriculture', label: 'Faculty of Agriculture' },
+  { value: 'arts', label: 'Faculty of Arts' },
+  { value: 'education', label: 'Faculty of Education' },
+  { value: 'engineering', label: 'Faculty of Engineering' },
+  { value: 'environmental-sciences', label: 'Faculty of Environmental Sciences' },
+  { value: 'law', label: 'Faculty of Law' },
+  { value: 'management-sciences', label: 'Faculty of Management Sciences' },
+  { value: 'medical-sciences', label: 'Faculty of Medical Sciences' },
+  { value: 'pharmacy', label: 'Faculty of Pharmacy' },
+  { value: 'science', label: 'Faculty of Science' },
+  { value: 'social-sciences', label: 'Faculty of Social Sciences' },
+  { value: 'veterinary-medicine', label: 'Faculty of Veterinary Medicine' },
+  { value: 'other', label: 'Other' },
 ];
 
-const specializations = [
-  { value: 'math', label: 'Mathematics' },
+// Tutor Specializations
+const specializationsList = [
+  { value: 'mathematics', label: 'Mathematics' },
   { value: 'physics', label: 'Physics' },
   { value: 'chemistry', label: 'Chemistry' },
   { value: 'biology', label: 'Biology' },
-  { value: 'cs', label: 'Computer Science' },
   { value: 'english', label: 'English' },
+  { value: 'computer-science', label: 'Computer Science' },
   { value: 'economics', label: 'Economics' },
   { value: 'accounting', label: 'Accounting' },
   { value: 'engineering', label: 'Engineering' },
   { value: 'medicine', label: 'Medicine' },
   { value: 'law', label: 'Law' },
-  { value: 'business', label: 'Business' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'graphics', label: 'Graphic Design' },
-  { value: 'webdev', label: 'Web Development' },
-  { value: 'datascience', label: 'Data Science' },
-  { value: 'ai', label: 'Artificial Intelligence' },
   { value: 'other', label: 'Other' },
 ];
 
-const ranks = [
-  { value: 'professor', label: 'Professor' },
-  { value: 'associate', label: 'Associate Professor' },
-  { value: 'senior', label: 'Senior Lecturer' },
-  { value: 'lecturer1', label: 'Lecturer I' },
-  { value: 'lecturer2', label: 'Lecturer II' },
-  { value: 'assistant', label: 'Assistant Lecturer' },
-  { value: 'ga', label: 'Graduate Assistant' },
-];
-
-const faculties = [
-  { value: 'science', label: 'Faculty of Science' },
-  { value: 'engineering', label: 'Faculty of Engineering' },
-  { value: 'arts', label: 'Faculty of Arts' },
-  { value: 'social', label: 'Faculty of Social Sciences' },
-  { value: 'management', label: 'Faculty of Management Sciences' },
-  { value: 'law', label: 'Faculty of Law' },
-  { value: 'medicine', label: 'Faculty of Medicine' },
-  { value: 'pharmacy', label: 'Faculty of Pharmacy' },
-  { value: 'education', label: 'Faculty of Education' },
-  { value: 'agriculture', label: 'Faculty of Agriculture' },
-  { value: 'environmental', label: 'Faculty of Environmental Sciences' },
-  { value: 'communication', label: 'Faculty of Communication' },
-  { value: 'other', label: 'Other' },
-];
-
-const qualifications = [
-  { value: 'bsc', label: "Bachelor's Degree (B.Sc)" },
-  { value: 'msc', label: "Master's Degree (M.Sc)" },
-  { value: 'phd', label: 'PhD' },
-  { value: 'hnd', label: 'HND' },
-  { value: 'nd', label: 'ND' },
-  { value: 'certificate', label: 'Professional Certificate' },
-  { value: 'diploma', label: 'Diploma' },
-  { value: 'other', label: 'Other' },
-];
-
-function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
+// Main AuthForm Component
+function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
-  const [role, setRole] = useState('student');
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState(null);
-  const [errors, setErrors] = useState({});
-  const [showReset, setShowReset] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
-  
+  const [role, setRole] = useState('student');
+  const [gender, setGender] = useState(null);
+  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [selectedFaculty, setSelectedFaculty] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState(null);
+  const [selectedSpecialization, setSelectedSpecialization] = useState(null);
+  const [activeStep, setActiveStep] = useState(1);
   const [formData, setFormData] = useState({
-    // Common
     name: '',
+    matricNumber: '',
+    school: '',
+    faculty: '',
+    department: '',
+    specialization: '',
+    yearsExperience: '',
+    title: '',
+    yearsTeaching: '',
     email: '',
     password: '',
     confirmPassword: '',
     phone: '',
     address: '',
-    // Student
-    matricNumber: '',
-    school: '',
-    department: '',
-    level: '',
-    // Tutor
-    specialization: '',
-    yearsExperience: '',
-    hourlyRate: '',
-    qualification: '',
-    // Lecturer
-    staffId: '',
-    faculty: '',
-    academicRank: '',
-    yearsTeaching: '',
-    researchArea: '',
   });
-  
+  const [loading, setLoading] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+
   const googleProvider = new GoogleAuthProvider();
 
-  const handleChange = (e) => {
+  const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setErrors({ ...errors, [e.target.name]: '' });
+    setAlert(null);
   };
 
-  const handleSelect = (field, value) => {
-    setFormData({ ...formData, [field]: value });
-    setErrors({ ...errors, [field]: '' });
-  };
+  const clearAlert = () => setAlert(null);
 
   const showAlert = (type, title, message) => {
     setAlert({ type, title, message });
     setTimeout(() => setAlert(null), 5000);
   };
-
-  const clearAlert = () => setAlert(null);
 
   const triggerCelebration = () => {
     const container = document.createElement('div');
@@ -381,40 +339,136 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
     }, 1500);
   };
 
-  const validate = () => {
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    const email = resetEmail.trim();
+    if (!email) {
+      showAlert('error', 'Email Required', 'Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+      showAlert('success', 'Reset Email Sent', `We've sent a password reset link to ${email}.`);
+    } catch (error) {
+      let message = 'Failed to send reset email.';
+      let title = 'Reset Failed';
+      if (error.code === 'auth/user-not-found') {
+        message = 'No account found with this email address.';
+        title = 'Account Not Found';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+        title = 'Invalid Email';
+      }
+      showAlert('error', title, message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAuthSuccess = (userProfile) => {
+    triggerCelebration();
+    if (onClose) onClose();
+    if (onLoginSuccess) onLoginSuccess(userProfile);
+    navigate('/dashboard', { replace: true });
+    window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setAlert(null);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileDoc = await getDoc(profileRef);
+      let userProfile;
+
+      if (!profileDoc.exists()) {
+        const profileData = {
+          name: user.displayName || 'User',
+          email: user.email,
+          role: 'student',
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+        await setDoc(profileRef, profileData);
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || 'User',
+          role: 'student',
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+      } else {
+        const profileData = profileDoc.data();
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: profileData.name || user.displayName || 'User',
+          role: profileData.role || 'student',
+          photoURL: user.photoURL || profileData.photoURL,
+          coins: profileData.coins || 0,
+          diamonds: profileData.diamonds || 0,
+          emailVerified: user.emailVerified,
+        };
+      }
+
+      localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      showAlert('success', 'Welcome!', `Signed in successfully as ${userProfile.name}`);
+      setTimeout(() => handleAuthSuccess(userProfile), 500);
+    } catch (error) {
+      let message = 'Google sign-in failed. Please try again.';
+      let title = 'Authentication Failed';
+      if (error.code === 'auth/popup-closed-by-user') {
+        message = 'Sign-in was cancelled. Please try again.';
+        title = 'Cancelled';
+      } else if (error.code === 'auth/network-request-failed') {
+        message = 'Network error. Please check your internet connection.';
+        title = 'Network Error';
+      } else if (error.code === 'auth/popup-blocked') {
+        message = 'Popup was blocked. Please allow popups for this site.';
+        title = 'Popup Blocked';
+      }
+      showAlert('error', title, message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateForm = () => {
     const newErrors = {};
+    if (!formData.email) newErrors.email = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email';
     
-    if (!formData.email) newErrors.email = 'Email required';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Invalid email';
-    
-    if (!formData.password) newErrors.password = 'Password required';
-    else if (formData.password.length < 6) newErrors.password = 'Minimum 6 characters';
+    if (!formData.password) newErrors.password = 'Password is required';
+    else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
     
     if (!isLogin) {
-      if (!formData.name) newErrors.name = 'Name required';
+      if (!formData.name) newErrors.name = 'Name is required';
       if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
       
-      // Student validations
       if (role === 'student') {
         if (!formData.matricNumber) newErrors.matricNumber = 'Matric number required';
-        if (!formData.school) newErrors.school = 'School required';
-        if (!formData.department) newErrors.department = 'Department required';
-        if (!formData.level) newErrors.level = 'Level required';
+        if (!selectedSchool) newErrors.school = 'School required';
+        if (!selectedDepartment) newErrors.department = 'Department required';
       }
-      
-      // Tutor validations
       if (role === 'tutor') {
-        if (!formData.specialization) newErrors.specialization = 'Specialization required';
+        if (!selectedSpecialization) newErrors.specialization = 'Specialization required';
         if (!formData.yearsExperience) newErrors.yearsExperience = 'Years of experience required';
-        if (!formData.qualification) newErrors.qualification = 'Qualification required';
       }
-      
-      // Lecturer validations
       if (role === 'lecturer') {
-        if (!formData.staffId) newErrors.staffId = 'Staff ID required';
-        if (!formData.school) newErrors.school = 'School required';
-        if (!formData.faculty) newErrors.faculty = 'Faculty required';
-        if (!formData.academicRank) newErrors.academicRank = 'Academic rank required';
+        if (!formData.title) newErrors.title = 'Title required';
+        if (!selectedSchool) newErrors.school = 'School required';
+        if (!selectedDepartment) newErrors.department = 'Department required';
         if (!formData.yearsTeaching) newErrors.yearsTeaching = 'Years of teaching required';
       }
     }
@@ -425,7 +479,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validateForm()) return;
     
     setLoading(true);
     setAlert(null);
@@ -440,11 +494,12 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
         await sendEmailVerification(user);
 
         const profileData = {
-          name: formData.name.trim(),
+          name: formData.name.trim() || 'User',
           email: user.email,
           role: role,
-          phone: formData.phone?.trim() || null,
-          address: formData.address?.trim() || null,
+          gender: gender?.value || null,
+          phone: formData.phone.trim() || null,
+          address: formData.address.trim() || null,
           createdAt: serverTimestamp(),
           coins: 0,
           diamonds: 0,
@@ -452,39 +507,28 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
           emailVerified: false,
         };
 
-        // Student data
         if (role === 'student') {
-          profileData.matricNumber = formData.matricNumber?.trim();
-          profileData.school = formData.school;
-          profileData.department = formData.department;
-          profileData.level = formData.level;
-        }
-        
-        // Tutor data
-        if (role === 'tutor') {
-          profileData.specialization = formData.specialization;
-          profileData.yearsExperience = parseInt(formData.yearsExperience) || 0;
-          profileData.hourlyRate = parseInt(formData.hourlyRate) || 0;
-          profileData.qualification = formData.qualification;
-        }
-        
-        // Lecturer data
-        if (role === 'lecturer') {
-          profileData.staffId = formData.staffId?.trim();
-          profileData.school = formData.school;
-          profileData.faculty = formData.faculty;
-          profileData.department = formData.department || null;
-          profileData.academicRank = formData.academicRank;
-          profileData.yearsTeaching = parseInt(formData.yearsTeaching) || 0;
-          profileData.researchArea = formData.researchArea?.trim() || null;
+          profileData.matricNumber = formData.matricNumber.trim() || null;
+          profileData.school = selectedSchool?.label || formData.school;
+          profileData.faculty = selectedFaculty?.label || formData.faculty;
+          profileData.department = selectedDepartment?.label || formData.department;
+        } else if (role === 'tutor') {
+          profileData.specialization = selectedSpecialization?.label || formData.specialization;
+          profileData.yearsExperience = Number(formData.yearsExperience) || 0;
+        } else if (role === 'lecturer') {
+          profileData.title = formData.title.trim() || null;
+          profileData.school = selectedSchool?.label || formData.school;
+          profileData.department = selectedDepartment?.label || formData.department;
+          profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
         }
 
-        await setDoc(doc(db, 'profiles', user.uid), profileData);
+        const profileRef = doc(db, 'profiles', user.uid);
+        await setDoc(profileRef, profileData);
 
         const userProfile = {
           id: user.uid,
           email: user.email,
-          name: formData.name.trim(),
+          name: formData.name.trim() || 'User',
           role: role,
           photoURL: user.photoURL || null,
           coins: 0,
@@ -493,11 +537,8 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
         };
         
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        showAlert('success', 'Account Created!', `Welcome! Please check your email to verify your account.`);
-        setTimeout(() => {
-          if (onClose) onClose();
-          navigate('/dashboard');
-        }, 2000);
+        showAlert('success', 'Account Created!', `Welcome to WE CONNECT! Please check your email to verify your account.`);
+        setTimeout(() => handleAuthSuccess(userProfile), 2000);
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
@@ -509,26 +550,58 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
           return;
         }
         
-        const profileDoc = await getDoc(doc(db, 'profiles', user.uid));
-        const userProfile = {
-          id: user.uid,
-          email: user.email,
-          ...profileDoc.data()
-        };
+        const profileRef = doc(db, 'profiles', user.uid);
+        const profileDoc = await getDoc(profileRef);
+        let userProfile;
+        
+        if (profileDoc.exists()) {
+          const profileData = profileDoc.data();
+          userProfile = {
+            id: user.uid,
+            email: user.email,
+            name: profileData.name || user.displayName || 'User',
+            role: profileData.role || 'student',
+            photoURL: user.photoURL || profileData.photoURL,
+            coins: profileData.coins || 0,
+            diamonds: profileData.diamonds || 0,
+            emailVerified: user.emailVerified,
+          };
+        } else {
+          const defaultProfile = {
+            name: user.displayName || 'User',
+            email: user.email,
+            role: 'student',
+            createdAt: serverTimestamp(),
+            coins: 0,
+            diamonds: 0,
+            photoURL: user.photoURL || null,
+            emailVerified: user.emailVerified,
+          };
+          await setDoc(profileRef, defaultProfile);
+          userProfile = {
+            id: user.uid,
+            email: user.email,
+            name: defaultProfile.name,
+            role: defaultProfile.role,
+            coins: 0,
+            diamonds: 0,
+            emailVerified: user.emailVerified,
+          };
+        }
         
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        triggerCelebration();
-        
-        if (onLoginSuccess) onLoginSuccess(userProfile);
-        if (onClose) onClose();
-        navigate('/dashboard');
+        showAlert('success', 'Welcome Back!', `Hello ${userProfile.name}, you have successfully signed in.`);
+        setTimeout(() => handleAuthSuccess(userProfile), 500);
       }
     } catch (error) {
-      console.error('Auth error:', error);
-      let message = 'Authentication failed. Please try again.';
-      let title = 'Error';
+      let message = 'An error occurred. Please try again.';
+      let title = 'Authentication Failed';
       
       switch (error.code) {
+        case 'auth/invalid-credential':
+          message = 'The email or password you entered is incorrect.';
+          title = 'Invalid Credentials';
+          break;
         case 'auth/email-already-in-use':
           message = 'This email is already registered. Please sign in instead.';
           title = 'Email Already Exists';
@@ -538,16 +611,8 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
           title = 'Account Not Found';
           break;
         case 'auth/wrong-password':
-          message = 'Incorrect password. Please try again.';
+          message = 'Incorrect password. Please try again or click "Forgot Password".';
           title = 'Wrong Password';
-          break;
-        case 'auth/invalid-credential':
-          message = 'Invalid email or password.';
-          title = 'Invalid Credentials';
-          break;
-        case 'auth/weak-password':
-          message = 'Password should be at least 6 characters.';
-          title = 'Weak Password';
           break;
         default:
           message = error.message || 'Authentication failed.';
@@ -558,249 +623,207 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
     }
   };
 
-  const handleGoogle = async () => {
-    setLoading(true);
+  const toggleMode = () => {
+    setIsLogin(!isLogin);
+    setShowResetPassword(false);
+    setResetSent(false);
+    setResetEmail('');
     setAlert(null);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileDoc = await getDoc(profileRef);
-      
-      if (!profileDoc.exists()) {
-        await setDoc(profileRef, {
-          name: user.displayName || 'User',
-          email: user.email,
-          role: 'student',
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-          photoURL: user.photoURL || null,
-        });
-      }
-      
-      const profileData = profileDoc.exists() ? profileDoc.data() : {};
-      const userProfile = {
-        id: user.uid,
-        email: user.email,
-        name: profileData.name || user.displayName || 'User',
-        role: profileData.role || 'student',
-        photoURL: user.photoURL || profileData.photoURL,
-        coins: profileData.coins || 0,
-        diamonds: profileData.diamonds || 0,
-        emailVerified: user.emailVerified,
-      };
-      
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      triggerCelebration();
-      
-      if (onLoginSuccess) onLoginSuccess(userProfile);
-      if (onClose) onClose();
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Google sign in error:', error);
-      let message = 'Google sign-in failed. Please try again.';
-      if (error.code === 'auth/popup-closed-by-user') {
-        message = 'Sign-in was cancelled. Please try again.';
-      } else if (error.code === 'auth/network-request-failed') {
-        message = 'Network error. Please check your internet connection.';
-      }
-      showAlert('error', 'Google Sign In Failed', message);
-    } finally {
-      setLoading(false);
-    }
+    setActiveStep(1);
+    setGender(null);
+    setSelectedSchool(null);
+    setSelectedFaculty(null);
+    setSelectedDepartment(null);
+    setSelectedSpecialization(null);
+    setFormData({
+      name: '',
+      matricNumber: '',
+      school: '',
+      faculty: '',
+      department: '',
+      specialization: '',
+      yearsExperience: '',
+      title: '',
+      yearsTeaching: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      phone: '',
+      address: '',
+    });
+    setErrors({});
   };
 
-  const handleReset = async (e) => {
-    e.preventDefault();
-    if (!resetEmail) {
-      showAlert('error', 'Error', 'Email address required');
-      return;
-    }
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, resetEmail);
-      setResetSent(true);
-      showAlert('success', 'Reset Email Sent', `Check ${resetEmail} for reset link`);
-    } catch (error) {
-      let message = 'Could not send reset email.';
-      if (error.code === 'auth/user-not-found') {
-        message = 'No account found with this email.';
-      }
-      showAlert('error', 'Reset Failed', message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Render role-specific fields
-  const renderRoleFields = () => {
+  const renderRoleSpecificFields = () => {
     if (role === 'student') {
       return (
-        <div className="space-y-4">
-          <FormInput 
-            icon={Hash} 
-            label="Matric Number" 
-            name="matricNumber" 
-            value={formData.matricNumber} 
-            onChange={handleChange} 
-            error={errors.matricNumber} 
-            required 
-            placeholder="e.g., 2021/123456"
+        <>
+          <MobileInput
+            icon={Hash}
+            label="Matric Number"
+            type="text"
+            name="matricNumber"
+            value={formData.matricNumber}
+            onChange={handleInputChange}
+            error={errors.matricNumber}
+            required
           />
-          <FormSelect 
-            icon={School} 
-            label="School/University" 
-            options={universities} 
-            value={formData.school} 
-            onChange={(v) => handleSelect('school', v)} 
-            error={errors.school} 
-            required 
-            placeholder="Select your school"
-          />
-          <FormSelect 
-            icon={BookOpen} 
-            label="Department" 
-            options={departments} 
-            value={formData.department} 
-            onChange={(v) => handleSelect('department', v)} 
-            error={errors.department} 
-            required 
-            placeholder="Select your department"
-          />
-          <FormSelect 
-            icon={Target} 
-            label="Current Level" 
-            options={levels} 
-            value={formData.level} 
-            onChange={(v) => handleSelect('level', v)} 
-            error={errors.level} 
-            required 
-            placeholder="Select your level"
-          />
-        </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+              School/University <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedSchool?.value || ''}
+              onChange={(e) => {
+                const selected = universitiesList.find(opt => opt.value === e.target.value);
+                setSelectedSchool(selected);
+              }}
+              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            >
+              <option value="">Select your school</option>
+              {universitiesList.map(uni => (
+                <option key={uni.value} value={uni.value}>{uni.label}</option>
+              ))}
+            </select>
+            {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Faculty</label>
+            <select
+              value={selectedFaculty?.value || ''}
+              onChange={(e) => {
+                const selected = facultiesList.find(opt => opt.value === e.target.value);
+                setSelectedFaculty(selected);
+              }}
+              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            >
+              <option value="">Select your faculty (optional)</option>
+              {facultiesList.map(fac => (
+                <option key={fac.value} value={fac.value}>{fac.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+              Department <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedDepartment?.value || ''}
+              onChange={(e) => {
+                const selected = departmentsList.find(opt => opt.value === e.target.value);
+                setSelectedDepartment(selected);
+              }}
+              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            >
+              <option value="">Select your department</option>
+              {departmentsList.map(dept => (
+                <option key={dept.value} value={dept.value}>{dept.label}</option>
+              ))}
+            </select>
+            {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
+          </div>
+        </>
       );
     }
     
     if (role === 'tutor') {
       return (
-        <div className="space-y-4">
-          <FormSelect 
-            icon={Star} 
-            label="Specialization" 
-            options={specializations} 
-            value={formData.specialization} 
-            onChange={(v) => handleSelect('specialization', v)} 
-            error={errors.specialization} 
-            required 
-            placeholder="Select your specialization"
+        <>
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+              Specialization <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedSpecialization?.value || ''}
+              onChange={(e) => {
+                const selected = specializationsList.find(opt => opt.value === e.target.value);
+                setSelectedSpecialization(selected);
+              }}
+              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            >
+              <option value="">Select your specialization</option>
+              {specializationsList.map(spec => (
+                <option key={spec.value} value={spec.value}>{spec.label}</option>
+              ))}
+            </select>
+            {errors.specialization && <p className="text-xs text-red-500 mt-1">{errors.specialization}</p>}
+          </div>
+          <MobileInput
+            icon={Star}
+            label="Years of Experience"
+            type="number"
+            name="yearsExperience"
+            value={formData.yearsExperience}
+            onChange={handleInputChange}
+            error={errors.yearsExperience}
+            required
           />
-          <FormInput 
-            icon={Calendar} 
-            label="Years of Experience" 
-            type="number" 
-            name="yearsExperience" 
-            value={formData.yearsExperience} 
-            onChange={handleChange} 
-            error={errors.yearsExperience} 
-            required 
-            placeholder="e.g., 3"
-          />
-          <FormInput 
-            icon={CreditCard} 
-            label="Hourly Rate (₦)" 
-            type="number" 
-            name="hourlyRate" 
-            value={formData.hourlyRate} 
-            onChange={handleChange} 
-            placeholder="e.g., 5000"
-          />
-          <FormSelect 
-            icon={Award} 
-            label="Highest Qualification" 
-            options={qualifications} 
-            value={formData.qualification} 
-            onChange={(v) => handleSelect('qualification', v)} 
-            error={errors.qualification} 
-            required 
-            placeholder="Select your qualification"
-          />
-        </div>
+        </>
       );
     }
     
     if (role === 'lecturer') {
       return (
-        <div className="space-y-4">
-          <FormInput 
-            icon={Hash} 
-            label="Staff ID" 
-            name="staffId" 
-            value={formData.staffId} 
-            onChange={handleChange} 
-            error={errors.staffId} 
-            required 
-            placeholder="e.g., UNN/STAFF/001"
+        <>
+          <MobileInput
+            icon={AwardIcon}
+            label="Title (e.g., Dr., Prof., Mr.)"
+            type="text"
+            name="title"
+            value={formData.title}
+            onChange={handleInputChange}
+            error={errors.title}
+            required
           />
-          <FormSelect 
-            icon={School} 
-            label="School/University" 
-            options={universities} 
-            value={formData.school} 
-            onChange={(v) => handleSelect('school', v)} 
-            error={errors.school} 
-            required 
-            placeholder="Select your institution"
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+              School/University <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedSchool?.value || ''}
+              onChange={(e) => {
+                const selected = universitiesList.find(opt => opt.value === e.target.value);
+                setSelectedSchool(selected);
+              }}
+              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            >
+              <option value="">Select your institution</option>
+              {universitiesList.map(uni => (
+                <option key={uni.value} value={uni.value}>{uni.label}</option>
+              ))}
+            </select>
+            {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+              Department <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedDepartment?.value || ''}
+              onChange={(e) => {
+                const selected = departmentsList.find(opt => opt.value === e.target.value);
+                setSelectedDepartment(selected);
+              }}
+              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            >
+              <option value="">Select your department</option>
+              {departmentsList.map(dept => (
+                <option key={dept.value} value={dept.value}>{dept.label}</option>
+              ))}
+            </select>
+            {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
+          </div>
+          <MobileInput
+            icon={Calendar}
+            label="Years of Teaching"
+            type="number"
+            name="yearsTeaching"
+            value={formData.yearsTeaching}
+            onChange={handleInputChange}
+            error={errors.yearsTeaching}
+            required
           />
-          <FormSelect 
-            icon={Building2} 
-            label="Faculty" 
-            options={faculties} 
-            value={formData.faculty} 
-            onChange={(v) => handleSelect('faculty', v)} 
-            error={errors.faculty} 
-            required 
-            placeholder="Select your faculty"
-          />
-          <FormSelect 
-            icon={BookOpen} 
-            label="Department" 
-            options={departments} 
-            value={formData.department} 
-            onChange={(v) => handleSelect('department', v)} 
-            placeholder="Select department (optional)"
-          />
-          <FormSelect 
-            icon={Award} 
-            label="Academic Rank" 
-            options={ranks} 
-            value={formData.academicRank} 
-            onChange={(v) => handleSelect('academicRank', v)} 
-            error={errors.academicRank} 
-            required 
-            placeholder="Select your rank"
-          />
-          <FormInput 
-            icon={Calendar} 
-            label="Years of Teaching" 
-            type="number" 
-            name="yearsTeaching" 
-            value={formData.yearsTeaching} 
-            onChange={handleChange} 
-            error={errors.yearsTeaching} 
-            required 
-            placeholder="e.g., 5"
-          />
-          <FormInput 
-            icon={Target} 
-            label="Research Area" 
-            name="researchArea" 
-            value={formData.researchArea} 
-            onChange={handleChange} 
-            placeholder="e.g., Artificial Intelligence, Renewable Energy"
-          />
-        </div>
+        </>
       );
     }
     
@@ -809,7 +832,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-indigo-900/95 via-purple-900/95 to-pink-900/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-      {/* Animated Background */}
+      {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-0 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-0 right-0 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
@@ -817,16 +840,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
       </div>
 
       <div className="relative w-full max-w-md">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute -top-3 -right-3 p-2 bg-white dark:bg-slate-800 rounded-full shadow-lg hover:scale-105 transition-all duration-200 z-50 border border-slate-200 dark:border-slate-700"
-          aria-label="Close"
-        >
-          <X size={18} className="text-slate-700 dark:text-slate-300" />
-        </button>
-
-        {/* Logo */}
+        {/* Header Logo */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg mb-3">
             <GraduationCap className="w-8 h-8 text-white" />
@@ -837,11 +851,11 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
 
         {/* Main Card */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden">
-          {/* Tabs */}
-          {!showReset && (
+          {/* Toggle Buttons */}
+          {!showResetPassword && (
             <div className="flex border-b border-slate-200 dark:border-slate-700">
               <button
-                onClick={() => { setIsLogin(true); setStep(1); }}
+                onClick={() => setIsLogin(true)}
                 className={`flex-1 py-4 text-center font-semibold transition-all relative ${
                   isLogin ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
@@ -852,7 +866,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                 )}
               </button>
               <button
-                onClick={() => { setIsLogin(false); setStep(1); setRole('student'); }}
+                onClick={() => setIsLogin(false)}
                 className={`flex-1 py-4 text-center font-semibold transition-all relative ${
                   !isLogin ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
@@ -865,7 +879,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
             </div>
           )}
 
-          <div className="p-5 max-h-[60vh] overflow-y-auto">
+          <div className="p-5 max-h-[70vh] overflow-y-auto">
             {/* Alert */}
             <AnimatePresence>
               {alert && (
@@ -880,21 +894,21 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                   }`}
                 >
                   <div className="flex items-start gap-2">
+                    {alert.type === 'error' && <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />}
+                    {alert.type === 'success' && <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />}
                     <div className="flex-1">
                       <p className="font-semibold text-sm">{alert.title}</p>
                       <p className="text-xs">{alert.message}</p>
                     </div>
-                    <button onClick={clearAlert} className="p-0.5">
-                      <X size={14} />
-                    </button>
+                    <button onClick={clearAlert}><X size={14} /></button>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Reset Password Form */}
-            {showReset ? (
-              <form onSubmit={handleReset} className="space-y-4">
+            {showResetPassword ? (
+              // Reset Password Form
+              <form onSubmit={handlePasswordReset} className="space-y-4">
                 {resetSent ? (
                   <div className="text-center py-6">
                     <div className="w-16 h-16 mx-auto bg-green-500 rounded-full flex items-center justify-center mb-4">
@@ -906,7 +920,10 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                     </p>
                     <button
                       type="button"
-                      onClick={() => { setResetSent(false); setResetEmail(''); }}
+                      onClick={() => {
+                        setResetSent(false);
+                        setResetEmail('');
+                      }}
                       className="mt-4 text-indigo-600 hover:underline text-sm"
                     >
                       Try another email
@@ -914,7 +931,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                   </div>
                 ) : (
                   <>
-                    <FormInput
+                    <MobileInput
                       icon={Mail}
                       label="Email Address"
                       type="email"
@@ -932,7 +949,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowReset(false)}
+                      onClick={() => setShowResetPassword(false)}
                       className="w-full text-center text-sm text-slate-500 hover:text-indigo-600 transition"
                     >
                       ← Back to Sign In
@@ -941,32 +958,32 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                 )}
               </form>
             ) : isLogin ? (
-              // SIGN IN FORM
+              // Login Form
               <form onSubmit={handleSubmit} className="space-y-4">
-                <FormInput
+                <MobileInput
                   icon={Mail}
                   label="Email Address"
                   type="email"
                   name="email"
                   value={formData.email}
-                  onChange={handleChange}
+                  onChange={handleInputChange}
                   error={errors.email}
                   required
                 />
                 
-                <PasswordInput
+                <MobilePasswordInput
                   icon={Lock}
                   label="Password"
                   name="password"
                   value={formData.password}
-                  onChange={handleChange}
+                  onChange={handleInputChange}
                   error={errors.password}
                   required
                 />
                 
                 <button
                   type="button"
-                  onClick={() => setShowReset(true)}
+                  onClick={() => setShowResetPassword(true)}
                   className="text-sm text-indigo-600 hover:text-indigo-700 text-right block w-full"
                 >
                   Forgot Password?
@@ -992,7 +1009,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                 
                 <button
                   type="button"
-                  onClick={handleGoogle}
+                  onClick={handleGoogleSignIn}
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
                 >
@@ -1002,105 +1019,127 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                 
                 <p className="text-center text-sm text-slate-600 dark:text-slate-400">
                   Don't have an account?{' '}
-                  <button type="button" onClick={() => { setIsLogin(false); setStep(1); setRole('student'); }} className="font-semibold text-indigo-600 hover:text-indigo-700">
+                  <button type="button" onClick={toggleMode} className="font-semibold text-indigo-600 hover:text-indigo-700">
                     Sign up
                   </button>
                 </p>
               </form>
             ) : (
-              // SIGN UP FORM
+              // Sign Up Form - Step by Step with All Fields
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Role Selection */}
-                <div>
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">I am a</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <RoleCard
-                      icon={GraduationCap}
-                      label="Student"
-                      isSelected={role === 'student'}
-                      onClick={() => { setRole('student'); setStep(1); }}
-                      color="indigo"
-                    />
-                    <RoleCard
-                      icon={Briefcase}
-                      label="Tutor"
-                      isSelected={role === 'tutor'}
-                      onClick={() => { setRole('tutor'); setStep(1); }}
-                      color="purple"
-                    />
-                    <RoleCard
-                      icon={Award}
-                      label="Lecturer"
-                      isSelected={role === 'lecturer'}
-                      onClick={() => { setRole('lecturer'); setStep(1); }}
-                      color="pink"
-                    />
-                  </div>
-                </div>
-
-                {/* Step 1: Common Fields */}
-                {step === 1 && (
+                {/* Step 1: Basic Info + Role Selection */}
+                {activeStep === 1 && (
                   <>
-                    <FormInput
+                    {/* Role Selection Cards - RESTORED! */}
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">I am a</label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <RoleCard
+                          icon={GraduationCap}
+                          label="Student"
+                          isSelected={role === 'student'}
+                          onClick={() => setRole('student')}
+                          color="indigo"
+                        />
+                        <RoleCard
+                          icon={Briefcase}
+                          label="Tutor"
+                          isSelected={role === 'tutor'}
+                          onClick={() => setRole('tutor')}
+                          color="purple"
+                        />
+                        <RoleCard
+                          icon={Award}
+                          label="Lecturer"
+                          isSelected={role === 'lecturer'}
+                          onClick={() => setRole('lecturer')}
+                          color="pink"
+                        />
+                      </div>
+                    </div>
+                    
+                    <MobileInput
                       icon={User}
                       label="Full Name"
+                      type="text"
                       name="name"
                       value={formData.name}
-                      onChange={handleChange}
+                      onChange={handleInputChange}
                       error={errors.name}
                       required
-                      placeholder="Enter your full name"
                     />
-                    <FormInput
+                    
+                    <MobileInput
                       icon={Mail}
                       label="Email Address"
                       type="email"
                       name="email"
                       value={formData.email}
-                      onChange={handleChange}
+                      onChange={handleInputChange}
                       error={errors.email}
                       required
-                      placeholder="you@example.com"
                     />
-                    <PasswordInput
+                    
+                    <MobilePasswordInput
                       icon={Lock}
                       label="Password"
                       name="password"
                       value={formData.password}
-                      onChange={handleChange}
+                      onChange={handleInputChange}
                       error={errors.password}
                       required
                     />
-                    <PasswordInput
+                    
+                    <MobilePasswordInput
                       icon={Lock}
                       label="Confirm Password"
                       name="confirmPassword"
                       value={formData.confirmPassword}
-                      onChange={handleChange}
+                      onChange={handleInputChange}
                       error={errors.confirmPassword}
                       required
                     />
-                    <FormInput
+                    
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Gender (Optional)</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {genderOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setGender(opt)}
+                            className={`py-2 rounded-lg border transition-all ${
+                              gender?.value === opt.value
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-600'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <MobileInput
                       icon={Smartphone}
                       label="Phone Number (Optional)"
                       type="tel"
                       name="phone"
                       value={formData.phone}
-                      onChange={handleChange}
-                      placeholder="+234 123 456 7890"
+                      onChange={handleInputChange}
                     />
-                    <FormInput
-                      icon={MapPin}
+                    
+                    <MobileTextArea
+                      icon={Home}
                       label="Address (Optional)"
                       name="address"
                       value={formData.address}
-                      onChange={handleChange}
-                      placeholder="Your address"
+                      onChange={handleInputChange}
                     />
                     
                     <button
                       type="button"
-                      onClick={() => setStep(2)}
+                      onClick={() => setActiveStep(2)}
                       className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
                     >
                       Continue
@@ -1108,17 +1147,17 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                     </button>
                   </>
                 )}
-
+                
                 {/* Step 2: Role-Specific Fields */}
-                {step === 2 && (
+                {activeStep === 2 && (
                   <>
-                    {renderRoleFields()}
+                    {renderRoleSpecificFields()}
                     
                     <div className="flex gap-3">
                       <button
                         type="button"
-                        onClick={() => setStep(1)}
-                        className="flex-1 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                        onClick={() => setActiveStep(1)}
+                        className="flex-1 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-medium"
                       >
                         Back
                       </button>
@@ -1133,9 +1172,9 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                     </div>
                   </>
                 )}
-
+                
                 {/* Social Login - Only on Step 1 */}
-                {step === 1 && (
+                {activeStep === 1 && (
                   <>
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center">
@@ -1148,7 +1187,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                     
                     <button
                       type="button"
-                      onClick={handleGoogle}
+                      onClick={handleGoogleSignIn}
                       disabled={loading}
                       className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
                     >
@@ -1158,7 +1197,7 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
                     
                     <p className="text-center text-sm text-slate-600 dark:text-slate-400">
                       Already have an account?{' '}
-                      <button type="button" onClick={() => { setIsLogin(true); setStep(1); }} className="font-semibold text-indigo-600 hover:text-indigo-700">
+                      <button type="button" onClick={toggleMode} className="font-semibold text-indigo-600 hover:text-indigo-700">
                         Sign in
                       </button>
                     </p>
@@ -1168,6 +1207,14 @@ function AuthForm({ initialMode = 'signup', onClose, onLoginSuccess }) {
             )}
           </div>
         </div>
+        
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute -top-12 right-0 p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition"
+        >
+          <X size={20} className="text-white" />
+        </button>
       </div>
     </div>
   );
