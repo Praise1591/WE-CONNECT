@@ -1,4 +1,4 @@
-// components/AuthForm.jsx - Complete with Role-Based Dynamic Forms
+// components/Dashboard/AuthForm.jsx - Fixed Import Path
 import React, { useState, useEffect } from 'react';
 import {
   Mail, Lock, User, Eye, EyeOff, Sparkles, BookOpen,
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext'; // FIXED: Changed from '../contexts/AuthContext' to '../../contexts/AuthContext'
 
 const ROLES = [
   { 
@@ -375,7 +375,7 @@ function AuthForm() {
             Matriculation Number
           </label>
           <div className="relative">
-            <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <HashIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               name="matricNumber"
@@ -502,7 +502,7 @@ function AuthForm() {
             Hourly Rate (USD)
           </label>
           <div className="relative">
-            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <DollarSignIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="number"
               name="hourlyRate"
@@ -740,7 +740,7 @@ function AuthForm() {
             Office Hours
           </label>
           <div className="relative">
-            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <ClockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               name="officeHours"
@@ -1068,7 +1068,7 @@ function AuthForm() {
 }
 
 // Helper components for icons
-const Hash = ({ size = 16, className = "" }) => (
+const HashIcon = ({ size = 16, className = "" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <line x1="4" y1="9" x2="20" y2="9" />
     <line x1="4" y1="15" x2="20" y2="15" />
@@ -1077,10 +1077,17 @@ const Hash = ({ size = 16, className = "" }) => (
   </svg>
 );
 
-const DollarSign = ({ size = 16, className = "" }) => (
+const DollarSignIcon = ({ size = 16, className = "" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <line x1="12" y1="1" x2="12" y2="23" />
     <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+  </svg>
+);
+
+const ClockIcon = ({ size = 16, className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
   </svg>
 );
 
