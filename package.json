@@ -1,5 +1,5 @@
 {
-  "name": "web2.jsx",
+  "name": "we-connect-edu",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -72,14 +72,14 @@
     "globals": "^16.4.0",
     "vite": "^7.1.7"
   },
-  "description": "This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.",
+  "description": "WE CONNECT EDU - Nigeria's platform for students to share academic resources, connect with peers, and monetize their knowledge.",
   "main": "eslint.config.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Praise1591/WE-CONNECT.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["education", "students", "nigeria", "learning", "tutoring"],
+  "author": "WE CONNECT EDU",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/Praise1591/WE-CONNECT/issues"

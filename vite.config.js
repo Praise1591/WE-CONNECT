@@ -35,4 +35,11 @@ export default defineConfig({
       },
     },
   },
+
+  // Add this to define environment variables
+  define: {
+    'import.meta.env.VITE_APP_NAME': JSON.stringify('WE CONNECT EDU'),
+    'import.meta.env.VITE_APP_DESCRIPTION': JSON.stringify('Share Knowledge, Earn & Grow'),
+    'import.meta.env.VITE_APP_URL': JSON.stringify('https://www.weconnectedu.com.ng'),
+  },
 })

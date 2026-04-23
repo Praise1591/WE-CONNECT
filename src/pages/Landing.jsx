@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet';
 import { 
   ArrowRight, BookOpen, Users, Award, Shield, Zap, 
   GraduationCap, Briefcase, Star, TrendingUp, 
@@ -81,10 +82,10 @@ function Landing() {
 
   // Realistic stats - updated for launched platform
   const stats = [
-    { value: "", label: "Active Users", icon: <Users className="w-4 h-4 sm:w-5 sm:h-5" />, note: "And growing daily" },
-    { value: "", label: "Study Materials", icon: <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />, note: "Shared by students" },
-    { value: "", label: "Expert Tutors", icon: <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />, note: "Ready to help" },
-    { value: "", label: "Rewards Paid", icon: <Coins className="w-4 h-4 sm:w-5 sm:h-5" />, note: "To our community" }
+    { value: "500+", label: "Active Users", icon: <Users className="w-4 h-4 sm:w-5 sm:h-5" />, note: "And growing daily" },
+    { value: "2,000+", label: "Study Materials", icon: <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />, note: "Shared by students" },
+    { value: "50+", label: "Expert Tutors", icon: <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />, note: "Ready to help" },
+    { value: "₦150K+", label: "Rewards Paid", icon: <Coins className="w-4 h-4 sm:w-5 sm:h-5" />, note: "To our community" }
   ];
 
   const faqs = [
@@ -113,6 +114,18 @@ function Landing() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-indigo-50/30 to-purple-50/30 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
       
+      {/* Browser Title and Meta Tags */}
+      <Helmet>
+        <title>WE CONNECT EDU | Share Knowledge, Earn & Grow</title>
+        <meta name="description" content="Nigeria's platform for students to share academic resources, connect with peers, and monetize their knowledge. Join WE CONNECT EDU today!" />
+        <meta name="keywords" content="WE CONNECT, WE CONNECT EDU, Nigerian students, academic resources, study materials, online tutoring, earn money, Nigeria education" />
+        <meta property="og:title" content="WE CONNECT EDU - Share Knowledge, Earn & Grow" />
+        <meta property="og:description" content="Nigeria's leading platform for students to connect, learn, and earn together." />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:title" content="WE CONNECT EDU - Share Knowledge, Earn & Grow" />
+        <meta name="twitter:description" content="Join Nigeria's fastest-growing academic community today!" />
+      </Helmet>
+
       {/* Navigation Bar */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -123,7 +136,7 @@ function Landing() {
                 <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <span className="text-base sm:text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                WE CONNECT
+                WE CONNECT EDU
               </span>
               {/* CAC Badge - hidden on very small screens */}
               <div className="hidden lg:flex items-center gap-1 ml-2 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 rounded-full">
@@ -194,7 +207,7 @@ function Landing() {
             >
               <div className="inline-flex items-center gap-2 px-2 py-1 sm:px-3 sm:py-1 bg-indigo-100 dark:bg-indigo-900/30 rounded-full mb-4 sm:mb-6">
                 <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-600" />
-                <span className="text-xs sm:text-sm text-indigo-600 dark:text-indigo-400 font-medium">Welcome to WE CONNECT</span>
+                <span className="text-xs sm:text-sm text-indigo-600 dark:text-indigo-400 font-medium">Welcome to WE CONNECT EDU</span>
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight">
                 <span className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
@@ -265,7 +278,7 @@ function Landing() {
                 </div>
                 <div>
                   <p className="text-[10px] sm:text-xs text-slate-500">Active Users</p>
-                  <p className="text-sm sm:text-xl font-bold text-slate-800 dark:text-white"></p>
+                  <p className="text-sm sm:text-xl font-bold text-slate-800 dark:text-white">500+</p>
                 </div>
               </div>
               <div className="absolute -bottom-3 -left-3 sm:-bottom-6 sm:-left-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg p-2 sm:p-3 flex items-center gap-2 sm:gap-3">
@@ -274,7 +287,7 @@ function Landing() {
                 </div>
                 <div>
                   <p className="text-[10px] sm:text-xs text-slate-500">Rewards Paid</p>
-                  <p className="text-sm sm:text-xl font-bold text-slate-800 dark:text-white"></p>
+                  <p className="text-sm sm:text-xl font-bold text-slate-800 dark:text-white">₦150K+</p>
                 </div>
               </div>
             </motion.div>
@@ -351,7 +364,7 @@ function Landing() {
               How It Works
             </h2>
             <p className="text-base sm:text-lg md:text-xl text-slate-600 dark:text-slate-400">
-              Simple steps to start your journey with WE CONNECT
+              Simple steps to start your journey with WE CONNECT EDU
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6 lg:gap-8">
@@ -460,7 +473,7 @@ function Landing() {
               Ready to Start Your Journey?
             </h2>
             <p className="text-base sm:text-lg md:text-xl text-white/90 mb-6 sm:mb-8 px-2">
-              Join thousands of students already using WE CONNECT
+              Join thousands of students already using WE CONNECT EDU
             </p>
             <button
               onClick={() => openAuthModal('signup')}
@@ -485,7 +498,7 @@ function Landing() {
                 <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center">
                   <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
-                <span className="text-base sm:text-xl font-bold">WE CONNECT</span>
+                <span className="text-base sm:text-xl font-bold">WE CONNECT EDU</span>
               </div>
               <p className="text-slate-400 text-xs sm:text-sm">Connecting Nigerian students for academic excellence and financial empowerment.</p>
               <div className="mt-2 sm:mt-3 inline-flex items-center gap-1.5 sm:gap-2 px-2 py-1 sm:px-3 sm:py-1.5 bg-green-900/30 rounded-full border border-green-800">
@@ -524,7 +537,7 @@ function Landing() {
             </div>
           </div>
           <div className="border-t border-slate-800 pt-6 sm:pt-8 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
-            <p className="text-slate-400 text-[10px] sm:text-xs text-center sm:text-left">&copy; 2024 WE CONNECT. All rights reserved. | CAC Registered Nigeria</p>
+            <p className="text-slate-400 text-[10px] sm:text-xs text-center sm:text-left">&copy; 2025 WE CONNECT EDU. All rights reserved. | CAC Registered Nigeria</p>
             <div className="flex gap-3 sm:gap-4">
               <a href="#" className="w-8 h-8 sm:w-10 sm:h-10 bg-slate-800 rounded-full flex items-center justify-center hover:bg-slate-700 transition">
                 <Twitter className="w-4 h-4 sm:w-5 sm:h-5" />
