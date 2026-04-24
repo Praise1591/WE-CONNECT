@@ -1,4 +1,4 @@
-// src/components/Dashboard/AuthForm.jsx - Mobile-First with All Fields and Role Selection
+// src/components/Dashboard/AuthForm.jsx - Fixed Google Sign-In
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
@@ -7,18 +7,18 @@ import {
   Send, Key, RefreshCw, UserPlus, LogIn,
   ChevronRight, ChevronLeft, Hash, Building2, User,
   Smartphone, Globe, Zap, BookOpen, Video, FileText, ScrollText, Users, Star,
-  Calendar, MapPin, School, BriefcaseBusiness, Award as AwardIcon,
+  Calendar, MapPin, School, BriefcaseBusiness, AwardIcon,
   Target, Layers, BookMarked, Library, PenTool, Microscope
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-// Firebase imports
+// Firebase imports - FIXED
 import { 
   auth, 
   db, 
-  GoogleAuthProvider,
+  googleProvider,
   signInWithPopup,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -285,8 +285,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
 
-  const googleProvider = new GoogleAuthProvider();
-
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setErrors({ ...errors, [e.target.name]: '' });
@@ -376,19 +374,37 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
   };
 
+  // FIXED: Completely rewritten Google Sign-In handler
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setAlert(null);
+    
+    // Check if popups are blocked
     try {
+      const testWindow = window.open('about:blank', '_blank');
+      if (!testWindow || testWindow.closed || typeof testWindow.closed === 'undefined') {
+        showAlert('error', 'Popup Blocked', 'Please allow popups for this website and click the Google button again.');
+        setLoading(false);
+        return;
+      }
+      testWindow.close();
+    } catch (popupError) {
+      console.warn('Popup check failed:', popupError);
+    }
+    
+    try {
+      console.log("Starting Google sign-in...");
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
+      console.log("Google sign-in successful:", user.email);
+      
       const profileRef = doc(db, 'profiles', user.uid);
       const profileDoc = await getDoc(profileRef);
       let userProfile;
 
       if (!profileDoc.exists()) {
         const profileData = {
-          name: user.displayName || 'User',
+          name: user.displayName || user.email?.split('@')[0] || 'User',
           email: user.email,
           role: 'student',
           photoURL: user.photoURL || null,
@@ -401,7 +417,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         userProfile = {
           id: user.uid,
           email: user.email,
-          name: user.displayName || 'User',
+          name: user.displayName || user.email?.split('@')[0] || 'User',
           role: 'student',
           photoURL: user.photoURL || null,
           coins: 0,
@@ -413,7 +429,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         userProfile = {
           id: user.uid,
           email: user.email,
-          name: profileData.name || user.displayName || 'User',
+          name: profileData.name || user.displayName || user.email?.split('@')[0] || 'User',
           role: profileData.role || 'student',
           photoURL: user.photoURL || profileData.photoURL,
           coins: profileData.coins || 0,
@@ -425,19 +441,42 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
       localStorage.setItem('userProfile', JSON.stringify(userProfile));
       showAlert('success', 'Welcome!', `Signed in successfully as ${userProfile.name}`);
       setTimeout(() => handleAuthSuccess(userProfile), 500);
+      
     } catch (error) {
+      console.error("Google Sign-In Error Details:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+      
       let message = 'Google sign-in failed. Please try again.';
       let title = 'Authentication Failed';
-      if (error.code === 'auth/popup-closed-by-user') {
-        message = 'Sign-in was cancelled. Please try again.';
-        title = 'Cancelled';
-      } else if (error.code === 'auth/network-request-failed') {
-        message = 'Network error. Please check your internet connection.';
-        title = 'Network Error';
+      
+      // Detailed error handling
+      if (error.code === 'auth/unauthorized-domain') {
+        message = 'This domain is not authorized for Google sign-in. Please contact support.';
+        title = 'Domain Not Authorized';
+      } else if (error.code === 'auth/operation-not-allowed') {
+        message = 'Google sign-in is not enabled. Please sign up with email instead.';
+        title = 'Sign-in Method Disabled';
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        message = 'You closed the sign-in window. Please try again.';
+        title = 'Sign-in Cancelled';
       } else if (error.code === 'auth/popup-blocked') {
-        message = 'Popup was blocked. Please allow popups for this site.';
+        message = 'Pop-up was blocked by your browser. Please allow popups for this site.';
         title = 'Popup Blocked';
+      } else if (error.code === 'auth/network-request-failed') {
+        message = 'Network connection failed. Please check your internet and try again.';
+        title = 'Network Error';
+      } else if (error.code === 'auth/internal-error') {
+        message = 'Internal authentication error. Please try email sign-in instead.';
+        title = 'Configuration Error';
+      } else if (error.code === 'auth/invalid-api-key') {
+        message = 'Firebase configuration error. Please contact support.';
+        title = 'Configuration Error';
+      } else if (error.message && error.message.includes('firebase')) {
+        message = 'Firebase service error. Please try again or use email sign-in.';
+        title = 'Service Error';
       }
+      
       showAlert('error', title, message);
     } finally {
       setLoading(false);
@@ -537,7 +576,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         };
         
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        showAlert('success', 'Account Created!', `Welcome to WE CONNECT! Please check your email to verify your account.`);
+        showAlert('success', 'Account Created!', `Welcome to WE CONNECT EDU! Please check your email to verify your account.`);
         setTimeout(() => handleAuthSuccess(userProfile), 2000);
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -845,7 +884,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg mb-3">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">WE CONNECT</h1>
+          <h1 className="text-2xl font-bold text-white">WE CONNECT EDU</h1>
           <p className="text-white/70 text-sm mt-1">Learn. Connect. Earn.</p>
         </div>
 
@@ -1030,7 +1069,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 {/* Step 1: Basic Info + Role Selection */}
                 {activeStep === 1 && (
                   <>
-                    {/* Role Selection Cards - RESTORED! */}
+                    {/* Role Selection Cards */}
                     <div>
                       <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">I am a</label>
                       <div className="grid grid-cols-3 gap-3">

@@ -1,4 +1,4 @@
-// Connect.jsx - Enhanced Chat with Beautiful Block Modal
+// Connect.jsx - Fixed Feed with Facebook-style Media Upload & Display
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -10,11 +10,12 @@ import {
   Bookmark, Share2, AtSign, Mic, Phone,
   Video, MoreVertical, CheckCircle, XCircle, Clock, Filter,
   TrendingUp, Flame, Crown, Coffee, Rocket, Palette,
-  Reply, Download, ExternalLink, File, X, AlertTriangle, Shield, Ban
+  Reply, Download, ExternalLink, File, X, AlertTriangle, Shield, Ban,
+  Smile, MapPin, Calendar, Globe, SendHorizontal
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
-import { auth, db, storage } from '@/firebase';
+import { auth, db, storage } from '../../firebase';
 import {
   collection, query, where, orderBy, onSnapshot, doc, getDoc, setDoc,
   updateDoc, deleteDoc, addDoc, serverTimestamp, increment,
@@ -55,6 +56,7 @@ const Connect = () => {
   const [acceptingId, setAcceptingId] = useState(null);
   const [selectedPostId, setSelectedPostId] = useState(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [uploadingPost, setUploadingPost] = useState(false);
   
   // New states for chat features
   const [replyingTo, setReplyingTo] = useState(null);
@@ -64,6 +66,8 @@ const Connect = () => {
   const [selectedMediaFile, setSelectedMediaFile] = useState(null);
   const [selectedMediaType, setSelectedMediaType] = useState(null);
   const [showMediaViewer, setShowMediaViewer] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [postPrivacy, setPostPrivacy] = useState('public');
   
   // Block modal state
   const [showBlockModal, setShowBlockModal] = useState(false);
@@ -73,6 +77,7 @@ const Connect = () => {
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const postInputRef = useRef(null);
 
   const minSwipeDistance = 50;
 
@@ -118,7 +123,6 @@ const Connect = () => {
         setEditedName(profile.name);
         setProfilePhotoPreview(profile.photoURL);
         
-        // Load blocked by users - with error handling for missing collection
         try {
           const blockedByRef = collection(db, `users/${firebaseUser.uid}/blockedBy`);
           const blockedBySnap = await getDocs(blockedByRef);
@@ -246,7 +250,6 @@ const Connect = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, selectedChat]);
 
-  // Initialize blockedBy collection if needed
   useEffect(() => {
     if (!currentUser?.id) return;
     
@@ -272,7 +275,6 @@ const Connect = () => {
     initBlockedBy();
   }, [currentUser?.id]);
 
-  // Handler functions
   const formatMessageTime = (timestamp) => {
     if (!timestamp?.toDate) return '';
     const date = timestamp.toDate();
@@ -284,38 +286,60 @@ const Connect = () => {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
+  // FIXED: Facebook-style post creation
   const handleNewPost = async () => {
-    if (!newPost.trim() && !mediaFile) return toast.error('Post cannot be empty');
-    if (!auth.currentUser) return toast.error('Please sign in');
-
-    let mediaUrl = null;
-    let mType = null;
-    if (mediaFile) {
-      const sRef = storageRef(storage, `posts/${currentUser.id}/${Date.now()}_${mediaFile.name}`);
-      await uploadBytes(sRef, mediaFile);
-      mediaUrl = await getDownloadURL(sRef);
-      mType = mediaFile.type.startsWith('video') ? 'video' : 'image';
+    if (!newPost.trim() && !mediaFile) {
+      toast.error('Please write something or add media');
+      return;
+    }
+    if (!auth.currentUser) {
+      toast.error('Please sign in');
+      return;
     }
 
+    setUploadingPost(true);
+    let mediaUrl = null;
+    let mType = null;
+
     try {
+      if (mediaFile) {
+        const fileExt = mediaFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+        const sRef = storageRef(storage, `posts/${currentUser.id}/${fileName}`);
+        
+        const uploadTask = await uploadBytes(sRef, mediaFile);
+        mediaUrl = await getDownloadURL(sRef);
+        mType = mediaFile.type.startsWith('video') ? 'video' : 'image';
+      }
+
       await addDoc(collection(db, 'posts'), {
-        user: { id: currentUser.id, name: currentUser.name || 'User', photoURL: currentUser.photoURL },
-        content: newPost.trim(),
+        user: { 
+          id: currentUser.id, 
+          name: currentUser.name || 'User', 
+          photoURL: currentUser.photoURL 
+        },
+        content: newPost.trim() || null,
         media: mediaUrl,
         mediaType: mType,
         likes: 0,
         likesCount: 0,
         comments: [],
-        createdAt: serverTimestamp()
+        commentsCount: 0,
+        createdAt: serverTimestamp(),
+        privacy: postPrivacy
       });
+      
       setNewPost('');
       setMediaPreview(null);
       setMediaType(null);
       setMediaFile(null);
-      toast.success('Posted!');
+      setPostPrivacy('public');
+      toast.success('Post shared!');
     } catch (err) {
       console.error("Post error:", err);
-      toast.error("Failed to post");
+      toast.error("Failed to post. Please try again.");
+    } finally {
+      setUploadingPost(false);
     }
   };
 
@@ -339,16 +363,22 @@ const Connect = () => {
 
   const handleComment = async (postId) => {
     const comment = commentInputs[postId]?.trim();
-    if (!comment) return toast.error('Comment required');
+    if (!comment) {
+      toast.error('Write a comment first');
+      return;
+    }
 
     try {
       await updateDoc(doc(db, 'posts', postId), {
         comments: arrayUnion({
+          id: Date.now().toString(),
           user: currentUser.name || 'User',
           userId: currentUser.id,
+          userPhoto: currentUser.photoURL,
           content: comment,
           timestamp: serverTimestamp()
-        })
+        }),
+        commentsCount: increment(1)
       });
       setCommentInputs(prev => ({ ...prev, [postId]: '' }));
       toast.success('Comment added');
@@ -357,9 +387,18 @@ const Connect = () => {
     }
   };
 
+  // FIXED: Better media upload handler with preview
   const handleMediaUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    // Validate file size (max 50MB for video, 10MB for image)
+    const maxSize = file.type.startsWith('video') ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error(`File too large. Max ${maxSize / (1024 * 1024)}MB`);
+      return;
+    }
+    
     setMediaFile(file);
     const reader = new FileReader();
     reader.onload = () => {
@@ -367,6 +406,15 @@ const Connect = () => {
       setMediaType(file.type.startsWith('video') ? 'video' : 'image');
     };
     reader.readAsDataURL(file);
+    
+    // Reset file input
+    e.target.value = '';
+  };
+
+  const removeMediaPreview = () => {
+    setMediaPreview(null);
+    setMediaType(null);
+    setMediaFile(null);
   };
 
   const handleProfilePhotoUpload = (e) => {
@@ -401,26 +449,22 @@ const Connect = () => {
     }
   };
 
-  // Open block modal instead of direct alert
   const openBlockModal = (userId, userName) => {
     setUserToBlock({ id: userId, name: userName });
     setShowBlockModal(true);
   };
 
-  // Execute block from modal
   const executeBlock = async () => {
     if (!userToBlock) return;
     
     setIsBlocking(true);
     
     try {
-      // Add to blocked list
       await setDoc(doc(db, `users/${currentUser.id}/blocked`, userToBlock.id), {
         blockedAt: serverTimestamp(),
         name: userToBlock.name
       });
       
-      // Add to blockedBy list of the blocked user
       try {
         await setDoc(doc(db, `users/${userToBlock.id}/blockedBy`, currentUser.id), {
           blockedAt: serverTimestamp(),
@@ -430,7 +474,6 @@ const Connect = () => {
         console.warn('Could not add to blockedBy collection:', err.message);
       }
       
-      // Remove any existing connection
       const connectionQuery = query(
         collection(db, 'connections'),
         where('users', 'array-contains', currentUser.id),
@@ -441,13 +484,11 @@ const Connect = () => {
       connSnap.docs.forEach(doc => batch.delete(doc.ref));
       await batch.commit();
       
-      // Remove any pending connection requests
       try {
         await deleteDoc(doc(db, `users/${currentUser.id}/connectionRequestsSent`, userToBlock.id));
         await deleteDoc(doc(db, `users/${userToBlock.id}/connectionRequestsSent`, currentUser.id));
       } catch (err) {}
       
-      // Delete chat messages if exists
       const chatId = [currentUser.id, userToBlock.id].sort().join('_');
       const chatMessagesRef = collection(db, `chats/${chatId}/messages`);
       const messagesSnap = await getDocs(chatMessagesRef);
@@ -455,17 +496,14 @@ const Connect = () => {
       messagesSnap.docs.forEach(doc => deleteBatch.delete(doc.ref));
       await deleteBatch.commit();
       
-      // Delete chat room
       await deleteDoc(doc(db, 'chats', chatId)).catch(() => {});
       
-      // Remove from connections state and close chat if open
       setConnections(prev => prev.filter(id => id !== userToBlock.id));
       if (selectedChat === userToBlock.id) {
         setSelectedChat(null);
         setReplyingTo(null);
       }
       
-      // Update blockedByUsers state
       setBlockedByUsers(prev => [...prev, userToBlock.id]);
       
       toast.success(`${userToBlock.name} has been blocked`);
@@ -481,7 +519,7 @@ const Connect = () => {
 
   const handleUnblockUser = async (userId) => {
     const userToUnblock = users.find(u => u.id === userId);
-    if (!window.confirm(`Unblock ${userToUnblock?.name || 'this user'}? You'll be able to connect and chat again.`)) return;
+    if (!window.confirm(`Unblock ${userToUnblock?.name || 'this user'}?`)) return;
     
     try {
       await deleteDoc(doc(db, `users/${currentUser.id}/blocked`, userId));
@@ -492,7 +530,6 @@ const Connect = () => {
       }
       
       setBlockedByUsers(prev => prev.filter(id => id !== userId));
-      
       toast.success('User unblocked');
     } catch (err) {
       toast.error("Unblock failed: " + err.message);
@@ -799,7 +836,6 @@ const Connect = () => {
   
   const getUserById = (id) => users.find(u => u.id === id) || { name: 'Unknown', photoURL: null };
 
-  // Media viewer component
   const MediaViewer = ({ url, type, onClose }) => (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -819,7 +855,6 @@ const Connect = () => {
     </motion.div>
   );
 
-  // Beautiful Block Modal Component
   const BlockModal = () => (
     <AnimatePresence>
       {showBlockModal && userToBlock && (
@@ -838,7 +873,6 @@ const Connect = () => {
             className="relative max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header with gradient */}
             <div className="relative bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
               <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
@@ -853,19 +887,14 @@ const Connect = () => {
               </div>
             </div>
             
-            {/* Content */}
             <div className="p-6">
               <div className="flex items-center gap-4 mb-4 p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
                 <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
                   <AlertTriangle size={24} className="text-amber-600 dark:text-amber-500" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-amber-800 dark:text-amber-400">
-                    Are you sure?
-                  </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-500">
-                    You won't be able to message or connect with them
-                  </p>
+                  <p className="font-semibold text-amber-800 dark:text-amber-400">Are you sure?</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-500">You won't be able to message or connect with them</p>
                 </div>
               </div>
               
@@ -931,7 +960,296 @@ const Connect = () => {
     </AnimatePresence>
   );
 
-  // Bottom navigation component
+  // Facebook-style Post Composer Component
+  const PostComposer = () => (
+    <motion.div 
+      initial={{ scale: 0.95, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden mb-6"
+    >
+      {/* Post Input Area */}
+      <div className="p-4">
+        <div className="flex gap-3">
+          {currentUser?.photoURL ? (
+            <img src={currentUser.photoURL} className="w-10 h-10 rounded-full object-cover" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+              <User className="w-5 h-5 text-white" />
+            </div>
+          )}
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => setPostPrivacy(prev => prev === 'public' ? 'friends' : prev === 'friends' ? 'only-me' : 'public')}
+                className="flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs text-slate-600 dark:text-slate-400"
+              >
+                <Globe size={12} />
+                <span>{postPrivacy === 'public' ? 'Public' : postPrivacy === 'friends' ? 'Friends' : 'Only me'}</span>
+              </button>
+            </div>
+            <textarea
+              ref={postInputRef}
+              value={newPost}
+              onChange={e => setNewPost(e.target.value)}
+              placeholder={`What's on your mind, ${currentUser?.name?.split(' ')[0] || 'User'}?`}
+              className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-white placeholder:text-slate-400"
+              rows={mediaPreview ? 2 : 3}
+            />
+            
+            {/* Media Preview */}
+            {mediaPreview && (
+              <div className="relative mt-3 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-700">
+                <div className="relative">
+                  {mediaType === 'video' ? (
+                    <video src={mediaPreview} controls className="w-full max-h-80 object-contain" />
+                  ) : (
+                    <img src={mediaPreview} alt="preview" className="w-full max-h-80 object-contain" />
+                  )}
+                  <button 
+                    onClick={removeMediaPreview}
+                    className="absolute top-2 right-2 p-1.5 bg-black/60 rounded-full text-white hover:bg-black/80 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="p-2 text-xs text-slate-500 bg-slate-100 dark:bg-slate-700 flex items-center justify-between">
+                  <span>{mediaFile?.name}</span>
+                  <span>{mediaFile && (mediaFile.size / (1024 * 1024)).toFixed(1)} MB</span>
+                </div>
+              </div>
+            )}
+            
+            {/* Post Actions */}
+            <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+              <div className="flex gap-2">
+                <label className="cursor-pointer p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl transition-colors group">
+                  <ImageIcon size={20} className="text-green-500 group-hover:scale-110 transition-transform" />
+                  <span className="sr-only">Photo</span>
+                  <input type="file" accept="image/*" hidden onChange={handleMediaUpload} />
+                </label>
+                <label className="cursor-pointer p-2 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-xl transition-colors group">
+                  <VideoIcon size={20} className="text-purple-500 group-hover:scale-110 transition-transform" />
+                  <span className="sr-only">Video</span>
+                  <input type="file" accept="video/*" hidden onChange={handleMediaUpload} />
+                </label>
+                <button className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-xl transition-colors group">
+                  <Smile size={20} className="text-amber-500 group-hover:scale-110 transition-transform" />
+                </button>
+                <button className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors group">
+                  <MapPin size={20} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                </button>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleNewPost}
+                disabled={(!newPost.trim() && !mediaFile) || uploadingPost}
+                className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium disabled:opacity-50 hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md flex items-center gap-2"
+              >
+                {uploadingPost ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Posting...
+                  </>
+                ) : (
+                  <>
+                    <SendHorizontal size={16} />
+                    Post
+                  </>
+                )}
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  // Facebook-style Post Component
+  const PostCard = ({ post, index }) => {
+    const [showComments, setShowComments] = useState(false);
+    const [localComment, setLocalComment] = useState('');
+    const [isLiking, setIsLiking] = useState(false);
+    
+    const handleLocalLike = async () => {
+      if (isLiking) return;
+      setIsLiking(true);
+      await handleLike(post.id);
+      setIsLiking(false);
+    };
+    
+    const handleLocalComment = async () => {
+      if (!localComment.trim()) return;
+      setCommentInputs(prev => ({ ...prev, [post.id]: localComment }));
+      await handleComment(post.id);
+      setLocalComment('');
+    };
+    
+    return (
+      <motion.div
+        key={post.id}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.05 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+      >
+        {/* Post Header */}
+        <div className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            {post.user.photoURL ? (
+              <img src={post.user.photoURL} className="w-10 h-10 rounded-full object-cover cursor-pointer" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center cursor-pointer">
+                <User className="w-5 h-5 text-white" />
+              </div>
+            )}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-slate-800 dark:text-white hover:underline cursor-pointer">
+                  {post.user.name}
+                </p>
+                <span className="text-xs text-slate-400">•</span>
+                <p className="text-xs text-slate-500">
+                  {post.createdAt?.toDate?.() ? post.createdAt.toDate().toLocaleString() : 'Just now'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-slate-400">
+                <Globe size={10} />
+                <span>{post.privacy === 'public' ? 'Public' : post.privacy === 'friends' ? 'Friends' : 'Only me'}</span>
+              </div>
+            </div>
+            {post.user.id === currentUser?.id && (
+              <button 
+                onClick={() => handleDeletePost(post.id)} 
+                className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+          
+          {/* Post Content */}
+          {post.content && (
+            <p className="mb-4 text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+              {post.content}
+            </p>
+          )}
+          
+          {/* Post Media */}
+          {post.media && post.mediaType === 'image' && (
+            <div className="rounded-xl overflow-hidden mb-3 -mx-4">
+              <img 
+                src={post.media} 
+                alt="Post" 
+                className="w-full max-h-[500px] object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                onClick={() => setShowMediaViewer({ url: post.media, type: 'image' })}
+              />
+            </div>
+          )}
+          {post.media && post.mediaType === 'video' && (
+            <div className="rounded-xl overflow-hidden mb-3 -mx-4">
+              <video 
+                src={post.media} 
+                controls 
+                className="w-full max-h-[500px]"
+                onClick={() => setShowMediaViewer({ url: post.media, type: 'video' })}
+              />
+            </div>
+          )}
+          
+          {/* Post Stats */}
+          <div className="flex items-center justify-between pt-2 pb-1 text-sm text-slate-500">
+            <div className="flex items-center gap-1">
+              <Heart size={14} className="fill-red-500 text-red-500" />
+              <span>{post.likes || 0} likes</span>
+            </div>
+            <div className="flex gap-3">
+              <span>{post.comments?.length || 0} comments</span>
+            </div>
+          </div>
+          
+          {/* Post Actions */}
+          <div className="flex items-center justify-around pt-2 border-t border-slate-200 dark:border-slate-700">
+            <button 
+              onClick={handleLocalLike}
+              disabled={isLiking}
+              className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group"
+            >
+              <Heart size={20} className="group-hover:fill-red-500 group-hover:text-red-500 transition-colors" />
+              <span className="text-sm font-medium">Like</span>
+            </button>
+            <button 
+              onClick={() => setShowComments(!showComments)}
+              className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group"
+            >
+              <MessageSquare size={20} className="group-hover:text-indigo-500 transition-colors" />
+              <span className="text-sm font-medium">Comment</span>
+            </button>
+            <button className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group">
+              <Share2 size={18} className="group-hover:text-green-500 transition-colors" />
+              <span className="text-sm font-medium">Share</span>
+            </button>
+          </div>
+          
+          {/* Comments Section */}
+          {showComments && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3"
+            >
+              {post.comments?.slice(-5).reverse().map((comment, i) => (
+                <div key={i} className="flex gap-2">
+                  {comment.userPhoto ? (
+                    <img src={comment.userPhoto} className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-400 to-slate-500 flex items-center justify-center flex-shrink-0">
+                      <User size={14} className="text-white" />
+                    </div>
+                  )}
+                  <div className="flex-1 bg-slate-100 dark:bg-slate-700/50 rounded-2xl px-3 py-2">
+                    <p className="font-semibold text-sm text-slate-800 dark:text-white">{comment.user}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">{comment.content}</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {comment.timestamp?.toDate?.() ? formatMessageTime(comment.timestamp) : 'Just now'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Comment Input */}
+              <div className="flex gap-2 mt-3">
+                {currentUser?.photoURL ? (
+                  <img src={currentUser.photoURL} className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                    <User size={14} className="text-white" />
+                  </div>
+                )}
+                <div className="flex-1 flex gap-2">
+                  <input
+                    value={localComment}
+                    onChange={e => setLocalComment(e.target.value)}
+                    placeholder="Write a comment..."
+                    className="flex-1 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 focus:outline-none focus:border-indigo-500 text-sm"
+                    onKeyDown={e => e.key === 'Enter' && handleLocalComment()}
+                  />
+                  <button 
+                    onClick={handleLocalComment}
+                    disabled={!localComment.trim()}
+                    className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
+
   const BottomNav = () => (
     <motion.div 
       initial={{ y: 100 }}
@@ -974,7 +1292,6 @@ const Connect = () => {
     </motion.div>
   );
 
-  // Desktop navigation component
   const DesktopNav = () => (
     <motion.div 
       initial={{ y: -20, opacity: 0 }}
@@ -1084,169 +1401,29 @@ const Connect = () => {
             transition={{ duration: 0.3 }}
           >
             
-            {/* FEED TAB - Same structure as before */}
+            {/* FEED TAB - Facebook Style */}
             {activeTab === 'feed' && (
-              <div className="max-w-2xl mx-auto space-y-6">
-                <motion.div 
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
-                >
-                  <div className="p-5">
-                    <div className="flex gap-3">
-                      {currentUser?.photoURL ? (
-                        <img src={currentUser.photoURL} className="w-12 h-12 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                          <User className="w-6 h-6 text-white" />
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <textarea
-                          value={newPost}
-                          onChange={e => setNewPost(e.target.value)}
-                          placeholder={`What's happening, ${currentUser.name?.split(' ')[0]}?`}
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          rows={2}
-                        />
-                        
-                        {mediaPreview && (
-                          <div className="relative mt-3 rounded-xl overflow-hidden">
-                            {mediaType === 'video' ? (
-                              <video src={mediaPreview} controls className="w-full max-h-64" />
-                            ) : (
-                              <img src={mediaPreview} alt="preview" className="w-full max-h-64 object-cover" />
-                            )}
-                            <button 
-                              onClick={() => { setMediaPreview(null); setMediaFile(null); }}
-                              className="absolute top-2 right-2 p-1.5 bg-black/60 rounded-full text-white hover:bg-black/80"
-                            >
-                              <XCircle size={18} />
-                            </button>
-                          </div>
-                        )}
-                        
-                        <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                          <div className="flex gap-2">
-                            <label className="cursor-pointer p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl transition-colors">
-                              <ImageIcon size={20} className="text-indigo-500" />
-                              <input type="file" accept="image/*" hidden onChange={handleMediaUpload} />
-                            </label>
-                            <label className="cursor-pointer p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl transition-colors">
-                              <VideoIcon size={20} className="text-purple-500" />
-                              <input type="file" accept="video/*" hidden onChange={handleMediaUpload} />
-                            </label>
-                          </div>
-                          <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={handleNewPost}
-                            disabled={!newPost.trim() && !mediaFile}
-                            className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors"
-                          >
-                            Post
-                          </motion.button>
-                        </div>
+              <div className="max-w-2xl mx-auto">
+                <PostComposer />
+                <div className="space-y-4">
+                  {posts.length === 0 ? (
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-8 text-center">
+                      <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Sparkles size={32} className="text-indigo-500" />
                       </div>
+                      <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-2">No posts yet</h3>
+                      <p className="text-slate-500 dark:text-slate-400">Be the first to share something with the community!</p>
                     </div>
-                  </div>
-                </motion.div>
-
-                <div className="space-y-5">
-                  {posts.map((post, index) => (
-                    <motion.div
-                      key={post.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
-                    >
-                      <div className="p-5">
-                        <div className="flex items-center gap-3 mb-4">
-                          {post.user.photoURL ? (
-                            <img src={post.user.photoURL} className="w-10 h-10 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                              <User className="w-5 h-5 text-white" />
-                            </div>
-                          )}
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-slate-800 dark:text-white">{post.user.name}</p>
-                              <span className="text-xs text-slate-400">•</span>
-                              <p className="text-xs text-slate-500">
-                                {post.createdAt?.toDate?.() ? post.createdAt.toDate().toLocaleString() : 'Recent'}
-                              </p>
-                            </div>
-                          </div>
-                          {post.user.id === currentUser.id && (
-                            <button onClick={() => handleDeletePost(post.id)} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                        
-                        {post.content && (
-                          <p className="mb-4 text-slate-700 dark:text-slate-300 leading-relaxed">{post.content}</p>
-                        )}
-                        
-                        {post.media && post.mediaType === 'image' && (
-                          <div className="rounded-xl overflow-hidden mb-4">
-                            <img src={post.media} alt="" className="w-full max-h-96 object-cover" />
-                          </div>
-                        )}
-                        {post.media && post.mediaType === 'video' && (
-                          <video src={post.media} controls className="rounded-xl mb-4 max-h-96 w-full" />
-                        )}
-                        
-                        <div className="flex items-center gap-6 pt-2 border-t border-slate-200 dark:border-slate-700">
-                          <button onClick={() => handleLike(post.id)} className="flex items-center gap-2 py-2 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-colors group">
-                            <Heart size={20} className="group-hover:fill-red-500 group-hover:text-red-500" />
-                            <span className="text-sm">{post.likes || 0}</span>
-                          </button>
-                          <button onClick={() => setSelectedPostId(selectedPostId === post.id ? null : post.id)} className="flex items-center gap-2 py-2 text-slate-600 dark:text-slate-400 hover:text-indigo-500 transition-colors">
-                            <MessageSquare size={20} />
-                            <span className="text-sm">{post.comments?.length || 0}</span>
-                          </button>
-                          <button className="flex items-center gap-2 py-2 text-slate-600 dark:text-slate-400 hover:text-indigo-500 transition-colors">
-                            <Share2 size={18} />
-                          </button>
-                        </div>
-                        
-                        {selectedPostId === post.id && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3"
-                          >
-                            {post.comments?.slice(-3).map((c, i) => (
-                              <div key={i} className="text-sm bg-slate-50 dark:bg-slate-700/30 p-3 rounded-xl">
-                                <span className="font-semibold text-indigo-600 dark:text-indigo-400">{c.user}: </span>
-                                <span className="text-slate-700 dark:text-slate-300">{c.content}</span>
-                              </div>
-                            ))}
-                            <div className="flex gap-2">
-                              <input
-                                value={commentInputs[post.id] || ''}
-                                onChange={e => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
-                                placeholder="Write a comment..."
-                                className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 focus:outline-none focus:border-indigo-500"
-                                onKeyDown={e => e.key === 'Enter' && handleComment(post.id)}
-                              />
-                              <button onClick={() => handleComment(post.id)} className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
-                                <Send size={18} />
-                              </button>
-                            </div>
-                          </motion.div>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
+                  ) : (
+                    posts.map((post, index) => (
+                      <PostCard key={post.id} post={post} index={index} />
+                    ))
+                  )}
                 </div>
               </div>
             )}
 
-            {/* NETWORK TAB - Updated with block modal */}
+            {/* NETWORK TAB */}
             {activeTab === 'network' && (
               <div className="space-y-6">
                 <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 p-6">
@@ -1440,7 +1617,7 @@ const Connect = () => {
               </div>
             )}
 
-            {/* MESSAGES TAB - Updated with block modal for profile connections */}
+            {/* MESSAGES TAB */}
             {activeTab === 'messages' && (
               <div className={isNarrowScreen ? "space-y-4" : "grid lg:grid-cols-12 gap-6"}>
                 {(!isNarrowScreen || !selectedChat) && (
@@ -1730,7 +1907,7 @@ const Connect = () => {
               </div>
             )}
 
-            {/* PROFILE TAB - Updated with block modal for connections */}
+            {/* PROFILE TAB */}
             {activeTab === 'profile' && (
               <div className="max-w-3xl mx-auto space-y-6">
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -1889,10 +2066,8 @@ const Connect = () => {
       </div>
       <BottomNav />
       
-      {/* Block Modal */}
       <BlockModal />
       
-      {/* Media Viewer Modal */}
       <AnimatePresence>
         {showMediaViewer && (
           <MediaViewer 
