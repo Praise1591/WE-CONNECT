@@ -43,6 +43,7 @@
     "react-chartjs-2": "^5.3.1",
     "react-countup": "^6.5.3",
     "react-dom": "^19.1.1",
+    "react-helmet": "^6.1.0",
     "react-hook-form": "^7.71.2",
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
@@ -78,7 +79,13 @@
     "type": "git",
     "url": "git+https://github.com/Praise1591/WE-CONNECT.git"
   },
-  "keywords": ["education", "students", "nigeria", "learning", "tutoring"],
+  "keywords": [
+    "education",
+    "students",
+    "nigeria",
+    "learning",
+    "tutoring"
+  ],
   "author": "WE CONNECT EDU",
   "license": "ISC",
   "bugs": {
