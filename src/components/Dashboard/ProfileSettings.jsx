@@ -17,7 +17,7 @@ import {
   Compass, Navigation, Map, Flag, Anchor, Cloud, Droplet,
   Wind, Thermometer, Umbrella, Leaf, Flower,
   Mountain, SunMedium, MoonStar, StarHalf, Sparkle, BadgeCheck,
-  Building2, Hash, Target, Layers
+  Building2, Hash, Target, Layers, AlertCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -524,6 +524,7 @@ function ProfileSettings() {
         const imageRef = ref(storage, `profile_pictures/${user.uid}`);
         await uploadBytes(imageRef, profilePicFile);
         photoURL = await getDownloadURL(imageRef);
+        setProfilePicFile(null);
       }
 
       const updates = {
@@ -539,7 +540,7 @@ function ProfileSettings() {
         facebook: form.facebook.trim(),
         youtube: form.youtube.trim(),
         achievements: form.achievements.trim(),
-        photoURL,
+        photoURL: photoURL || null,
         updatedAt: serverTimestamp(),
         showProfessionalInfo: privacySettings.showProfessionalInfo,
         showSocialLinks: privacySettings.showSocialLinks,
@@ -567,18 +568,29 @@ function ProfileSettings() {
       }
 
       await updateDoc(doc(db, 'profiles', user.uid), updates);
-      await updateProfile(user, { displayName: form.name.trim(), photoURL });
+      await updateProfile(user, { displayName: form.name.trim(), photoURL: photoURL || null });
 
       const cachedProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
       localStorage.setItem('userProfile', JSON.stringify({
         ...cachedProfile,
         name: form.name.trim(),
-        photoURL,
+        photoURL: photoURL || null,
+        role: role,
+      }));
+
+      sessionStorage.setItem('lastProfileUpdate', JSON.stringify({
+        photoURL: photoURL || null,
+        name: form.name.trim(),
+        timestamp: Date.now()
       }));
 
       window.dispatchEvent(new CustomEvent('profileUpdated', { 
-        detail: { photoURL, name: form.name.trim(), role }
+        detail: { photoURL: photoURL || null, name: form.name.trim(), role: role, uid: user.uid }
       }));
+
+      setTimeout(() => {
+        user.reload().catch(console.error);
+      }, 500);
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

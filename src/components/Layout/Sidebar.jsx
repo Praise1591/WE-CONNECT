@@ -1,5 +1,5 @@
 // src/components/Layout/Sidebar.jsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -31,6 +31,52 @@ import { useAuth } from '../../contexts/AuthContext';
 function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
   const { userProfile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [forceUpdate, setForceUpdate] = useState(false);
+  const [localPhotoURL, setLocalPhotoURL] = useState(null);
+  const [localName, setLocalName] = useState(null);
+  const [localRole, setLocalRole] = useState(null);
+
+  // Listen for profile updates
+  useEffect(() => {
+    const handleProfileUpdate = (event) => {
+      if (event.detail) {
+        if (event.detail.photoURL !== undefined) {
+          setLocalPhotoURL(event.detail.photoURL);
+        }
+        if (event.detail.name !== undefined) {
+          setLocalName(event.detail.name);
+        }
+        if (event.detail.role !== undefined) {
+          setLocalRole(event.detail.role);
+        }
+        setForceUpdate(prev => !prev);
+      }
+    };
+    
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+    
+    const handleStorageChange = (e) => {
+      if (e.key === 'userProfile' || e.key === 'lastProfileUpdate') {
+        setForceUpdate(prev => !prev);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  // Update local state when userProfile changes
+  useEffect(() => {
+    if (userProfile) {
+      setLocalPhotoURL(userProfile.photoURL);
+      setLocalName(userProfile.name);
+      setLocalRole(userProfile.role);
+    }
+  }, [userProfile]);
 
   const handleLogout = async () => {
     await signOut();
@@ -38,11 +84,14 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
   };
 
   const getUserInitials = () => {
-    const name = userProfile?.name || userProfile?.email || 'User';
+    const name = localName || userProfile?.name || userProfile?.email || 'User';
     return name.charAt(0).toUpperCase();
   };
 
   const getUserName = () => {
+    if (localName && localName !== 'User') {
+      return localName;
+    }
     if (userProfile?.name && userProfile.name !== 'User') {
       return userProfile.name;
     }
@@ -53,8 +102,12 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
   };
 
   const getUserRole = () => {
-    const role = userProfile?.role || 'student';
+    const role = localRole || userProfile?.role || 'student';
     return role.charAt(0).toUpperCase() + role.slice(1);
+  };
+
+  const getUserPhoto = () => {
+    return localPhotoURL || userProfile?.photoURL || null;
   };
 
   const navItems = [
@@ -104,8 +157,12 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
         <div className={`flex ${collapsed ? 'flex-col items-center' : 'items-center gap-3'}`}>
           {/* Avatar */}
           <div className="relative">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg shadow-lg">
-              {getUserInitials()}
+            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg shadow-lg overflow-hidden">
+              {getUserPhoto() ? (
+                <img src={getUserPhoto()} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                getUserInitials()
+              )}
             </div>
             {!collapsed && (
               <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900"></div>

@@ -14,6 +14,9 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(false);
+  const [localPhotoURL, setLocalPhotoURL] = useState(null);
+  const [localName, setLocalName] = useState(null);
   const menuRef = useRef(null);
   const notificationRef = useRef(null);
 
@@ -26,6 +29,45 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
       document.documentElement.classList.add('dark');
     }
   }, []);
+
+  // Listen for profile updates from ProfileSettings
+  useEffect(() => {
+    const handleProfileUpdate = (event) => {
+      if (event.detail) {
+        if (event.detail.photoURL !== undefined) {
+          setLocalPhotoURL(event.detail.photoURL);
+        }
+        if (event.detail.name !== undefined) {
+          setLocalName(event.detail.name);
+        }
+        setForceUpdate(prev => !prev);
+      }
+    };
+    
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+    
+    // Also listen for storage events (for cross-tab sync)
+    const handleStorageChange = (e) => {
+      if (e.key === 'userProfile' || e.key === 'lastProfileUpdate') {
+        setForceUpdate(prev => !prev);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  // Update local state when userProfile changes
+  useEffect(() => {
+    if (userProfile) {
+      setLocalPhotoURL(userProfile.photoURL);
+      setLocalName(userProfile.name);
+    }
+  }, [userProfile]);
 
   // Handle click outside
   useEffect(() => {
@@ -58,11 +100,14 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
   };
 
   const getUserInitials = () => {
-    const name = userProfile?.name || userProfile?.email || 'User';
+    const name = localName || userProfile?.name || userProfile?.email || 'User';
     return name.charAt(0).toUpperCase();
   };
 
   const getUserName = () => {
+    if (localName && localName !== 'User') {
+      return localName;
+    }
     if (userProfile?.name && userProfile.name !== 'User') {
       return userProfile.name;
     }
@@ -75,6 +120,10 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
   const getUserRole = () => {
     const role = userProfile?.role || 'student';
     return role.charAt(0).toUpperCase() + role.slice(1);
+  };
+
+  const getUserPhoto = () => {
+    return localPhotoURL || userProfile?.photoURL || null;
   };
 
   // Sample notifications - replace with real data from Firebase
@@ -149,7 +198,12 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
           </div>
 
           {/* Dark Mode Toggle */}
-          
+          <button
+            onClick={toggleDarkMode}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            {darkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
+          </button>
 
           {/* Notifications */}
           <div className="relative" ref={notificationRef}>
@@ -201,8 +255,12 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              <div className="w-9 h-9 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-                {getUserInitials()}
+              <div className="w-9 h-9 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm shadow-md overflow-hidden">
+                {getUserPhoto() ? (
+                  <img src={getUserPhoto()} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  getUserInitials()
+                )}
               </div>
               <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
@@ -213,8 +271,12 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
                 {/* User Info */}
                 <div className="p-3 border-b border-slate-200 dark:border-slate-700">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
-                      {getUserInitials()}
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold overflow-hidden">
+                      {getUserPhoto() ? (
+                        <img src={getUserPhoto()} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        getUserInitials()
+                      )}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-800 dark:text-white">{getUserName()}</p>
@@ -260,7 +322,6 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
                     Settings
                   </button>
                   
-                  
                   <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
                   <button
                     onClick={handleLogout}
@@ -277,7 +338,21 @@ function Header({ sidebarCollapsed, onToggleSidebar, onMobileMenuToggle }) {
       </div>
 
       {/* Mobile Balance Summary - Only visible on mobile */}
-      
+      <div className="lg:hidden px-4 py-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between bg-white/80 dark:bg-slate-900/80">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Coins className="w-4 h-4 text-amber-500" />
+            <span className="text-sm font-bold text-amber-600">{userProfile?.coins?.toLocaleString() || 0}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Gem className="w-4 h-4 text-purple-500" />
+            <span className="text-sm font-bold text-purple-600">{userProfile?.diamonds?.toLocaleString() || 0}</span>
+          </div>
+        </div>
+        <div className="text-xs text-slate-400">
+          {getUserName()}
+        </div>
+      </div>
     </header>
   );
 }
