@@ -1,4 +1,4 @@
-// src/pages/ProfileSettings.jsx - Advanced Modern Version (Fixed Imports)
+// src/pages/ProfileSettings.jsx - Advanced Modern Version (No Enclosing Boxes)
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Save, Trash2, Camera, AlertTriangle,
@@ -150,10 +150,9 @@ const TiltCard = ({ children, className }) => {
   );
 };
 
-// Glassmorphic Card Component
-const GlassCard = ({ children, className, gradient = false }) => (
-  <div className={`relative overflow-hidden rounded-2xl ${gradient ? 'bg-gradient-to-br from-white/90 to-indigo-50/90 dark:from-slate-800/90 dark:to-indigo-950/40' : 'bg-white/80 dark:bg-slate-800/80'} backdrop-blur-xl border border-white/20 dark:border-slate-700/50 shadow-xl ${className}`}>
-    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 pointer-events-none" />
+// Simple Card Component (No glass effect, no border, no shadow)
+const SimpleCard = ({ children, className = "" }) => (
+  <div className={`${className}`}>
     {children}
   </div>
 );
@@ -725,7 +724,7 @@ function ProfileSettings() {
     if (role === 'student') {
       return (
         <div className="space-y-6">
-          <GlassCard gradient className="p-6">
+          <SimpleCard className="p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600">
                 <GraduationCap size={24} className="text-white" />
@@ -739,7 +738,7 @@ function ProfileSettings() {
               <AnimatedInput icon={BookOpen} label="Department" name="department" value={form.department} onChange={handleChange} required />
               <AnimatedInput icon={Calendar} label="Graduation Year" type="number" name="graduationYear" value={form.graduationYear} onChange={handleChange} />
             </div>
-          </GlassCard>
+          </SimpleCard>
         </div>
       );
     }
@@ -747,7 +746,7 @@ function ProfileSettings() {
     if (role === 'tutor') {
       return (
         <div className="space-y-6">
-          <GlassCard gradient className="p-6">
+          <SimpleCard className="p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600">
                 <Briefcase size={24} className="text-white" />
@@ -759,7 +758,7 @@ function ProfileSettings() {
               <AnimatedInput icon={Star} label="Years of Experience" type="number" name="yearsExperience" value={form.yearsExperience} onChange={handleChange} required />
               <AnimatedTextArea icon={AwardIcon} label="Certifications" name="certifications" value={form.certifications} onChange={handleChange} rows={3} placeholder="List your certifications..." />
             </div>
-          </GlassCard>
+          </SimpleCard>
         </div>
       );
     }
@@ -767,7 +766,7 @@ function ProfileSettings() {
     if (role === 'lecturer') {
       return (
         <div className="space-y-6">
-          <GlassCard gradient className="p-6">
+          <SimpleCard className="p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600">
                 <Award size={24} className="text-white" />
@@ -782,7 +781,7 @@ function ProfileSettings() {
               <AnimatedTextArea icon={Target} label="Research Interests" name="researchInterests" value={form.researchInterests} onChange={handleChange} rows={3} />
               <AnimatedTextArea icon={BookOpen} label="Publications" name="publications" value={form.publications} onChange={handleChange} rows={3} />
             </div>
-          </GlassCard>
+          </SimpleCard>
         </div>
       );
     }
@@ -791,7 +790,7 @@ function ProfileSettings() {
 
   const renderSocialLinks = () => (
     <div className="space-y-4">
-      <GlassCard gradient className="p-6">
+      <SimpleCard className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600">
             <Globe size={24} className="text-white" />
@@ -806,13 +805,13 @@ function ProfileSettings() {
           <SocialLinkCard icon={Facebook} label="Facebook" value={form.facebook} onChange={(e) => setForm(prev => ({ ...prev, facebook: e.target.value }))} placeholder="https://facebook.com/username" color="from-blue-700 to-blue-800" />
           <SocialLinkCard icon={Youtube} label="YouTube" value={form.youtube} onChange={(e) => setForm(prev => ({ ...prev, youtube: e.target.value }))} placeholder="https://youtube.com/@username" color="from-red-600 to-red-700" />
         </div>
-      </GlassCard>
+      </SimpleCard>
     </div>
   );
 
   const renderPrivacySettings = () => (
     <div className="space-y-6">
-      <GlassCard gradient className="p-6">
+      <SimpleCard className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600">
             <Shield size={24} className="text-white" />
@@ -845,13 +844,13 @@ function ProfileSettings() {
             );
           })}
         </div>
-      </GlassCard>
+      </SimpleCard>
     </div>
   );
 
   const renderAchievements = () => (
     <div className="space-y-6">
-      <GlassCard gradient className="p-6">
+      <SimpleCard className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600">
             <AwardIcon size={24} className="text-white" />
@@ -865,7 +864,7 @@ function ProfileSettings() {
           <StatsCard icon={Star} label="Rating" value={parseFloat(stats.averageRating.toFixed(1))} color="from-yellow-500 to-orange-500" />
           <StatsCard icon={Eye} label="Profile Views" value={profileViews} color="from-purple-500 to-pink-500" />
         </div>
-      </GlassCard>
+      </SimpleCard>
     </div>
   );
 
@@ -922,7 +921,7 @@ function ProfileSettings() {
 
     return (
       <div className="space-y-4">
-        <GlassCard className="p-4">
+        <SimpleCard className="p-4">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-indigo-600">You are following <span className="font-bold">{followingDetails.length}</span> {followingDetails.length === 1 ? 'person' : 'people'}</p>
             <button onClick={() => navigate('/connect')} className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">Find more people</button>
@@ -951,7 +950,7 @@ function ProfileSettings() {
               </motion.div>
             ))}
           </div>
-        </GlassCard>
+        </SimpleCard>
       </div>
     );
   };
@@ -970,7 +969,7 @@ function ProfileSettings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-12 w-12 animate-spin text-indigo-600" />
           <p className="text-slate-500 dark:text-slate-400">Loading profile...</p>
@@ -980,7 +979,7 @@ function ProfileSettings() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-purple-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 pb-12">
+    <div className="min-h-screen pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
         
         {/* Header */}
@@ -1021,7 +1020,7 @@ function ProfileSettings() {
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
               {/* Profile Card */}
-              <GlassCard className="p-6 text-center">
+              <SimpleCard className="p-6 text-center">
                 <div className="relative group inline-block mx-auto">
                   <div className="relative">
                     <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-indigo-500 shadow-xl bg-gradient-to-br from-indigo-500 to-purple-600">
@@ -1050,19 +1049,19 @@ function ProfileSettings() {
                     <span>Member since {memberSince}</span>
                   </div>
                 </div>
-              </GlassCard>
+              </SimpleCard>
 
               {/* Profile Strength Ring */}
-              <GlassCard className="p-6">
+              <SimpleCard className="p-6">
                 <div className="flex flex-col items-center">
                   <ProfileStrengthRing percentage={profileStrength} />
                   <p className="text-sm text-slate-500 mt-3">Profile Strength</p>
                   <p className="text-xs text-slate-400">Complete your profile to get better visibility</p>
                 </div>
-              </GlassCard>
+              </SimpleCard>
 
               {/* Navigation Sections */}
-              <GlassCard className="p-4">
+              <SimpleCard className="p-4">
                 {sections.map((section) => {
                   const Icon = section.icon;
                   return (
@@ -1082,10 +1081,10 @@ function ProfileSettings() {
                     </motion.button>
                   );
                 })}
-              </GlassCard>
+              </SimpleCard>
 
               {/* Follow Stats */}
-              <GlassCard className="p-4">
+              <SimpleCard className="p-4">
                 <div className="flex justify-between items-center">
                   <div className="text-center flex-1">
                     <p className="text-2xl font-bold text-slate-900 dark:text-white">{followingList.length}</p>
@@ -1097,13 +1096,13 @@ function ProfileSettings() {
                     <p className="text-xs text-slate-500">Followers</p>
                   </div>
                 </div>
-              </GlassCard>
+              </SimpleCard>
             </div>
           </div>
 
           {/* Main Content */}
           <div className="lg:col-span-3">
-            <GlassCard className="p-6 md:p-8">
+            <SimpleCard className="p-6 md:p-8">
               <div className="mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-white">{sections.find(s => s.id === activeSection)?.label}</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Update your {activeSection} information</p>
@@ -1137,7 +1136,7 @@ function ProfileSettings() {
                   </div>
                 )}
               </div>
-            </GlassCard>
+            </SimpleCard>
           </div>
         </div>
 

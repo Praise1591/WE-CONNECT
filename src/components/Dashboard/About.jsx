@@ -1,4 +1,4 @@
-// About.jsx - Authentic, Clean Design
+// About.jsx - Authentic, Clean Design (No Enclosing Box)
 import React, { useEffect, useRef, useState } from 'react';
 import { 
   Zap, Users, BookOpen, Download, Heart, Mail, Phone, Globe, 
@@ -116,7 +116,7 @@ function About() {
   ];
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950">
+    <div className="min-h-screen">
       {/* Navigation Dots */}
       <div className="fixed right-8 top-1/2 transform -translate-y-1/2 z-50 hidden lg:block">
         <div className="flex flex-col gap-3">
@@ -207,7 +207,7 @@ function About() {
       </motion.section>
 
       {/* Mission Section */}
-      <section id="mission" className="py-24 px-4 bg-gray-50 dark:bg-slate-900/50">
+      <section id="mission" className="py-24 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <motion.div
@@ -325,7 +325,7 @@ function About() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 px-4 bg-gray-50 dark:bg-slate-900/50">
+      <section id="features" className="py-24 px-4">
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -422,7 +422,7 @@ function About() {
       </section>
 
       {/* Team Section */}
-      <section className="py-24 px-4 bg-gray-50 dark:bg-slate-900/50">
+      <section className="py-24 px-4">
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}

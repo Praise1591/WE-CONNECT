@@ -1,4 +1,4 @@
-// UploadsData.jsx - Fixed with proper data sanitization
+// UploadsData.jsx - Fixed with proper data sanitization (No Enclosing Box)
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
@@ -1025,34 +1025,32 @@ function UploadsData() {
   }), [selectedCategory, formData, uploading, progress, isPaused, dragActive, handleFileChange, handleDragOver, handleDragLeave, handleDragEnter, handleDrop, handleRemoveFile, startUpload, togglePauseResume, cancelUpload, handleBackStep]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
-      <div className="max-w-5xl mx-auto px-4 py-8 md:py-12 lg:py-16">
-        <StepIndicator step={step} />
-        
-        <AnimatePresence mode="wait">
-          {step === 1 && <CategoryStep key="category" onSelectCategory={handleCategorySelect} />}
-          {step === 2 && (
-            <DetailsStep 
-              key="details" 
-              formData={formData}
-              onInputChange={handleInputChange}
-              onSpecificFieldChange={handleSpecificFieldChange}
-              onNext={handleNextStep}
-              onBack={handleBackToCategory}
-              selectedCategory={selectedCategory}
-            />
-          )}
-          {step === 3 && <UploadStep key="upload" {...uploadStepProps} />}
-          {step === 4 && (
-            <SuccessStep 
-              key="success" 
-              selectedCategory={selectedCategory}
-              onReset={resetForm}
-              onGoToDashboard={goToDashboard}
-            />
-          )}
-        </AnimatePresence>
-      </div>
+    <div className="max-w-5xl mx-auto px-4 py-8 md:py-12 lg:py-16">
+      <StepIndicator step={step} />
+      
+      <AnimatePresence mode="wait">
+        {step === 1 && <CategoryStep key="category" onSelectCategory={handleCategorySelect} />}
+        {step === 2 && (
+          <DetailsStep 
+            key="details" 
+            formData={formData}
+            onInputChange={handleInputChange}
+            onSpecificFieldChange={handleSpecificFieldChange}
+            onNext={handleNextStep}
+            onBack={handleBackToCategory}
+            selectedCategory={selectedCategory}
+          />
+        )}
+        {step === 3 && <UploadStep key="upload" {...uploadStepProps} />}
+        {step === 4 && (
+          <SuccessStep 
+            key="success" 
+            selectedCategory={selectedCategory}
+            onReset={resetForm}
+            onGoToDashboard={goToDashboard}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

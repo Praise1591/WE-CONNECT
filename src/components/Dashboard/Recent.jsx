@@ -1,4 +1,4 @@
-// components/Dashboard/Recent.jsx - Simplified Version
+// components/Dashboard/Recent.jsx - Simplified Version (No Enclosing Box)
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -255,7 +255,7 @@ function Recent() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+      <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <div className="w-24 h-24 mx-auto bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6">
             <BookOpen className="w-12 h-12 text-white" />

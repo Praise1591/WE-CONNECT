@@ -1,4 +1,4 @@
-// StatsGrid.jsx - Ultra-Modern Design with No Blinking
+// StatsGrid.jsx - Ultra-Modern Design with No Blinking (No Enclosing Gradients)
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   BookOpen,
@@ -206,18 +206,6 @@ const StatCard = memo(({ icon: Icon, label, value, color, gradient, description,
     rose: 'from-rose-500 to-pink-500',
     indigo: 'from-indigo-500 to-purple-500',
     cyan: 'from-cyan-500 to-blue-500',
-  };
-  
-  const bgGradients = {
-    blue: 'bg-gradient-to-br from-blue-500/10 to-cyan-500/10',
-    emerald: 'bg-gradient-to-br from-emerald-500/10 to-teal-500/10',
-    purple: 'bg-gradient-to-br from-purple-500/10 to-pink-500/10',
-    orange: 'bg-gradient-to-br from-orange-500/10 to-red-500/10',
-    amber: 'bg-gradient-to-br from-amber-500/10 to-yellow-500/10',
-    violet: 'bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10',
-    rose: 'bg-gradient-to-br from-rose-500/10 to-pink-500/10',
-    indigo: 'bg-gradient-to-br from-indigo-500/10 to-purple-500/10',
-    cyan: 'bg-gradient-to-br from-cyan-500/10 to-blue-500/10',
   };
   
   return (

@@ -1,4 +1,4 @@
-// Connect.jsx - COMPLETE FIXED VERSION with subcollection initialization
+// Connect.jsx - COMPLETE FIXED VERSION with subcollection initialization (No Enclosing Boxes)
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
@@ -1039,8 +1039,8 @@ const Connect = () => {
           <span>Back to Feed</span>
         </button>
         
-        {/* Profile Card with Gradient Background */}
-        <div className="bg-gradient-to-br from-white via-indigo-50/30 to-purple-50/30 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800/80 rounded-2xl shadow-xl overflow-hidden border border-indigo-100 dark:border-indigo-900/30">
+        {/* Profile Card */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
           {/* Cover Photo with Gradient Overlay */}
           <div className="relative h-48 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
             {user.coverPhotoURL && (
@@ -1056,11 +1056,11 @@ const Connect = () => {
                 {user.photoURL ? (
                   <img 
                     src={user.photoURL} 
-                    className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl ring-4 ring-indigo-500/30" 
+                    className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl ring-2 ring-indigo-500/30" 
                     alt={user.name}
                   />
                 ) : (
-                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 border-4 border-white shadow-xl ring-4 ring-indigo-500/30 flex items-center justify-center">
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 border-4 border-white shadow-xl ring-2 ring-indigo-500/30 flex items-center justify-center">
                     <User className="w-16 h-16 text-white" />
                   </div>
                 )}
@@ -1137,7 +1137,7 @@ const Connect = () => {
           </h3>
           <div className="space-y-4">
             {userPosts.length === 0 ? (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8 text-center border border-indigo-100 dark:border-indigo-900/30">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8 text-center border border-slate-200 dark:border-slate-700">
                 <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                   <MessageSquare size={32} className="text-indigo-500" />
                 </div>
@@ -1145,7 +1145,7 @@ const Connect = () => {
               </div>
             ) : (
               userPosts.map(post => (
-                <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-indigo-100 dark:border-indigo-900/30 overflow-hidden">
+                <div key={post.id} className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="p-4">
                     <div className="flex items-center gap-3 mb-3">
                       {user.photoURL ? (
@@ -1691,7 +1691,7 @@ const Connect = () => {
   );
 
   if (isLoading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-indigo-50 dark:from-slate-950 dark:to-indigo-950/20">
+    <div className="min-h-screen flex items-center justify-center">
       <motion.div 
         animate={{ rotate: 360 }}
         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
@@ -1704,7 +1704,7 @@ const Connect = () => {
   );
   
   if (!currentUser) return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-indigo-50 dark:from-slate-950 dark:to-indigo-950/20">
+    <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mx-auto mb-4 shadow-xl">
           <User className="w-12 h-12 text-white" />
@@ -1717,7 +1717,7 @@ const Connect = () => {
   // If viewing another user's profile
   if (viewingProfile) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-950 dark:via-slate-900 pb-20 md:pb-0">
+      <div className="min-h-screen pb-20 md:pb-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
           <UserProfileView user={viewingProfile} onBack={() => setViewingProfile(null)} />
         </div>
@@ -1727,7 +1727,7 @@ const Connect = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 pb-20 md:pb-0">
+    <div className="min-h-screen pb-20 md:pb-0">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
         
         <DesktopNav />
@@ -1987,7 +1987,7 @@ const Connect = () => {
                       <p className="text-xs text-slate-500 mt-1">{connections.length} conversations</p>
                     </div>
                     <div className="max-h-[calc(75vh-80px)] overflow-y-auto">
-                                            {connections.length === 0 ? (
+                      {connections.length === 0 ? (
                         <div className="text-center py-12 px-4">
                           <MessageCircle size={48} className="text-slate-400 mx-auto mb-3" />
                           <p className="text-slate-500">No connections yet</p>
@@ -2237,7 +2237,7 @@ const Connect = () => {
                               {uploadingMedia || isSendingMessage ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                             </button>
                           </div>
-                        </div>
+                                                </div>
                       </>
                     ) : (
                       <div className="flex-1 flex flex-col items-center justify-center text-slate-500">

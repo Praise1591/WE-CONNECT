@@ -1,4 +1,4 @@
-// Material.jsx - Complete with Fixed Navigation and Follow Functionality
+// Material.jsx - Complete with Fixed Navigation and Follow Functionality (No Enclosing Box)
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -560,7 +560,7 @@ function Material() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 sm:gap-4 px-4">
           <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-indigo-600" />
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 font-medium">Loading {materialId ? 'material' : 'materials'}...</p>
@@ -571,7 +571,7 @@ function Material() {
 
   if (materialId && materials.length === 0 && !loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md px-4">
           <AlertCircle className="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-3 sm:mb-4" />
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mb-2">Material Not Found</h2>
@@ -583,7 +583,7 @@ function Material() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-purple-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20">
+    <div className="min-h-screen">
       {/* Hero Section - Mobile Optimized */}
       {!materialId && (
         <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
@@ -920,131 +920,131 @@ function Material() {
         )}
       </div>
 
-      {/* Preview Modal - Keep existing */}
-      {previewMaterial && (
-        <div className={`fixed inset-0 z-[999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4 ${isFullscreen ? 'p-0' : ''}`}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className={`bg-white dark:bg-slate-900 w-full rounded-xl sm:rounded-2xl overflow-hidden flex flex-col ${isFullscreen ? 'h-screen w-screen rounded-none' : 'max-w-6xl max-h-[90vh]'}`}
-          >
-            {/* Modal Header - Keep existing */}
-            <div className="px-3 sm:px-5 py-2 sm:py-3 border-b flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
-              <div>
-                <h2 className="font-semibold text-sm sm:text-lg line-clamp-1">{previewMaterial.title}</h2>
-                <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
-                  <p className="text-[10px] sm:text-xs text-slate-500">{previewMaterial.course} • {previewMaterial.school}</p>
-                  <div className="flex items-center gap-0.5 sm:gap-1">
-                    <Star size={10} className="sm:w-3 sm:h-3 text-amber-500 fill-amber-500" />
-                    <span className="text-[10px] sm:text-xs font-medium">{averageRating || '0'}</span>
-                    <span className="text-[10px] sm:text-xs text-slate-400">({reviewCount})</span>
+      {/* Preview Modal - Keep existing structure but remove outer gradient */}
+      <AnimatePresence>
+        {previewMaterial && (
+          <div className={`fixed inset-0 z-[999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4 ${isFullscreen ? 'p-0' : ''}`}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`bg-white dark:bg-slate-900 w-full rounded-xl sm:rounded-2xl overflow-hidden flex flex-col ${isFullscreen ? 'h-screen w-screen rounded-none' : 'max-w-6xl max-h-[90vh]'}`}
+            >
+              {/* Modal Header */}
+              <div className="px-3 sm:px-5 py-2 sm:py-3 border-b flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
+                <div>
+                  <h2 className="font-semibold text-sm sm:text-lg line-clamp-1">{previewMaterial.title}</h2>
+                  <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5">
+                    <p className="text-[10px] sm:text-xs text-slate-500">{previewMaterial.course} • {previewMaterial.school}</p>
+                    <div className="flex items-center gap-0.5 sm:gap-1">
+                      <Star size={10} className="sm:w-3 sm:h-3 text-amber-500 fill-amber-500" />
+                      <span className="text-[10px] sm:text-xs font-medium">{averageRating || '0'}</span>
+                      <span className="text-[10px] sm:text-xs text-slate-400">({reviewCount})</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex gap-0.5 sm:gap-1">
-                <button onClick={() => setIsFullscreen(!isFullscreen)} className="p-1 sm:p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
-                  <Maximize2 size={14} className="sm:w-4 sm:h-4" />
-                </button>
-                <button onClick={() => setPreviewMaterial(null)} className="p-1 sm:p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
-                  <X size={14} className="sm:w-4 sm:h-4" />
-                </button>
-              </div>
-            </div>
-            {/* Rest of preview modal remains the same... */}
-            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-              <div className={`${isFullscreen ? 'flex-1' : 'lg:w-2/3'} flex flex-col relative bg-slate-50 dark:bg-slate-950`}>
-                <div className="flex-1 overflow-auto p-2 sm:p-4">{renderPreviewContent()}</div>
-                <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-full backdrop-blur-sm pointer-events-none whitespace-nowrap">
-                  Preview Mode – Full Download Requires Coins
+                <div className="flex gap-0.5 sm:gap-1">
+                  <button onClick={() => setIsFullscreen(!isFullscreen)} className="p-1 sm:p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
+                    <Maximize2 size={14} className="sm:w-4 sm:h-4" />
+                  </button>
+                  <button onClick={() => setPreviewMaterial(null)} className="p-1 sm:p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">
+                    <X size={14} className="sm:w-4 sm:h-4" />
+                  </button>
                 </div>
               </div>
-              <div className={`${isFullscreen ? 'w-64 sm:w-80' : 'lg:w-1/3'} border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800`}>
-                {/* Reviews section remains the same */}
-                <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <div className="text-2xl sm:text-3xl font-bold text-amber-600">{averageRating || '0'}</div>
-                        <div className="text-xs sm:text-sm text-slate-500">out of 5</div>
-                      </div>
-                      <div className="flex items-center gap-0.5 mt-1">
-                        {[1,2,3,4,5].map(star => (
-                          <Star key={star} size={12} className={`sm:w-3.5 sm:h-3.5 ${star <= (averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
-                        ))}
-                      </div>
-                      <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1">{reviewCount} review{reviewCount !== 1 ? 's' : ''}</p>
-                    </div>
-                    <button
-                      onClick={() => { if (!currentUser) { toast.info("Please sign in to review"); return; } setShowReviewModal(true); }}
-                      className="px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:shadow-lg transition whitespace-nowrap"
-                    >
-                      Write a Review
-                    </button>
+              <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
+                <div className={`${isFullscreen ? 'flex-1' : 'lg:w-2/3'} flex flex-col relative bg-slate-50 dark:bg-slate-950`}>
+                  <div className="flex-1 overflow-auto p-2 sm:p-4">{renderPreviewContent()}</div>
+                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-full backdrop-blur-sm pointer-events-none whitespace-nowrap">
+                    Preview Mode – Full Download Requires Coins
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
-                  <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base">
-                    <MessageCircle size={14} className="sm:w-4 sm:h-4" />
-                    Community Reviews
-                  </h4>
-                  {reviews.length === 0 ? (
-                    <div className="text-center py-6 sm:py-8">
-                      <MessageCircle size={32} className="sm:w-10 sm:h-10 text-slate-300 mx-auto mb-2 sm:mb-3" />
-                      <p className="text-xs sm:text-sm text-slate-500">No reviews yet. Be the first to review!</p>
-                    </div>
-                  ) : (
-                    reviews.slice(0, showAllReviews ? undefined : 3).map((review, idx) => (
-                      <motion.div
-                        key={review.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.05 }}
-                        className="bg-slate-50 dark:bg-slate-700/30 rounded-lg sm:rounded-xl p-2 sm:p-3"
-                      >
-                        <div className="flex items-start gap-2 sm:gap-3">
-                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] sm:text-xs font-bold flex-shrink-0">
-                            {review.userName?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center justify-between gap-1">
-                              <p className="font-medium text-xs sm:text-sm text-slate-900 dark:text-white">{review.userName}</p>
-                              <span className="text-[10px] sm:text-xs text-slate-400">{formatDate(review.createdAt)}</span>
-                            </div>
-                            <div className="flex items-center gap-0.5 mt-0.5">
-                              {[1,2,3,4,5].map(star => (
-                                <Star key={star} size={10} className={`sm:w-2.5 sm:h-2.5 ${star <= (review.rating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
-                              ))}
-                            </div>
-                            {review.comment && (
-                              <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 mt-1 sm:mt-2 leading-relaxed">
-                                {review.comment}
-                              </p>
-                            )}
-                          </div>
+                <div className={`${isFullscreen ? 'w-64 sm:w-80' : 'lg:w-1/3'} border-l border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800`}>
+                  <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                          <div className="text-2xl sm:text-3xl font-bold text-amber-600">{averageRating || '0'}</div>
+                          <div className="text-xs sm:text-sm text-slate-500">out of 5</div>
                         </div>
-                      </motion.div>
-                    ))
-                  )}
-                  {reviews.length > 3 && !showAllReviews && (
-                    <button onClick={() => setShowAllReviews(true)} className="w-full py-1.5 sm:py-2 text-center text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-medium">
-                      View all {reviews.length} reviews →
-                    </button>
-                  )}
+                        <div className="flex items-center gap-0.5 mt-1">
+                          {[1,2,3,4,5].map(star => (
+                            <Star key={star} size={12} className={`sm:w-3.5 sm:h-3.5 ${star <= (averageRating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                          ))}
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1">{reviewCount} review{reviewCount !== 1 ? 's' : ''}</p>
+                      </div>
+                      <button
+                        onClick={() => { if (!currentUser) { toast.info("Please sign in to review"); return; } setShowReviewModal(true); }}
+                        className="px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:shadow-lg transition whitespace-nowrap"
+                      >
+                        Write a Review
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
+                    <h4 className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base">
+                      <MessageCircle size={14} className="sm:w-4 sm:h-4" />
+                      Community Reviews
+                    </h4>
+                    {reviews.length === 0 ? (
+                      <div className="text-center py-6 sm:py-8">
+                        <MessageCircle size={32} className="sm:w-10 sm:h-10 text-slate-300 mx-auto mb-2 sm:mb-3" />
+                        <p className="text-xs sm:text-sm text-slate-500">No reviews yet. Be the first to review!</p>
+                      </div>
+                    ) : (
+                      reviews.slice(0, showAllReviews ? undefined : 3).map((review, idx) => (
+                        <motion.div
+                          key={review.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                          className="bg-slate-50 dark:bg-slate-700/30 rounded-lg sm:rounded-xl p-2 sm:p-3"
+                        >
+                          <div className="flex items-start gap-2 sm:gap-3">
+                            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] sm:text-xs font-bold flex-shrink-0">
+                              {review.userName?.charAt(0).toUpperCase() || 'U'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center justify-between gap-1">
+                                <p className="font-medium text-xs sm:text-sm text-slate-900 dark:text-white">{review.userName}</p>
+                                <span className="text-[10px] sm:text-xs text-slate-400">{formatDate(review.createdAt)}</span>
+                              </div>
+                              <div className="flex items-center gap-0.5 mt-0.5">
+                                {[1,2,3,4,5].map(star => (
+                                  <Star key={star} size={10} className={`sm:w-2.5 sm:h-2.5 ${star <= (review.rating || 0) ? "text-amber-500 fill-amber-500" : "text-slate-300"}`} />
+                                ))}
+                              </div>
+                              {review.comment && (
+                                <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 mt-1 sm:mt-2 leading-relaxed">
+                                  {review.comment}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                    {reviews.length > 3 && !showAllReviews && (
+                      <button onClick={() => setShowAllReviews(true)} className="w-full py-1.5 sm:py-2 text-center text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+                        View all {reviews.length} reviews →
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="px-3 sm:px-5 py-1.5 sm:py-2 border-t text-center text-[10px] sm:text-xs text-slate-500 bg-white dark:bg-slate-900">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>Preview Mode – Full Download Requires Coins</span>
-                <button onClick={() => handleDownload(previewMaterial)} className="px-2 sm:px-3 py-1 bg-indigo-600 text-white rounded-lg text-[10px] sm:text-xs font-medium hover:bg-indigo-700 transition whitespace-nowrap">
-                  Download for {getMaterialPriceInCoins(previewMaterial.category)} coin{getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(previewMaterial.category)})
-                </button>
+              <div className="px-3 sm:px-5 py-1.5 sm:py-2 border-t text-center text-[10px] sm:text-xs text-slate-500 bg-white dark:bg-slate-900">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Preview Mode – Full Download Requires Coins</span>
+                  <button onClick={() => handleDownload(previewMaterial)} className="px-2 sm:px-3 py-1 bg-indigo-600 text-white rounded-lg text-[10px] sm:text-xs font-medium hover:bg-indigo-700 transition whitespace-nowrap">
+                    Download for {getMaterialPriceInCoins(previewMaterial.category)} coin{getMaterialPriceInCoins(previewMaterial.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(previewMaterial.category)})
+                  </button>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Review Modal - Keep existing */}
       <AnimatePresence>
@@ -1109,25 +1109,27 @@ function Material() {
       </AnimatePresence>
 
       {/* Download Confirmation Modal - Keep existing */}
-      {confirmDownload && (
-        <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDownload(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-4 sm:p-5 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 sm:gap-3 mb-3">
-              <div className="p-1.5 sm:p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full">
-                <Zap size={16} className="sm:w-5 sm:h-5 text-amber-600" />
+      <AnimatePresence>
+        {confirmDownload && (
+          <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDownload(null)}>
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 sm:p-5 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-2 sm:gap-3 mb-3">
+                <div className="p-1.5 sm:p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+                  <Zap size={16} className="sm:w-5 sm:h-5 text-amber-600" />
+                </div>
+                <h3 className="text-base sm:text-lg font-semibold">Confirm Purchase</h3>
               </div>
-              <h3 className="text-base sm:text-lg font-semibold">Confirm Purchase</h3>
-            </div>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 mb-4 sm:mb-5">
-              "{confirmDownload.title}" costs <span className="font-bold text-indigo-600">{getMaterialPriceInCoins(confirmDownload.category)} coin{getMaterialPriceInCoins(confirmDownload.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(confirmDownload.category)})</span>. The uploader will receive 60% in diamonds.
-            </p>
-            <div className="flex gap-2 sm:gap-3 justify-end">
-              <button onClick={() => setConfirmDownload(null)} className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-sm">Cancel</button>
-              <button onClick={confirmAndProcessPaidDownload} className="px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-1">Pay & Download <ChevronRight size={14} /></button>
+              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 mb-4 sm:mb-5">
+                "{confirmDownload.title}" costs <span className="font-bold text-indigo-600">{getMaterialPriceInCoins(confirmDownload.category)} coin{getMaterialPriceInCoins(confirmDownload.category) !== 1 ? 's' : ''} (₦{getPriceInNGN(confirmDownload.category)})</span>. The uploader will receive 60% in diamonds.
+              </p>
+              <div className="flex gap-2 sm:gap-3 justify-end">
+                <button onClick={() => setConfirmDownload(null)} className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-sm">Cancel</button>
+                <button onClick={confirmAndProcessPaidDownload} className="px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-1">Pay & Download <ChevronRight size={14} /></button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

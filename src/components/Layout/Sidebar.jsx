@@ -118,7 +118,7 @@ function Sidebar({ collapsed, onToggleCollapse, isMobileOpen, onMobileClose }) {
     { path: '/analytics', icon: <TrendingUp size={20} />, label: 'Analytics' },
     { path: '/connect', icon: <Users size={20} />, label: 'Connect' },
     { path: '/notifications', icon: <Bell size={20} />, label: 'Notifications' },
-    { path: '/downloads', icon: <Download size={20} />, label: 'Downloads' },
+    //{ path: '/downloads', icon: <Download size={20} />, label: 'Downloads' },//
     { path: '/monetary', icon: <Coins size={20} />, label: 'Wallet' },
     { path: `/profile/${userProfile?.id}`, icon: <UserCircle size={20} />, label: 'My Profile' },
     { path: '/settings', icon: <Settings size={20} />, label: 'Settings' },
