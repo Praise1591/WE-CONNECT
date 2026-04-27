@@ -1,25 +1,23 @@
-// src/components/Dashboard/AuthForm.jsx - Fixed Google Sign-In
-import React, { useState, useEffect, useRef } from 'react';
+// src/components/Dashboard/AuthForm.jsx - Complete Working Version
+import React, { useState, useEffect } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, ArrowRight, GraduationCap, 
   Briefcase, Award, X, Chrome, Phone, Home, AlertCircle,
-  CheckCircle, Shield, Sparkles, UserCheck, Fingerprint,
-  Send, Key, RefreshCw, UserPlus, LogIn,
-  ChevronRight, ChevronLeft, Hash, Building2, User,
-  Smartphone, Globe, Zap, BookOpen, Video, FileText, ScrollText, Users, Star,
-  Calendar, MapPin, School, BriefcaseBusiness, AwardIcon,
-  Target, Layers, BookMarked, Library, PenTool, Microscope
+  CheckCircle, Send, UserPlus, LogIn, User,
+  Hash, Building2, Smartphone, Star, Calendar, AwardIcon,
+  Sparkles, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-// Firebase imports - FIXED
+// Firebase imports - Using redirect method (no popup issues)
 import { 
   auth, 
   db, 
   googleProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -27,34 +25,53 @@ import {
   doc,
   setDoc,
   getDoc,
-  serverTimestamp
+  serverTimestamp,
+  onAuthStateChanged
 } from '../../firebase';
 
 // Role Card Component
 const RoleCard = ({ icon: Icon, label, isSelected, onClick, color }) => {
+  const colorClasses = {
+    indigo: {
+      border: 'border-indigo-500',
+      bg: 'bg-indigo-500',
+      text: 'text-indigo-600'
+    },
+    purple: {
+      border: 'border-purple-500',
+      bg: 'bg-purple-500',
+      text: 'text-purple-600'
+    },
+    pink: {
+      border: 'border-pink-500',
+      bg: 'bg-pink-500',
+      text: 'text-pink-600'
+    }
+  };
+
   return (
     <motion.button
-      whileHover={{ scale: 1.02, y: -2 }}
+      whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       type="button"
       onClick={onClick}
       className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
         isSelected
-          ? `border-${color}-500 bg-gradient-to-br from-${color}-500/10 to-${color}-600/10 shadow-lg`
+          ? `${colorClasses[color].border} bg-gradient-to-br from-${color}-500/10 to-${color}-600/10 shadow-lg`
           : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'
       }`}
     >
-      <div className={`p-2 rounded-lg ${isSelected ? `bg-${color}-500` : 'bg-slate-100 dark:bg-slate-700'}`}>
+      <div className={`p-2 rounded-lg ${isSelected ? colorClasses[color].bg : 'bg-slate-100 dark:bg-slate-700'}`}>
         <Icon size={20} className={isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'} />
       </div>
-      <span className={`text-xs font-medium ${isSelected ? `text-${color}-600` : 'text-slate-700 dark:text-slate-300'}`}>
+      <span className={`text-xs font-medium ${isSelected ? colorClasses[color].text : 'text-slate-700 dark:text-slate-300'}`}>
         {label}
       </span>
     </motion.button>
   );
 };
 
-// Mobile Input Component
+// Input Components
 const MobileInput = ({ icon: Icon, label, error, required, ...props }) => {
   const [isFocused, setIsFocused] = useState(false);
   
@@ -88,7 +105,6 @@ const MobileInput = ({ icon: Icon, label, error, required, ...props }) => {
   );
 };
 
-// Mobile Password Input
 const MobilePasswordInput = ({ icon: Icon, label, error, required, ...props }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -131,37 +147,7 @@ const MobilePasswordInput = ({ icon: Icon, label, error, required, ...props }) =
   );
 };
 
-// Mobile TextArea
-const MobileTextArea = ({ icon: Icon, label, error, ...props }) => {
-  const [isFocused, setIsFocused] = useState(false);
-  
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-      <div className="relative">
-        <div className="absolute left-3 top-3">
-          <Icon size={18} className="text-slate-400" />
-        </div>
-        <textarea
-          {...props}
-          rows={3}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          className={`w-full pl-10 pr-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border transition-all focus:outline-none resize-none ${
-            error
-              ? 'border-red-500 focus:border-red-500'
-              : isFocused
-                ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-                : 'border-transparent focus:border-indigo-500'
-          }`}
-        />
-      </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
-  );
-};
-
-// Gender Options
+// Options Lists
 const genderOptions = [
   { value: 'male', label: 'Male' },
   { value: 'female', label: 'Female' },
@@ -169,7 +155,6 @@ const genderOptions = [
   { value: 'prefer-not-say', label: 'Prefer not to say' },
 ];
 
-// Nigerian Universities List
 const universitiesList = [
   { value: 'unilag', label: 'University of Lagos' },
   { value: 'ui', label: 'University of Ibadan' },
@@ -186,117 +171,169 @@ const universitiesList = [
   { value: 'other', label: 'Other' },
 ];
 
-// Departments List
 const departmentsList = [
-  { value: 'accounting', label: 'Accounting' },
-  { value: 'agric-economics', label: 'Agricultural Economics' },
-  { value: 'architecture', label: 'Architecture' },
-  { value: 'biochemistry', label: 'Biochemistry' },
-  { value: 'business-admin', label: 'Business Administration' },
-  { value: 'chemical-engineering', label: 'Chemical Engineering' },
-  { value: 'chemistry', label: 'Chemistry' },
-  { value: 'civil-engineering', label: 'Civil Engineering' },
-  { value: 'computer-engineering', label: 'Computer Engineering' },
   { value: 'computer-science', label: 'Computer Science' },
-  { value: 'economics', label: 'Economics' },
-  { value: 'electrical-engineering', label: 'Electrical Engineering' },
-  { value: 'english', label: 'English Language' },
+  { value: 'engineering', label: 'Engineering' },
+  { value: 'medicine', label: 'Medicine' },
   { value: 'law', label: 'Law' },
-  { value: 'mass-communication', label: 'Mass Communication' },
-  { value: 'mathematics', label: 'Mathematics' },
-  { value: 'mechanical-engineering', label: 'Mechanical Engineering' },
-  { value: 'medicine-surgery', label: 'Medicine & Surgery' },
-  { value: 'microbiology', label: 'Microbiology' },
-  { value: 'nursing', label: 'Nursing' },
-  { value: 'pharmacy', label: 'Pharmacy' },
-  { value: 'physics', label: 'Physics' },
-  { value: 'political-science', label: 'Political Science' },
-  { value: 'psychology', label: 'Psychology' },
-  { value: 'sociology', label: 'Sociology' },
+  { value: 'business', label: 'Business Administration' },
+  { value: 'economics', label: 'Economics' },
+  { value: 'mass-comm', label: 'Mass Communication' },
   { value: 'other', label: 'Other' },
 ];
 
-// Faculties List
-const facultiesList = [
-  { value: 'agriculture', label: 'Faculty of Agriculture' },
-  { value: 'arts', label: 'Faculty of Arts' },
-  { value: 'education', label: 'Faculty of Education' },
-  { value: 'engineering', label: 'Faculty of Engineering' },
-  { value: 'environmental-sciences', label: 'Faculty of Environmental Sciences' },
-  { value: 'law', label: 'Faculty of Law' },
-  { value: 'management-sciences', label: 'Faculty of Management Sciences' },
-  { value: 'medical-sciences', label: 'Faculty of Medical Sciences' },
-  { value: 'pharmacy', label: 'Faculty of Pharmacy' },
-  { value: 'science', label: 'Faculty of Science' },
-  { value: 'social-sciences', label: 'Faculty of Social Sciences' },
-  { value: 'veterinary-medicine', label: 'Faculty of Veterinary Medicine' },
-  { value: 'other', label: 'Other' },
-];
-
-// Tutor Specializations
 const specializationsList = [
   { value: 'mathematics', label: 'Mathematics' },
   { value: 'physics', label: 'Physics' },
   { value: 'chemistry', label: 'Chemistry' },
   { value: 'biology', label: 'Biology' },
-  { value: 'english', label: 'English' },
   { value: 'computer-science', label: 'Computer Science' },
-  { value: 'economics', label: 'Economics' },
-  { value: 'accounting', label: 'Accounting' },
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'medicine', label: 'Medicine' },
-  { value: 'law', label: 'Law' },
   { value: 'other', label: 'Other' },
 ];
 
 // Main AuthForm Component
 function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [role, setRole] = useState('student');
   const [gender, setGender] = useState(null);
   const [selectedSchool, setSelectedSchool] = useState(null);
-  const [selectedFaculty, setSelectedFaculty] = useState(null);
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [selectedSpecialization, setSelectedSpecialization] = useState(null);
   const [activeStep, setActiveStep] = useState(1);
+  const [googleRedirectProcessing, setGoogleRedirectProcessing] = useState(false);
+  const [googleRedirectStarted, setGoogleRedirectStarted] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     matricNumber: '',
-    school: '',
-    faculty: '',
-    department: '',
-    specialization: '',
-    yearsExperience: '',
-    title: '',
-    yearsTeaching: '',
     email: '',
     password: '',
     confirmPassword: '',
     phone: '',
     address: '',
+    yearsExperience: '',
+    title: '',
+    yearsTeaching: '',
   });
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState(null);
-  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
-    setAlert(null);
-  };
+  // Handle Google redirect result when returning to the app
+  useEffect(() => {
+    let isMounted = true;
+    
+    const handleRedirectResult = async () => {
+      // Skip if we haven't started a Google redirect
+      if (!googleRedirectStarted) return;
+      
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && isMounted) {
+          setGoogleRedirectProcessing(true);
+          const user = result.user;
+          console.log("Google redirect sign-in successful:", user.email);
+          
+          // Process the user
+          await processGoogleUser(user);
+        }
+      } catch (error) {
+        console.error("Google redirect error:", error);
+        if (isMounted) {
+          let message = 'Google sign-in failed. Please try again.';
+          let title = 'Sign In Failed';
+          
+          if (error.code === 'auth/unauthorized-domain') {
+            message = 'This domain is not authorized. Please contact support.';
+            title = 'Domain Error';
+          } else if (error.code === 'auth/network-request-failed') {
+            message = 'Network error. Please check your internet connection.';
+            title = 'Network Error';
+          } else if (error.code === 'auth/popup-blocked') {
+            message = 'Popup was blocked. Please allow popups for this site.';
+            title = 'Popup Blocked';
+          }
+          
+          showAlert('error', title, message);
+        }
+      } finally {
+        if (isMounted) {
+          setGoogleRedirectProcessing(false);
+          setGoogleRedirectStarted(false);
+        }
+      }
+    };
+    
+    handleRedirectResult();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [googleRedirectStarted]);
 
-  const clearAlert = () => setAlert(null);
+  const processGoogleUser = async (user) => {
+    try {
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileDoc = await getDoc(profileRef);
+      let userProfile;
+      
+      if (!profileDoc.exists()) {
+        const profileData = {
+          name: user.displayName || user.email?.split('@')[0] || 'User',
+          email: user.email,
+          role: 'student',
+          photoURL: user.photoURL || null,
+          createdAt: serverTimestamp(),
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+        await setDoc(profileRef, profileData);
+        
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || user.email?.split('@')[0] || 'User',
+          role: 'student',
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
+      } else {
+        const profileData = profileDoc.data();
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: profileData.name || user.displayName || user.email?.split('@')[0] || 'User',
+          role: profileData.role || 'student',
+          photoURL: user.photoURL || profileData.photoURL,
+          coins: profileData.coins || 0,
+          diamonds: profileData.diamonds || 0,
+          emailVerified: user.emailVerified,
+        };
+      }
+      
+      localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      showAlert('success', 'Welcome!', `Signed in as ${userProfile.name}`);
+      
+      setTimeout(() => {
+        handleAuthSuccess(userProfile);
+      }, 1000);
+    } catch (error) {
+      console.error("Error processing Google user:", error);
+      showAlert('error', 'Error', 'Failed to complete Google sign-in. Please try again.');
+    }
+  };
 
   const showAlert = (type, title, message) => {
     setAlert({ type, title, message });
     setTimeout(() => setAlert(null), 5000);
   };
+
+  const clearAlert = () => setAlert(null);
 
   const triggerCelebration = () => {
     const container = document.createElement('div');
@@ -337,144 +374,128 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     }, 1500);
   };
 
-  const handlePasswordReset = async (e) => {
-    e.preventDefault();
-    const email = resetEmail.trim();
-    if (!email) {
-      showAlert('error', 'Email Required', 'Please enter your email address');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, email);
-      setResetSent(true);
-      showAlert('success', 'Reset Email Sent', `We've sent a password reset link to ${email}.`);
-    } catch (error) {
-      let message = 'Failed to send reset email.';
-      let title = 'Reset Failed';
-      if (error.code === 'auth/user-not-found') {
-        message = 'No account found with this email address.';
-        title = 'Account Not Found';
-      } else if (error.code === 'auth/invalid-email') {
-        message = 'Please enter a valid email address.';
-        title = 'Invalid Email';
-      }
-      showAlert('error', title, message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAuthSuccess = (userProfile) => {
     triggerCelebration();
     if (onClose) onClose();
     if (onLoginSuccess) onLoginSuccess(userProfile);
-    navigate('/dashboard', { replace: true });
+    navigate('/dashboard');
     window.dispatchEvent(new CustomEvent('userLoggedIn', { detail: userProfile }));
   };
 
-  // FIXED: Completely rewritten Google Sign-In handler
+  // ========== GOOGLE SIGN-IN (REDIRECT METHOD - NO POPUP ISSUES) ==========
   const handleGoogleSignIn = async () => {
+    if (loading) return;
+    
+    setLoading(true);
+    setAlert(null);
+    setGoogleRedirectStarted(true);
+    
+    try {
+      console.log("Redirecting to Google sign-in...");
+      await signInWithRedirect(auth, googleProvider);
+      // The page will redirect to Google, then come back
+      // The result will be handled by the useEffect above
+    } catch (error) {
+      console.error("Google Sign-In Error:", error);
+      
+      let message = 'Google sign-in failed. Please try again.';
+      let title = 'Sign In Failed';
+      
+      if (error.code === 'auth/unauthorized-domain') {
+        message = 'This domain is not authorized. Please contact support.';
+        title = 'Domain Error';
+      } else if (error.code === 'auth/network-request-failed') {
+        message = 'Network error. Please check your internet connection.';
+        title = 'Network Error';
+      } else if (error.code === 'auth/internal-error') {
+        message = 'Internal error. Please try email sign-in instead.';
+        title = 'Service Error';
+      }
+      
+      showAlert('error', title, message);
+      setLoading(false);
+      setGoogleRedirectStarted(false);
+    }
+  };
+
+  // ========== EMAIL SIGN-IN ==========
+  const handleEmailSignIn = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.email) {
+      showAlert('error', 'Email Required', 'Please enter your email');
+      return;
+    }
+    if (!formData.password) {
+      showAlert('error', 'Password Required', 'Please enter your password');
+      return;
+    }
+    
     setLoading(true);
     setAlert(null);
     
-    // Check if popups are blocked
     try {
-      const testWindow = window.open('about:blank', '_blank');
-      if (!testWindow || testWindow.closed || typeof testWindow.closed === 'undefined') {
-        showAlert('error', 'Popup Blocked', 'Please allow popups for this website and click the Google button again.');
+      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
+      await user.reload();
+      
+      if (!user.emailVerified) {
+        showAlert('warning', 'Email Not Verified', 'Please verify your email before logging in. Check your inbox for the verification link.');
         setLoading(false);
         return;
       }
-      testWindow.close();
-    } catch (popupError) {
-      console.warn('Popup check failed:', popupError);
-    }
-    
-    try {
-      console.log("Starting Google sign-in...");
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      console.log("Google sign-in successful:", user.email);
       
       const profileRef = doc(db, 'profiles', user.uid);
       const profileDoc = await getDoc(profileRef);
+      
       let userProfile;
-
-      if (!profileDoc.exists()) {
-        const profileData = {
-          name: user.displayName || user.email?.split('@')[0] || 'User',
-          email: user.email,
-          role: 'student',
-          photoURL: user.photoURL || null,
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-        await setDoc(profileRef, profileData);
-        userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: user.displayName || user.email?.split('@')[0] || 'User',
-          role: 'student',
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          emailVerified: user.emailVerified,
-        };
-      } else {
+      
+      if (profileDoc.exists()) {
         const profileData = profileDoc.data();
         userProfile = {
           id: user.uid,
           email: user.email,
-          name: profileData.name || user.displayName || user.email?.split('@')[0] || 'User',
+          name: profileData.name || user.displayName || 'User',
           role: profileData.role || 'student',
           photoURL: user.photoURL || profileData.photoURL,
           coins: profileData.coins || 0,
           diamonds: profileData.diamonds || 0,
           emailVerified: user.emailVerified,
         };
+      } else {
+        userProfile = {
+          id: user.uid,
+          email: user.email,
+          name: user.displayName || 'User',
+          role: 'student',
+          photoURL: user.photoURL || null,
+          coins: 0,
+          diamonds: 0,
+          emailVerified: user.emailVerified,
+        };
       }
-
+      
       localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      showAlert('success', 'Welcome!', `Signed in successfully as ${userProfile.name}`);
-      setTimeout(() => handleAuthSuccess(userProfile), 500);
+      showAlert('success', 'Welcome Back!', `Hello ${userProfile.name}`);
+      
+      setTimeout(() => {
+        handleAuthSuccess(userProfile);
+      }, 1000);
       
     } catch (error) {
-      console.error("Google Sign-In Error Details:", error);
-      console.error("Error code:", error.code);
-      console.error("Error message:", error.message);
+      console.error("Sign-in error:", error);
       
-      let message = 'Google sign-in failed. Please try again.';
-      let title = 'Authentication Failed';
+      let message = 'Sign in failed. Please try again.';
+      let title = 'Sign In Failed';
       
-      // Detailed error handling
-      if (error.code === 'auth/unauthorized-domain') {
-        message = 'This domain is not authorized for Google sign-in. Please contact support.';
-        title = 'Domain Not Authorized';
-      } else if (error.code === 'auth/operation-not-allowed') {
-        message = 'Google sign-in is not enabled. Please sign up with email instead.';
-        title = 'Sign-in Method Disabled';
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        message = 'You closed the sign-in window. Please try again.';
-        title = 'Sign-in Cancelled';
-      } else if (error.code === 'auth/popup-blocked') {
-        message = 'Pop-up was blocked by your browser. Please allow popups for this site.';
-        title = 'Popup Blocked';
-      } else if (error.code === 'auth/network-request-failed') {
-        message = 'Network connection failed. Please check your internet and try again.';
-        title = 'Network Error';
-      } else if (error.code === 'auth/internal-error') {
-        message = 'Internal authentication error. Please try email sign-in instead.';
-        title = 'Configuration Error';
-      } else if (error.code === 'auth/invalid-api-key') {
-        message = 'Firebase configuration error. Please contact support.';
-        title = 'Configuration Error';
-      } else if (error.message && error.message.includes('firebase')) {
-        message = 'Firebase service error. Please try again or use email sign-in.';
-        title = 'Service Error';
+      if (error.code === 'auth/invalid-credential') {
+        message = 'Invalid email or password.';
+      } else if (error.code === 'auth/user-not-found') {
+        message = 'No account found with this email. Please sign up.';
+      } else if (error.code === 'auth/wrong-password') {
+        message = 'Incorrect password. Please try again.';
+      } else if (error.code === 'auth/too-many-requests') {
+        message = 'Too many failed attempts. Please try again later.';
       }
       
       showAlert('error', title, message);
@@ -483,228 +504,216 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     }
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-    if (!formData.email) newErrors.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email';
+  // ========== EMAIL SIGN-UP ==========
+  const handleEmailSignUp = async (e) => {
+    e.preventDefault();
     
-    if (!formData.password) newErrors.password = 'Password is required';
-    else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
+    // Basic Validation
+    if (!formData.name.trim()) {
+      showAlert('error', 'Name Required', 'Please enter your full name');
+      return;
+    }
+    if (!formData.email) {
+      showAlert('error', 'Email Required', 'Please enter your email');
+      return;
+    }
+    if (!formData.password) {
+      showAlert('error', 'Password Required', 'Please enter a password');
+      return;
+    }
+    if (formData.password.length < 6) {
+      showAlert('error', 'Weak Password', 'Password must be at least 6 characters');
+      return;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      showAlert('error', 'Password Mismatch', 'Passwords do not match');
+      return;
+    }
     
-    if (!isLogin) {
-      if (!formData.name) newErrors.name = 'Name is required';
-      if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
-      
-      if (role === 'student') {
-        if (!formData.matricNumber) newErrors.matricNumber = 'Matric number required';
-        if (!selectedSchool) newErrors.school = 'School required';
-        if (!selectedDepartment) newErrors.department = 'Department required';
+    // Role-specific validation
+    if (role === 'student') {
+      if (!formData.matricNumber.trim()) {
+        showAlert('error', 'Matric Number Required', 'Please enter your matric number');
+        return;
       }
-      if (role === 'tutor') {
-        if (!selectedSpecialization) newErrors.specialization = 'Specialization required';
-        if (!formData.yearsExperience) newErrors.yearsExperience = 'Years of experience required';
+      if (!selectedSchool) {
+        showAlert('error', 'School Required', 'Please select your school');
+        return;
       }
-      if (role === 'lecturer') {
-        if (!formData.title) newErrors.title = 'Title required';
-        if (!selectedSchool) newErrors.school = 'School required';
-        if (!selectedDepartment) newErrors.department = 'Department required';
-        if (!formData.yearsTeaching) newErrors.yearsTeaching = 'Years of teaching required';
+      if (!selectedDepartment) {
+        showAlert('error', 'Department Required', 'Please select your department');
+        return;
       }
     }
     
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
+    if (role === 'tutor') {
+      if (!selectedSpecialization) {
+        showAlert('error', 'Specialization Required', 'Please select your specialization');
+        return;
+      }
+      if (!formData.yearsExperience) {
+        showAlert('error', 'Experience Required', 'Please enter your years of experience');
+        return;
+      }
+      if (isNaN(formData.yearsExperience) || Number(formData.yearsExperience) < 0) {
+        showAlert('error', 'Invalid Experience', 'Please enter a valid number for years of experience');
+        return;
+      }
+    }
+    
+    if (role === 'lecturer') {
+      if (!formData.title.trim()) {
+        showAlert('error', 'Title Required', 'Please enter your title');
+        return;
+      }
+      if (!selectedSchool) {
+        showAlert('error', 'School Required', 'Please select your school');
+        return;
+      }
+      if (!selectedDepartment) {
+        showAlert('error', 'Department Required', 'Please select your department');
+        return;
+      }
+      if (!formData.yearsTeaching) {
+        showAlert('error', 'Teaching Experience Required', 'Please enter your years of teaching');
+        return;
+      }
+      if (isNaN(formData.yearsTeaching) || Number(formData.yearsTeaching) < 0) {
+        showAlert('error', 'Invalid Experience', 'Please enter a valid number for years of teaching');
+        return;
+      }
+    }
     
     setLoading(true);
     setAlert(null);
-
+    
     try {
-      const email = formData.email.trim();
-      const password = formData.password.trim();
-
-      if (!isLogin) {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        await sendEmailVerification(user);
-
-        const profileData = {
-          name: formData.name.trim() || 'User',
-          email: user.email,
-          role: role,
-          gender: gender?.value || null,
-          phone: formData.phone.trim() || null,
-          address: formData.address.trim() || null,
-          createdAt: serverTimestamp(),
-          coins: 0,
-          diamonds: 0,
-          photoURL: user.photoURL || null,
-          emailVerified: false,
-        };
-
-        if (role === 'student') {
-          profileData.matricNumber = formData.matricNumber.trim() || null;
-          profileData.school = selectedSchool?.label || formData.school;
-          profileData.faculty = selectedFaculty?.label || formData.faculty;
-          profileData.department = selectedDepartment?.label || formData.department;
-        } else if (role === 'tutor') {
-          profileData.specialization = selectedSpecialization?.label || formData.specialization;
-          profileData.yearsExperience = Number(formData.yearsExperience) || 0;
-        } else if (role === 'lecturer') {
-          profileData.title = formData.title.trim() || null;
-          profileData.school = selectedSchool?.label || formData.school;
-          profileData.department = selectedDepartment?.label || formData.department;
-          profileData.yearsTeaching = Number(formData.yearsTeaching) || 0;
-        }
-
-        const profileRef = doc(db, 'profiles', user.uid);
-        await setDoc(profileRef, profileData);
-
-        const userProfile = {
-          id: user.uid,
-          email: user.email,
-          name: formData.name.trim() || 'User',
-          role: role,
-          photoURL: user.photoURL || null,
-          coins: 0,
-          diamonds: 0,
-          emailVerified: false,
-        };
-        
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        showAlert('success', 'Account Created!', `Welcome to WE CONNECT EDU! Please check your email to verify your account.`);
-        setTimeout(() => handleAuthSuccess(userProfile), 2000);
-      } else {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        await user.reload();
-        
-        if (!user.emailVerified) {
-          showAlert('warning', 'Email Not Verified', 'Please verify your email before logging in.');
-          setLoading(false);
-          return;
-        }
-        
-        const profileRef = doc(db, 'profiles', user.uid);
-        const profileDoc = await getDoc(profileRef);
-        let userProfile;
-        
-        if (profileDoc.exists()) {
-          const profileData = profileDoc.data();
-          userProfile = {
-            id: user.uid,
-            email: user.email,
-            name: profileData.name || user.displayName || 'User',
-            role: profileData.role || 'student',
-            photoURL: user.photoURL || profileData.photoURL,
-            coins: profileData.coins || 0,
-            diamonds: profileData.diamonds || 0,
-            emailVerified: user.emailVerified,
-          };
-        } else {
-          const defaultProfile = {
-            name: user.displayName || 'User',
-            email: user.email,
-            role: 'student',
-            createdAt: serverTimestamp(),
-            coins: 0,
-            diamonds: 0,
-            photoURL: user.photoURL || null,
-            emailVerified: user.emailVerified,
-          };
-          await setDoc(profileRef, defaultProfile);
-          userProfile = {
-            id: user.uid,
-            email: user.email,
-            name: defaultProfile.name,
-            role: defaultProfile.role,
-            coins: 0,
-            diamonds: 0,
-            emailVerified: user.emailVerified,
-          };
-        }
-        
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        showAlert('success', 'Welcome Back!', `Hello ${userProfile.name}, you have successfully signed in.`);
-        setTimeout(() => handleAuthSuccess(userProfile), 500);
-      }
-    } catch (error) {
-      let message = 'An error occurred. Please try again.';
-      let title = 'Authentication Failed';
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
       
-      switch (error.code) {
-        case 'auth/invalid-credential':
-          message = 'The email or password you entered is incorrect.';
-          title = 'Invalid Credentials';
-          break;
-        case 'auth/email-already-in-use':
-          message = 'This email is already registered. Please sign in instead.';
-          title = 'Email Already Exists';
-          break;
-        case 'auth/user-not-found':
-          message = 'No account found with this email. Please sign up first.';
-          title = 'Account Not Found';
-          break;
-        case 'auth/wrong-password':
-          message = 'Incorrect password. Please try again or click "Forgot Password".';
-          title = 'Wrong Password';
-          break;
-        default:
-          message = error.message || 'Authentication failed.';
+      // Send verification email
+      await sendEmailVerification(user);
+      
+      // Build profile data
+      const profileData = {
+        name: formData.name.trim(),
+        email: user.email,
+        role: role,
+        gender: gender?.value || null,
+        phone: formData.phone?.trim() || null,
+        address: formData.address?.trim() || null,
+        createdAt: serverTimestamp(),
+        coins: 0,
+        diamonds: 0,
+        photoURL: user.photoURL || null,
+        emailVerified: false,
+      };
+      
+      // Role-specific data
+      if (role === 'student') {
+        profileData.matricNumber = formData.matricNumber.trim();
+        profileData.school = selectedSchool?.label;
+        profileData.department = selectedDepartment?.label;
+      } else if (role === 'tutor') {
+        profileData.specialization = selectedSpecialization?.label;
+        profileData.yearsExperience = Number(formData.yearsExperience);
+      } else if (role === 'lecturer') {
+        profileData.title = formData.title.trim();
+        profileData.school = selectedSchool?.label;
+        profileData.department = selectedDepartment?.label;
+        profileData.yearsTeaching = Number(formData.yearsTeaching);
       }
+      
+      // Save to Firestore
+      const profileRef = doc(db, 'profiles', user.uid);
+      await setDoc(profileRef, profileData);
+      
+      const userProfile = {
+        id: user.uid,
+        email: user.email,
+        name: formData.name.trim(),
+        role: role,
+        photoURL: null,
+        coins: 0,
+        diamonds: 0,
+        emailVerified: false,
+      };
+      
+      localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      showAlert('success', 'Account Created!', `Welcome! Please check your email at ${formData.email} to verify your account.`);
+      
+      setTimeout(() => {
+        handleAuthSuccess(userProfile);
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Sign-up error:", error);
+      
+      let message = 'Sign up failed. Please try again.';
+      let title = 'Sign Up Failed';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        message = 'This email is already registered. Please sign in instead.';
+        title = 'Email Already Exists';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'Password is too weak. Please use at least 6 characters.';
+        title = 'Weak Password';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+        title = 'Invalid Email';
+      } else if (error.code === 'auth/operation-not-allowed') {
+        message = 'Email/password accounts are not enabled. Please contact support.';
+        title = 'Account Creation Disabled';
+      }
+      
       showAlert('error', title, message);
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setShowResetPassword(false);
-    setResetSent(false);
-    setResetEmail('');
+  // ========== PASSWORD RESET ==========
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    if (!resetEmail) {
+      showAlert('error', 'Email Required', 'Please enter your email address');
+      return;
+    }
+    
+    setLoading(true);
     setAlert(null);
-    setActiveStep(1);
-    setGender(null);
-    setSelectedSchool(null);
-    setSelectedFaculty(null);
-    setSelectedDepartment(null);
-    setSelectedSpecialization(null);
-    setFormData({
-      name: '',
-      matricNumber: '',
-      school: '',
-      faculty: '',
-      department: '',
-      specialization: '',
-      yearsExperience: '',
-      title: '',
-      yearsTeaching: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-      phone: '',
-      address: '',
-    });
-    setErrors({});
+    
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      setResetSent(true);
+      showAlert('success', 'Reset Email Sent', `Check your email at ${resetEmail} for reset instructions.`);
+    } catch (error) {
+      console.error("Password reset error:", error);
+      let message = 'Failed to send reset email.';
+      let title = 'Reset Failed';
+      
+      if (error.code === 'auth/user-not-found') {
+        message = 'No account found with this email address.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+      }
+      
+      showAlert('error', title, message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const renderRoleSpecificFields = () => {
+  const renderRoleFields = () => {
     if (role === 'student') {
       return (
         <>
           <MobileInput
             icon={Hash}
             label="Matric Number"
-            type="text"
             name="matricNumber"
             value={formData.matricNumber}
-            onChange={handleInputChange}
-            error={errors.matricNumber}
+            onChange={(e) => setFormData({ ...formData, matricNumber: e.target.value })}
             required
           />
           <div>
@@ -722,23 +731,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
               <option value="">Select your school</option>
               {universitiesList.map(uni => (
                 <option key={uni.value} value={uni.value}>{uni.label}</option>
-              ))}
-            </select>
-            {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Faculty</label>
-            <select
-              value={selectedFaculty?.value || ''}
-              onChange={(e) => {
-                const selected = facultiesList.find(opt => opt.value === e.target.value);
-                setSelectedFaculty(selected);
-              }}
-              className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-            >
-              <option value="">Select your faculty (optional)</option>
-              {facultiesList.map(fac => (
-                <option key={fac.value} value={fac.value}>{fac.label}</option>
               ))}
             </select>
           </div>
@@ -759,7 +751,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 <option key={dept.value} value={dept.value}>{dept.label}</option>
               ))}
             </select>
-            {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
           </div>
         </>
       );
@@ -785,16 +776,16 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 <option key={spec.value} value={spec.value}>{spec.label}</option>
               ))}
             </select>
-            {errors.specialization && <p className="text-xs text-red-500 mt-1">{errors.specialization}</p>}
           </div>
           <MobileInput
             icon={Star}
             label="Years of Experience"
             type="number"
+            min="0"
+            step="1"
             name="yearsExperience"
             value={formData.yearsExperience}
-            onChange={handleInputChange}
-            error={errors.yearsExperience}
+            onChange={(e) => setFormData({ ...formData, yearsExperience: e.target.value })}
             required
           />
         </>
@@ -806,12 +797,10 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         <>
           <MobileInput
             icon={AwardIcon}
-            label="Title (e.g., Dr., Prof., Mr.)"
-            type="text"
+            label="Title (Dr., Prof., Mr., Mrs., etc.)"
             name="title"
             value={formData.title}
-            onChange={handleInputChange}
-            error={errors.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             required
           />
           <div>
@@ -831,7 +820,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 <option key={uni.value} value={uni.value}>{uni.label}</option>
               ))}
             </select>
-            {errors.school && <p className="text-xs text-red-500 mt-1">{errors.school}</p>}
           </div>
           <div>
             <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
@@ -850,16 +838,16 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 <option key={dept.value} value={dept.value}>{dept.label}</option>
               ))}
             </select>
-            {errors.department && <p className="text-xs text-red-500 mt-1">{errors.department}</p>}
           </div>
           <MobileInput
             icon={Calendar}
             label="Years of Teaching"
             type="number"
+            min="0"
+            step="1"
             name="yearsTeaching"
             value={formData.yearsTeaching}
-            onChange={handleInputChange}
-            error={errors.yearsTeaching}
+            onChange={(e) => setFormData({ ...formData, yearsTeaching: e.target.value })}
             required
           />
         </>
@@ -869,9 +857,47 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
     return null;
   };
 
+  const toggleMode = () => {
+    setIsLogin(!isLogin);
+    setShowResetPassword(false);
+    setResetSent(false);
+    setResetEmail('');
+    setAlert(null);
+    setActiveStep(1);
+    setGender(null);
+    setSelectedSchool(null);
+    setSelectedDepartment(null);
+    setSelectedSpecialization(null);
+    setFormData({
+      name: '',
+      matricNumber: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      phone: '',
+      address: '',
+      yearsExperience: '',
+      title: '',
+      yearsTeaching: '',
+    });
+  };
+
+  // Loading screen for Google redirect processing
+  if (googleRedirectProcessing) {
+    return (
+      <div className="fixed inset-0 z-50 bg-gradient-to-br from-indigo-900/95 via-purple-900/95 to-pink-900/95 backdrop-blur-md flex items-center justify-center">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center max-w-sm mx-4">
+          <div className="w-16 h-16 mx-auto border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Completing Sign In</h3>
+          <p className="text-slate-600 dark:text-slate-400">Please wait while we complete your Google sign-in...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-indigo-900/95 via-purple-900/95 to-pink-900/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-      {/* Animated Background Elements */}
+      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-0 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-0 right-0 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
@@ -900,9 +926,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 }`}
               >
                 Sign In
-                {isLogin && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
-                )}
+                {isLogin && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />}
               </button>
               <button
                 onClick={() => setIsLogin(false)}
@@ -911,9 +935,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 }`}
               >
                 Sign Up
-                {!isLogin && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
-                )}
+                {!isLogin && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />}
               </button>
             </div>
           )}
@@ -935,11 +957,14 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                   <div className="flex items-start gap-2">
                     {alert.type === 'error' && <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />}
                     {alert.type === 'success' && <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />}
+                    {alert.type === 'warning' && <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />}
                     <div className="flex-1">
                       <p className="font-semibold text-sm">{alert.title}</p>
                       <p className="text-xs">{alert.message}</p>
                     </div>
-                    <button onClick={clearAlert}><X size={14} /></button>
+                    <button onClick={clearAlert} className="hover:opacity-70">
+                      <X size={14} />
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -953,9 +978,9 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                     <div className="w-16 h-16 mx-auto bg-green-500 rounded-full flex items-center justify-center mb-4">
                       <CheckCircle className="w-8 h-8 text-white" />
                     </div>
-                    <h3 className="text-lg font-bold mb-2">Check Your Email</h3>
+                    <h3 className="text-lg font-bold mb-2 text-slate-800 dark:text-white">Check Your Email</h3>
                     <p className="text-slate-600 dark:text-slate-400 text-sm">
-                      We've sent a password reset link to <strong>{resetEmail}</strong>
+                      We've sent a password reset link to <strong className="text-indigo-600">{resetEmail}</strong>
                     </p>
                     <button
                       type="button"
@@ -963,9 +988,9 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                         setResetSent(false);
                         setResetEmail('');
                       }}
-                      className="mt-4 text-indigo-600 hover:underline text-sm"
+                      className="mt-4 text-indigo-600 hover:text-indigo-700 text-sm font-medium"
                     >
-                      Try another email
+                      ← Use a different email
                     </button>
                   </div>
                 ) : (
@@ -997,16 +1022,15 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 )}
               </form>
             ) : isLogin ? (
-              // Login Form
-              <form onSubmit={handleSubmit} className="space-y-4">
+              // SIGN IN FORM
+              <form onSubmit={handleEmailSignIn} className="space-y-4">
                 <MobileInput
                   icon={Mail}
                   label="Email Address"
                   type="email"
                   name="email"
                   value={formData.email}
-                  onChange={handleInputChange}
-                  error={errors.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
                 />
                 
@@ -1015,8 +1039,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                   label="Password"
                   name="password"
                   value={formData.password}
-                  onChange={handleInputChange}
-                  error={errors.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
                 />
                 
@@ -1050,10 +1073,10 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                  className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Chrome className="w-5 h-5 text-red-600" />
-                  <span className="font-medium">Google</span>
+                  <span className="font-medium">Continue with Google</span>
                 </button>
                 
                 <p className="text-center text-sm text-slate-600 dark:text-slate-400">
@@ -1064,12 +1087,11 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                 </p>
               </form>
             ) : (
-              // Sign Up Form - Step by Step with All Fields
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Step 1: Basic Info + Role Selection */}
-                {activeStep === 1 && (
+              // SIGN UP FORM
+              <form onSubmit={handleEmailSignUp} className="space-y-4">
+                {activeStep === 1 ? (
                   <>
-                    {/* Role Selection Cards */}
+                    {/* Role Selection */}
                     <div>
                       <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">I am a</label>
                       <div className="grid grid-cols-3 gap-3">
@@ -1100,11 +1122,9 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                     <MobileInput
                       icon={User}
                       label="Full Name"
-                      type="text"
                       name="name"
                       value={formData.name}
-                      onChange={handleInputChange}
-                      error={errors.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
                     />
                     
@@ -1114,18 +1134,16 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                       type="email"
                       name="email"
                       value={formData.email}
-                      onChange={handleInputChange}
-                      error={errors.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       required
                     />
                     
                     <MobilePasswordInput
                       icon={Lock}
-                      label="Password"
+                      label="Password (min. 6 characters)"
                       name="password"
                       value={formData.password}
-                      onChange={handleInputChange}
-                      error={errors.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       required
                     />
                     
@@ -1134,26 +1152,25 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                       label="Confirm Password"
                       name="confirmPassword"
                       value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      error={errors.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                       required
                     />
                     
                     <div>
                       <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Gender (Optional)</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {genderOptions.map((opt) => (
                           <button
                             key={opt.value}
                             type="button"
                             onClick={() => setGender(opt)}
-                            className={`py-2 rounded-lg border transition-all ${
+                            className={`py-2 rounded-lg border transition-all text-sm ${
                               gender?.value === opt.value
-                                ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                                : 'border-slate-200 dark:border-slate-700 text-slate-600'
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
                             }`}
                           >
-                            {opt.label}
+                            {opt.label === 'Prefer not to say' ? 'Prefer not' : opt.label}
                           </button>
                         ))}
                       </div>
@@ -1165,15 +1182,15 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                       type="tel"
                       name="phone"
                       value={formData.phone}
-                      onChange={handleInputChange}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     />
                     
-                    <MobileTextArea
+                    <MobileInput
                       icon={Home}
                       label="Address (Optional)"
                       name="address"
                       value={formData.address}
-                      onChange={handleInputChange}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     />
                     
                     <button
@@ -1184,19 +1201,42 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                       Continue
                       <ArrowRight size={18} />
                     </button>
-                  </>
-                )}
-                
-                {/* Step 2: Role-Specific Fields */}
-                {activeStep === 2 && (
-                  <>
-                    {renderRoleSpecificFields()}
                     
-                    <div className="flex gap-3">
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-slate-200 dark:border-slate-700" />
+                      </div>
+                      <div className="relative flex justify-center">
+                        <span className="px-3 bg-white dark:bg-slate-900 text-xs text-slate-500">or continue with</span>
+                      </div>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={handleGoogleSignIn}
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Chrome className="w-5 h-5 text-red-600" />
+                      <span className="font-medium">Continue with Google</span>
+                    </button>
+                    
+                    <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+                      Already have an account?{' '}
+                      <button type="button" onClick={toggleMode} className="font-semibold text-indigo-600 hover:text-indigo-700">
+                        Sign in
+                      </button>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    {renderRoleFields()}
+                    
+                    <div className="flex gap-3 pt-4">
                       <button
                         type="button"
                         onClick={() => setActiveStep(1)}
-                        className="flex-1 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-medium"
+                        className="flex-1 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition"
                       >
                         Back
                       </button>
@@ -1211,37 +1251,6 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
                     </div>
                   </>
                 )}
-                
-                {/* Social Login - Only on Step 1 */}
-                {activeStep === 1 && (
-                  <>
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-slate-200 dark:border-slate-700" />
-                      </div>
-                      <div className="relative flex justify-center">
-                        <span className="px-3 bg-white dark:bg-slate-900 text-xs text-slate-500">or continue with</span>
-                      </div>
-                    </div>
-                    
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      disabled={loading}
-                      className="w-full flex items-center justify-center gap-3 py-3 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-                    >
-                      <Chrome className="w-5 h-5 text-red-600" />
-                      <span className="font-medium">Google</span>
-                    </button>
-                    
-                    <p className="text-center text-sm text-slate-600 dark:text-slate-400">
-                      Already have an account?{' '}
-                      <button type="button" onClick={toggleMode} className="font-semibold text-indigo-600 hover:text-indigo-700">
-                        Sign in
-                      </button>
-                    </p>
-                  </>
-                )}
               </form>
             )}
           </div>
@@ -1251,6 +1260,7 @@ function AuthForm({ initialMode = 'login', onClose, onLoginSuccess }) {
         <button
           onClick={onClose}
           className="absolute -top-12 right-0 p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition"
+          aria-label="Close"
         >
           <X size={20} className="text-white" />
         </button>
