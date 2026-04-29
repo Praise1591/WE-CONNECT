@@ -1,4 +1,4 @@
-// Connect.jsx - COMPLETE FIXED VERSION with subcollection initialization (No Enclosing Boxes)
+// Connect.jsx - COMPLETE FIXED VERSION with working comments and comment deletion
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Search, Bell, MessageCircle, Heart, MessageSquare, Send, 
@@ -85,21 +85,18 @@ const Connect = () => {
 
   const minSwipeDistance = 50;
 
-  // Function to initialize user subcollections (FIXES PERMISSION ERROR)
+  // Function to initialize user subcollections
   const initializeUserSubcollections = useCallback(async (userId) => {
     try {
       const subcollections = ['likedPosts', 'connectionRequestsSent', 'blocked', 'blockedBy'];
       for (const sub of subcollections) {
-        // Check if subcollection exists by trying to read
         const testRef = collection(db, `profiles/${userId}/${sub}`);
         const testSnap = await getDocs(testRef);
         if (testSnap.empty) {
-          // Create a temporary document to initialize the subcollection
           await setDoc(doc(db, `profiles/${userId}/${sub}`, '_init'), { 
             _init: true, 
             createdAt: serverTimestamp() 
           });
-          // Delete the temporary document
           await deleteDoc(doc(db, `profiles/${userId}/${sub}`, '_init'));
           console.log(`Initialized ${sub} subcollection for user: ${userId}`);
         }
@@ -116,7 +113,7 @@ const Connect = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auth listener - UPDATED to use 'profiles' collection
+  // Auth listener
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (!firebaseUser) {
@@ -158,7 +155,6 @@ const Connect = () => {
         setProfilePhotoPreview(profile.photoURL);
         setCoverPhotoPreview(profile.coverPhotoURL);
         
-        // Initialize subcollections for this user (FIXES PERMISSION ERROR)
         await initializeUserSubcollections(firebaseUser.uid);
         
         try {
@@ -193,7 +189,7 @@ const Connect = () => {
       });
       setLikedPosts(liked);
     }, (err) => {
-      console.log("Liked posts listener error (may need initialization):", err.message);
+      console.log("Liked posts listener error:", err.message);
     });
     
     return unsubscribe;
@@ -216,13 +212,12 @@ const Connect = () => {
     return unsubscribe;
   }, [viewingProfile?.id]);
 
-  // Firebase listeners - UPDATED to use 'profiles' collection
+  // Firebase listeners
   useEffect(() => {
     if (!currentUser?.id) return;
 
     const unsubs = [];
 
-    // Listen to profiles collection
     unsubs.push(onSnapshot(collection(db, 'profiles'), snap => {
       setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setTotalUsers(snap.size);
@@ -283,7 +278,7 @@ const Connect = () => {
     return () => unsubs.forEach(u => u());
   }, [currentUser?.id]);
 
-  // Update current user when users list changes (for real-time profile updates)
+  // Update current user when users list changes
   useEffect(() => {
     if (currentUser?.id && users.length > 0) {
       const updatedUser = users.find(u => u.id === currentUser.id);
@@ -295,7 +290,6 @@ const Connect = () => {
     }
   }, [users, currentUser?.id]);
 
-  // Mark notification as read
   const markNotificationAsRead = useCallback(async (notificationId) => {
     if (!notificationId) return;
     try {
@@ -306,7 +300,6 @@ const Connect = () => {
     }
   }, []);
 
-  // Mark all notifications as read
   const markAllNotificationsAsRead = useCallback(async () => {
     const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
     if (unreadIds.length === 0) return;
@@ -381,7 +374,7 @@ const Connect = () => {
     return users.find(u => u.id === id) || { name: 'Unknown', photoURL: null, bio: '', location: '' };
   }, [users]);
 
-  // Handle like - prevents multiple likes
+  // Handle like
   const handleLike = useCallback(async (postId) => {
     if (likedPosts.has(postId)) {
       toast.info("You already liked this post");
@@ -461,31 +454,48 @@ const Connect = () => {
     }
   }, []);
 
-  const handleComment = useCallback(async (postId) => {
-    const comment = commentInputs[postId]?.trim();
-    if (!comment) {
-      toast.error('Write a comment first');
+  // Handle comment deletion
+  const handleDeleteComment = useCallback(async (postId, commentId, commentUserId) => {
+    if (commentUserId !== currentUser?.id) {
+      toast.error("You can only delete your own comments");
       return;
     }
-
+    
+    if (!window.confirm("Delete this comment?")) return;
+    
     try {
-      await updateDoc(doc(db, 'posts', postId), {
-        comments: arrayUnion({
-          id: Date.now().toString(),
-          user: currentUser?.name || 'User',
-          userId: currentUser?.id,
-          userPhoto: currentUser?.photoURL,
-          content: comment,
-          timestamp: serverTimestamp()
-        }),
-        commentsCount: increment(1)
+      const postRef = doc(db, 'posts', postId);
+      const postSnap = await getDoc(postRef);
+      
+      if (!postSnap.exists()) {
+        toast.error('Post not found');
+        return;
+      }
+      
+      const postData = postSnap.data();
+      const commentToDelete = (postData.comments || []).find(c => c.id === commentId);
+      
+      if (!commentToDelete) {
+        toast.error('Comment not found');
+        return;
+      }
+      
+      if (commentToDelete.userId !== currentUser?.id) {
+        toast.error("You can only delete your own comments");
+        return;
+      }
+      
+      await updateDoc(postRef, {
+        comments: arrayRemove(commentToDelete),
+        commentsCount: increment(-1)
       });
-      setCommentInputs(prev => ({ ...prev, [postId]: '' }));
-      toast.success('Comment added');
+      
+      toast.success('Comment deleted');
     } catch (err) {
-      toast.error("Comment failed");
+      console.error("Delete comment error:", err);
+      toast.error("Failed to delete comment");
     }
-  }, [commentInputs, currentUser]);
+  }, [currentUser?.id]);
 
   const handleMediaUpload = useCallback((e) => {
     const file = e.target.files[0];
@@ -992,7 +1002,289 @@ const Connect = () => {
     });
   }, [posts, blockedUsers, blockedByUsers]);
 
-  // User Profile View Component - REDESIGNED with signature colors
+  // Post Card Component - COMPLETE FIXED with comment deletion
+  const PostCard = ({ post }) => {
+    const [showComments, setShowComments] = useState(false);
+    const [localComment, setLocalComment] = useState('');
+    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+    const [deletingCommentId, setDeletingCommentId] = useState(null);
+    const isLiked = likedPosts.has(post.id);
+    
+    const handleLocalLike = async () => {
+      await handleLike(post.id);
+    };
+    
+    const handleLocalComment = async () => {
+      if (!localComment.trim()) {
+        toast.error('Write a comment first');
+        return;
+      }
+      
+      setIsSubmittingComment(true);
+      
+      try {
+        const postRef = doc(db, 'posts', post.id);
+        
+        const newComment = {
+          id: `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          user: currentUser?.name || 'User',
+          userId: currentUser?.id,
+          userPhoto: currentUser?.photoURL || null,
+          content: localComment.trim(),
+          timestamp: new Date().toISOString(),
+          createdAt: new Date().toISOString()
+        };
+        
+        await updateDoc(postRef, {
+          comments: arrayUnion(newComment),
+          commentsCount: increment(1)
+        });
+        
+        setLocalComment('');
+        toast.success('Comment added');
+      } catch (err) {
+        console.error("Comment error:", err);
+        toast.error(err.message || "Failed to add comment");
+      } finally {
+        setIsSubmittingComment(false);
+      }
+    };
+    
+    const handleDeleteComment = async (commentId, commentUserId) => {
+      if (commentUserId !== currentUser?.id) {
+        toast.error("You can only delete your own comments");
+        return;
+      }
+      
+      if (!window.confirm("Delete this comment?")) return;
+      
+      setDeletingCommentId(commentId);
+      
+      try {
+        const postRef = doc(db, 'posts', post.id);
+        const postSnap = await getDoc(postRef);
+        
+        if (!postSnap.exists()) {
+          toast.error('Post not found');
+          return;
+        }
+        
+        const postData = postSnap.data();
+        const commentToDelete = (postData.comments || []).find(c => c.id === commentId);
+        
+        if (!commentToDelete) {
+          toast.error('Comment not found');
+          return;
+        }
+        
+        if (commentToDelete.userId !== currentUser?.id) {
+          toast.error("You can only delete your own comments");
+          return;
+        }
+        
+        await updateDoc(postRef, {
+          comments: arrayRemove(commentToDelete),
+          commentsCount: increment(-1)
+        });
+        
+        toast.success('Comment deleted');
+      } catch (err) {
+        console.error("Delete comment error:", err);
+        toast.error("Failed to delete comment");
+      } finally {
+        setDeletingCommentId(null);
+      }
+    };
+    
+    const handleViewProfile = () => {
+      const userProfile = users.find(u => u.id === post.user.id);
+      if (userProfile) {
+        setViewingProfile(userProfile);
+      }
+    };
+    
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden mb-4">
+        <div className="p-4">
+          {/* Post Header */}
+          <div className="flex items-center gap-3 mb-3">
+            <div 
+              onClick={handleViewProfile}
+              className="cursor-pointer"
+            >
+              {post.user.photoURL ? (
+                <img src={post.user.photoURL} className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-500/20" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                  <User className="w-5 h-5 text-white" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1">
+              <button
+                onClick={handleViewProfile}
+                className="font-semibold text-slate-800 dark:text-white hover:text-indigo-600 hover:underline transition-colors cursor-pointer"
+              >
+                {post.user.name}
+              </button>
+              <p className="text-xs text-slate-500">
+                {post.createdAt?.toDate?.() ? post.createdAt.toDate().toLocaleString() : 'Just now'}
+              </p>
+            </div>
+            {post.user.id === currentUser?.id && (
+              <button onClick={() => handleDeletePost(post.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+          
+          {/* Post Content */}
+          {post.content && (
+            <p className="mb-3 text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+              {post.content}
+            </p>
+          )}
+          
+          {/* Post Media */}
+          {post.media && (
+            <div className="mb-3 -mx-4 overflow-hidden">
+              {post.mediaType === 'image' ? (
+                <img 
+                  src={post.media} 
+                  alt="Post" 
+                  className="w-full max-h-[500px] object-contain bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                  onClick={() => setShowMediaViewer({ url: post.media, type: 'image' })}
+                />
+              ) : (
+                <video 
+                  src={post.media} 
+                  controls 
+                  className="w-full max-h-[500px] object-contain bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                  onClick={() => setShowMediaViewer({ url: post.media, type: 'video' })}
+                />
+              )}
+            </div>
+          )}
+          
+          {/* Like & Comment Stats */}
+          <div className="flex items-center justify-between pt-2 pb-1 text-sm text-slate-500">
+            <div className="flex items-center gap-1">
+              <Heart size={14} className="fill-red-500 text-red-500" />
+              <span>{post.likes || 0} likes</span>
+            </div>
+            <button 
+              onClick={() => setShowComments(!showComments)}
+              className="hover:text-indigo-600 transition-colors"
+            >
+              <span>{post.comments?.length || 0} comments</span>
+            </button>
+          </div>
+          
+          {/* Action Buttons */}
+          <div className="flex items-center justify-around pt-2 border-t border-slate-200 dark:border-slate-700">
+            <button 
+              onClick={handleLocalLike}
+              className={`flex items-center gap-2 py-2 px-4 rounded-lg transition-colors ${
+                isLiked 
+                  ? 'text-red-500' 
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Heart size={20} className={isLiked ? 'fill-red-500' : ''} />
+              <span className="text-sm font-medium">Like</span>
+            </button>
+            <button 
+              onClick={() => setShowComments(!showComments)}
+              className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              <MessageSquare size={20} />
+              <span className="text-sm font-medium">Comment</span>
+            </button>
+            <button className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+              <Share2 size={18} />
+              <span className="text-sm font-medium">Share</span>
+            </button>
+          </div>
+          
+          {/* Comments Section - WITH DELETE FUNCTIONALITY */}
+          {showComments && (
+            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+              {post.comments && post.comments.length > 0 ? (
+                [...post.comments].reverse().map((comment) => (
+                  <div key={comment.id} className="flex gap-2 group">
+                    {comment.userPhoto ? (
+                      <img src={comment.userPhoto} className="w-8 h-8 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-400 to-slate-500 flex items-center justify-center">
+                        <User size={14} className="text-white" />
+                      </div>
+                    )}
+                    <div className="flex-1 bg-slate-100 dark:bg-slate-700/50 rounded-2xl px-3 py-2 relative">
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-sm text-slate-800 dark:text-white">{comment.user}</p>
+                        {comment.userId === currentUser?.id && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id, comment.userId)}
+                            disabled={deletingCommentId === comment.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-full"
+                            title="Delete comment"
+                          >
+                            {deletingCommentId === comment.id ? (
+                              <Loader2 size={12} className="animate-spin text-red-500" />
+                            ) : (
+                              <Trash2 size={12} className="text-red-500" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">{comment.content}</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {comment.timestamp ? new Date(comment.timestamp).toLocaleString() : 'Just now'}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-slate-500">No comments yet. Be the first to comment!</p>
+                </div>
+              )}
+              
+              {/* Comment Input */}
+              <div className="flex gap-2 mt-3">
+                {currentUser?.photoURL ? (
+                  <img src={currentUser.photoURL} className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                    <User size={14} className="text-white" />
+                  </div>
+                )}
+                <div className="flex-1 flex gap-2">
+                  <input
+                    value={localComment}
+                    onChange={e => setLocalComment(e.target.value)}
+                    placeholder="Write a comment..."
+                    className="flex-1 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 focus:outline-none focus:border-indigo-500 text-sm"
+                    onKeyDown={e => e.key === 'Enter' && !isSubmittingComment && handleLocalComment()}
+                    disabled={isSubmittingComment}
+                  />
+                  <button 
+                    onClick={handleLocalComment}
+                    disabled={!localComment.trim() || isSubmittingComment}
+                    className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  >
+                    {isSubmittingComment ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // User Profile View Component
   const UserProfileView = ({ user, onBack }) => {
     const [userPosts, setUserPosts] = useState([]);
     const [isConnected, setIsConnected] = useState(false);
@@ -1030,7 +1322,6 @@ const Connect = () => {
         exit={{ opacity: 0, y: -20 }}
         className="max-w-3xl mx-auto"
       >
-        {/* Back Button - Signature color */}
         <button
           onClick={onBack}
           className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:shadow-lg transition-all mb-4 font-medium"
@@ -1039,9 +1330,7 @@ const Connect = () => {
           <span>Back to Feed</span>
         </button>
         
-        {/* Profile Card */}
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-          {/* Cover Photo with Gradient Overlay */}
           <div className="relative h-48 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">
             {user.coverPhotoURL && (
               <img src={user.coverPhotoURL} className="w-full h-full object-cover" alt="Cover" />
@@ -1049,7 +1338,6 @@ const Connect = () => {
             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
           </div>
           
-          {/* Profile Photo - Centered design */}
           <div className="relative px-6">
             <div className="absolute -top-16 left-1/2 -translate-x-1/2">
               <div className="relative group">
@@ -1067,7 +1355,6 @@ const Connect = () => {
               </div>
             </div>
             
-            {/* User Info - Centered */}
             <div className="pt-20 pb-6 text-center">
               <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-700 to-purple-700 dark:from-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
                 {user.name}
@@ -1076,21 +1363,18 @@ const Connect = () => {
                 <AtSign size={12} /> {user.email?.split('@')[0]}
               </p>
               
-              {/* Bio */}
               {user.bio && (
                 <p className="mt-3 text-slate-600 dark:text-slate-400 max-w-md mx-auto">
                   {user.bio}
                 </p>
               )}
               
-              {/* Location */}
               {user.location && (
                 <p className="mt-2 text-sm text-slate-500 flex items-center justify-center gap-1">
                   <MapPin size={14} /> {user.location}
                 </p>
               )}
               
-              {/* Stats - Only Connections count */}
               <div className="flex justify-center gap-8 mt-6 pt-4 border-t border-indigo-100 dark:border-indigo-900/30">
                 <div className="text-center">
                   <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{userPosts.length}</p>
@@ -1102,7 +1386,6 @@ const Connect = () => {
                 </div>
               </div>
               
-              {/* Action Buttons */}
               {currentUser?.id !== user.id && (
                 <div className="mt-6 flex justify-center gap-3">
                   {isConnected ? (
@@ -1129,7 +1412,6 @@ const Connect = () => {
           </div>
         </div>
         
-        {/* User's Posts Section */}
         <div className="mt-6">
           <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
             <MessageSquare size={20} className="text-indigo-500" />
@@ -1202,182 +1484,6 @@ const Connect = () => {
           </div>
         </div>
       </motion.div>
-    );
-  };
-
-  // Post Card Component
-  const PostCard = ({ post }) => {
-    const [showComments, setShowComments] = useState(false);
-    const [localComment, setLocalComment] = useState('');
-    const isLiked = likedPosts.has(post.id);
-    
-    const handleLocalLike = async () => {
-      await handleLike(post.id);
-    };
-    
-    const handleLocalComment = async () => {
-      if (!localComment.trim()) return;
-      setCommentInputs(prev => ({ ...prev, [post.id]: localComment }));
-      await handleComment(post.id);
-      setLocalComment('');
-    };
-    
-    const handleViewProfile = () => {
-      const userProfile = users.find(u => u.id === post.user.id);
-      if (userProfile) {
-        setViewingProfile(userProfile);
-      }
-    };
-    
-    return (
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden mb-4">
-        <div className="p-4">
-          {/* Post Header - CLICKABLE NAME */}
-          <div className="flex items-center gap-3 mb-3">
-            <div 
-              onClick={handleViewProfile}
-              className="cursor-pointer"
-            >
-              {post.user.photoURL ? (
-                <img src={post.user.photoURL} className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-500/20" />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
-                </div>
-              )}
-            </div>
-            <div className="flex-1">
-              <button
-                onClick={handleViewProfile}
-                className="font-semibold text-slate-800 dark:text-white hover:text-indigo-600 hover:underline transition-colors cursor-pointer"
-              >
-                {post.user.name}
-              </button>
-              <p className="text-xs text-slate-500">
-                {post.createdAt?.toDate?.() ? post.createdAt.toDate().toLocaleString() : 'Just now'}
-              </p>
-            </div>
-            {post.user.id === currentUser?.id && (
-              <button onClick={() => handleDeletePost(post.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
-          
-          {/* Post Content */}
-          {post.content && (
-            <p className="mb-3 text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-              {post.content}
-            </p>
-          )}
-          
-          {/* Post Media */}
-          {post.media && (
-            <div className="mb-3 -mx-4 overflow-hidden">
-              {post.mediaType === 'image' ? (
-                <img 
-                  src={post.media} 
-                  alt="Post" 
-                  className="w-full max-h-[500px] object-contain bg-slate-100 dark:bg-slate-800 cursor-pointer"
-                  onClick={() => setShowMediaViewer({ url: post.media, type: 'image' })}
-                />
-              ) : (
-                <video 
-                  src={post.media} 
-                  controls 
-                  className="w-full max-h-[500px] object-contain bg-slate-100 dark:bg-slate-800 cursor-pointer"
-                  onClick={() => setShowMediaViewer({ url: post.media, type: 'video' })}
-                />
-              )}
-            </div>
-          )}
-          
-          {/* Like & Comment Stats */}
-          <div className="flex items-center justify-between pt-2 pb-1 text-sm text-slate-500">
-            <div className="flex items-center gap-1">
-              <Heart size={14} className="fill-red-500 text-red-500" />
-              <span>{post.likes || 0} likes</span>
-            </div>
-            <span>{post.comments?.length || 0} comments</span>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex items-center justify-around pt-2 border-t border-slate-200 dark:border-slate-700">
-            <button 
-              onClick={handleLocalLike}
-              className={`flex items-center gap-2 py-2 px-4 rounded-lg transition-colors ${
-                isLiked 
-                  ? 'text-red-500' 
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              <Heart size={20} className={isLiked ? 'fill-red-500' : ''} />
-              <span className="text-sm font-medium">Like</span>
-            </button>
-            <button 
-              onClick={() => setShowComments(!showComments)}
-              className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            >
-              <MessageSquare size={20} />
-              <span className="text-sm font-medium">Comment</span>
-            </button>
-            <button className="flex items-center gap-2 py-2 px-4 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-              <Share2 size={18} />
-              <span className="text-sm font-medium">Share</span>
-            </button>
-          </div>
-          
-          {/* Comments Section */}
-          {showComments && (
-            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
-              {post.comments?.slice(-5).reverse().map((comment, i) => (
-                <div key={i} className="flex gap-2">
-                  {comment.userPhoto ? (
-                    <img src={comment.userPhoto} className="w-8 h-8 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-400 to-slate-500 flex items-center justify-center">
-                      <User size={14} className="text-white" />
-                    </div>
-                  )}
-                  <div className="flex-1 bg-slate-100 dark:bg-slate-700/50 rounded-2xl px-3 py-2">
-                    <p className="font-semibold text-sm text-slate-800 dark:text-white">{comment.user}</p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300">{comment.content}</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {comment.timestamp?.toDate?.() ? formatMessageTime(comment.timestamp) : 'Just now'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              
-              <div className="flex gap-2 mt-3">
-                {currentUser?.photoURL ? (
-                  <img src={currentUser.photoURL} className="w-8 h-8 rounded-full object-cover" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                    <User size={14} className="text-white" />
-                  </div>
-                )}
-                <div className="flex-1 flex gap-2">
-                  <input
-                    value={localComment}
-                    onChange={e => setLocalComment(e.target.value)}
-                    placeholder="Write a comment..."
-                    className="flex-1 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 focus:outline-none focus:border-indigo-500 text-sm"
-                    onKeyDown={e => e.key === 'Enter' && handleLocalComment()}
-                  />
-                  <button 
-                    onClick={handleLocalComment}
-                    disabled={!localComment.trim()}
-                    className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    <Send size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     );
   };
 
@@ -1863,6 +1969,7 @@ const Connect = () => {
             {/* REQUESTS TAB */}
             {activeTab === 'requests' && (
               <div className="grid lg:grid-cols-2 gap-6">
+                {/* Incoming Requests */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-violet-500/10 to-purple-500/10">
                     <h2 className="text-xl font-bold flex items-center gap-2">
@@ -1930,6 +2037,7 @@ const Connect = () => {
                   </div>
                 </div>
 
+                {/* Sent Requests */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
                   <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
                     <h2 className="text-xl font-bold flex items-center gap-2">
@@ -2237,7 +2345,7 @@ const Connect = () => {
                               {uploadingMedia || isSendingMessage ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                             </button>
                           </div>
-                                                </div>
+                        </div>
                       </>
                     ) : (
                       <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
@@ -2393,7 +2501,7 @@ const Connect = () => {
                       </div>
                     </div>
                     
-                    {/* Bio and Location - Editable */}
+                    {/* Bio and Location */}
                     <div className="mt-4">
                       {editingProfile ? (
                         <>
@@ -2425,7 +2533,7 @@ const Connect = () => {
                       )}
                     </div>
                     
-                    {/* Stats - Only Posts and Connections */}
+                    {/* Stats */}
                     <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
                       <div className="text-center">
                         <p className="text-2xl font-bold text-indigo-600">{myPosts.length}</p>
